@@ -2,6 +2,9 @@
 
 A personal app for saving new English words and remembering them through typed recall. The initial focus is personal use, with possible use by friends later.
 
+App identity: **WordRecall**, Expo slug `wordrecall`, iOS bundle identifier and
+Android package name `com.jerrynguyen.wordrecall`. See [D11](docs/decisions.md#d11--app-identity).
+
 ## Product scope
 
 The app has exactly two product features:
