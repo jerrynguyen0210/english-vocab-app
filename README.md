@@ -1,202 +1,153 @@
-# English Vocabulary App
+# WordRecall
 
-A personal app for saving new English words and remembering them through typed recall. The initial focus is personal use, with possible use by friends later.
+Save English words with their explanations, then practise typed recall: read an
+explanation, type the word, and check your answer. These are the two planned
+product features, with accounts and review scheduling handled by the backend.
 
-App identity: **WordRecall**, Expo slug `wordrecall`, iOS bundle identifier and
-Android package name `com.jerrynguyen.wordrecall`. See [D11](docs/decisions.md#d11--app-identity).
+**Stack:** Expo SDK 58, React Native, TypeScript, and Expo Router for web, iOS,
+and Android; FastAPI, PostgreSQL, and Alembic for the backend. Web designs use Figma.
 
-## Product scope
+| App identity (D11) | Value |
+| --- | --- |
+| Display name | WordRecall |
+| Expo slug | `wordrecall` |
+| iOS bundle ID | `com.jerrynguyen.wordrecall` |
+| Android package | `com.jerrynguyen.wordrecall` |
 
-The app has exactly two product features:
+## Local setup
 
-1. **Add a word:** Save an English word with its English explanation.
-2. **Typed-recall review:** Read the saved English explanation, type the learned word, and have the app check the answer. No other review modes are planned.
+Requires Node.js 24, Python 3.12+ (CI uses 3.13), Docker with Compose, and Expo Go
+on your phone. Run commands from the repository root unless stated otherwise.
 
-Users have registered accounts. The backend stores words, selects review items, checks answers, and schedules reviews.
+### 1. Backend and database
 
-## Technology and design
+```bash
+cd backend
+cp .env.example .env
+python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
 
-- **Client:** React Native, targeting web, iOS, and Android.
-- **Backend:** FastAPI, responsible for the learning logic.
-- **Design:** The web UI is designed in Figma.
+Replace `SECRET_KEY` in `.env` with the generated value, then start the containers:
 
-The project owner writes all implementation code; planning documents contain no source code.
+```bash
+docker compose up -d --build
+docker compose exec api alembic upgrade head
+```
 
-## Project structure
+The API uses port **8001** by default (`API_PORT` overrides it), with live reload.
+PostgreSQL stays on the Pi's loopback interface. Stop containers with
+`docker compose down`; data persists. `docker compose down -v` deletes local data.
 
-- `client/` — Cross-platform app.
-- `backend/` — API and learning logic.
-- `docs/` — Requirements, project structure, and design assets.
-- `.github/workflows/` — CI workflows.
+### 2. Client: web and phone
 
-See [requirements](docs/requirement.txt) for the product requirements and [file skeleton](docs/file_skeleton.md) for the planned directory layout.
-
-## Client development
-
-The client was generated with `npx create-expo-app@latest client --template default --yes` using the SDK 58 default template (TypeScript and Expo Router). TypeScript strict mode is enabled in `client/tsconfig.json`.
+In another terminal, from the repository root:
 
 ```bash
 cd client
 npm ci
-npm start
-```
-
-Use `npm run web`, `npm run android`, or `npm run ios` to open a specific platform. The iOS simulator requires macOS and Xcode.
-
-```bash
-npm run typecheck    # Check TypeScript
-npm run lint         # ESLint using the Expo configuration
-npm run lint:fix     # Apply automatic lint fixes
-npm run format       # Format with Prettier
-npm run format:check # Check formatting without changing files
-npm run check        # Run all three checks
-```
-
-Install libraries from `client/` with `npx expo install <package>` (or add `--dev` for development tools) so Expo selects SDK-compatible versions where available. Run `npx expo install --check` to verify compatibility.
-
-## Backend development
-
-Requires Python 3.12+ and Docker with Docker Compose. Run these commands from `backend/`:
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev]'
-cp .env.example .env
-
-docker compose up -d db
-alembic upgrade head
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-From another device on the same LAN, use the Raspberry Pi's LAN IP:
-
-- API: <http://192.168.0.50:8001>
-- Interactive API docs: <http://192.168.0.50:8001/docs>
-- Process health: <http://192.168.0.50:8001/health>
-
-`localhost` refers to the device running the browser, so on your Mac it points to
-your Mac. Both the Uvicorn command above and the Docker Compose API port bind to
-`0.0.0.0` to accept LAN connections. If the Pi's address changes, find its current
-LAN IP with `hostname -I` on the Pi and replace `192.168.0.50` in these URLs.
-Health does not query the database.
-`DATABASE_URL` can be set in `backend/.env` or the shell; shell values take priority.
-The example credentials are for local development. If you change the database port
-or credentials, update `DATABASE_URL` for host commands as well. URL-encode special
-characters in credentials used in a connection URL.
-
-To run both the API (with live reload) and PostgreSQL in containers:
-
-```bash
-docker compose up -d --build
-docker compose exec api alembic upgrade head
-```
-
-Run tests in the virtual environment; the initial API test needs no database:
-
-```bash
-python -m pytest
-```
-
-Database schema changes use Alembic. Import new SQLAlchemy models in
-`app/models/__init__.py` so autogeneration discovers them, then generate and review
-an explicit migration before applying it:
-
-```bash
-alembic revision --autogenerate -m "describe schema change"
-alembic upgrade head
-alembic downgrade -1
-```
-
-The initial migration is an empty baseline; product tables are not defined yet.
-Migrations run explicitly, rather than on API startup. Stop containers with
-`docker compose down`; database data stays in the named volume. To intentionally
-remove all local database data, use `docker compose down -v`.
-
-## Repository rules
-
-Never commit secrets, real `.env` files, keystores, or Apple/Google credentials
-(including signing keys, provisioning profiles, and service-account keys).
-Provide a sanitized `.env.example` with placeholder or local-development values
-instead. See [backend/.env.example](backend/.env.example) for the backend template.
-
-## Environment configuration
-
-Client API calls should use `getApiBaseUrl()` from `client/src/constants/api.ts`.
-For local development, copy `client/.env.example` to `client/.env.local` and set
-`EXPO_PUBLIC_API_BASE_URL` to the API address reachable from the device (currently
-`http://192.168.0.50:8001` for the Pi). Start the API with `--port 8001` if 8000 is
-occupied. Compose publishes the API on port 8001 by default (`API_PORT` overrides it).
-
-For preview and production builds, set `EXPO_PUBLIC_API_BASE_URL` in the build
-provider's environment to the corresponding HTTPS API URL. It is embedded at
-bundle time: rebuild/export when changing environments. For a manual build,
-set it in the shell before `npx expo export`. Do not use `NODE_ENV` or a
-`.env.preview` file to select the API. Only the URL is public; never place backend
-secrets in `EXPO_PUBLIC_*` variables.
-
-The backend reads `DATABASE_URL`, `SECRET_KEY`, and `CORS_ORIGINS` from environment
-variables, with `backend/.env` as a local fallback. Database URL and secret key are
-required. After copying `backend/.env.example` to `backend/.env`, replace the
-secret placeholder with a unique value generated by:
-
-```bash
-python -c 'import secrets; print(secrets.token_urlsafe(48))'
-```
-
-For each deployed environment, supply a separate database URL and secret key via
-the hosting provider's secret configuration. Set `CORS_ORIGINS` to a JSON array of
-exact web origins, for example `["https://preview.example.com"]` for preview or
-`["https://wordrecall.example.com"]` for production. Use the actual client domains;
-these are placeholders. The default allows no cross-origin browser access.
-Restart the backend after changing settings. Compose loads backend variables from
-`.env` and overrides the database host to its internal `db` service. The secret
-key is configuration for future authentication; authentication is not implemented yet.
-
-## Run on the LAN
-
-From `backend/`, after configuring `.env`:
-
-```bash
-docker compose up -d --build
-docker compose exec api alembic upgrade head
-```
-
-From `client/`, copy `.env.example` to `.env.local`, then run:
-
-```bash
+cp .env.example .env.local
 REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.50 npx expo start --go --lan --web
 ```
 
-Open <http://192.168.0.50:8081> on your Mac. On a phone connected to the same Wi-Fi,
-open `exp://192.168.0.50:8081` in Expo Go or scan the terminal QR code. The client
-uses `http://192.168.0.50:8001` for API requests, including on the phone. Replace
-the IP in both client configuration and backend CORS origins if the Pi's IP changes.
-Stop Expo with Ctrl+C and the containers with `docker compose down` from `backend/`.
+Set `EXPO_PUBLIC_API_BASE_URL` in `.env.local` to `http://192.168.0.50:8001`.
+Use the Pi's LAN IP, **not localhost**, so your Mac and phone can reach the API.
+If the IP changes, update the client URL, the Expo host above, and backend
+`CORS_ORIGINS`. Find the Pi's current address with `hostname -I`.
 
-## Continuous integration
+| Service | LAN address |
+| --- | --- |
+| Web app | <http://192.168.0.50:8081> |
+| API docs | <http://192.168.0.50:8001/docs> |
+| API health | <http://192.168.0.50:8001/health> |
+| Expo Go | `exp://192.168.0.50:8081` |
 
-GitHub Actions runs both client and backend checks on every push and pull request,
-without path filters. The client uses Node 24 and runs ESLint, TypeScript, and
-Node's test runner (`npm test`), including API URL configuration tests. The backend
-uses Python 3.13 and runs Ruff, mypy, pytest, and migration checks against a
-PostgreSQL service. CI generates its own ephemeral secret key.
+Connect your phone to the same Wi-Fi and scan the terminal QR code in Expo Go.
+Stop Expo with Ctrl+C. `npm run android` and `npm run ios` also support emulators;
+the iOS simulator requires macOS and Xcode. Health checks process availability,
+not database connectivity.
 
-Run the same code checks locally:
+## Configuration
+
+| Setting | Purpose |
+| --- | --- |
+| Client `EXPO_PUBLIC_API_BASE_URL` | API endpoint read by `getApiBaseUrl()` in `client/src/constants/api.ts` |
+| Backend `DATABASE_URL` | Required SQLAlchemy database URL |
+| Backend `SECRET_KEY` | Required secret reserved for future authentication |
+| Backend `CORS_ORIGINS` | JSON array of exact allowed web origins, such as `["http://192.168.0.50:8081"]`; defaults to none |
+
+The backend reads environment variables before `backend/.env`; Compose overrides
+the database URL to use its internal `db` host. For host commands, keep the URL
+in `.env` aligned with your PostgreSQL port and credentials.
+
+For preview and production, set the public API URL in the build environment and
+supply separate database URLs and secret keys through your hosting provider.
+Allow each deployed web origin in CORS. Client variables are embedded at build
+time, so rebuild when switching environments. Do not select environments with
+`NODE_ENV` or `.env.preview`. Restart the backend after changing its settings.
+Authentication and product database tables are not implemented yet.
+
+**Never commit secrets, real `.env` files, keystores, or Apple/Google credentials.**
+Use sanitized [client](client/.env.example) and [backend](backend/.env.example)
+env examples instead. Never put secrets in `EXPO_PUBLIC_*` variables.
+
+## Development commands
+
+From `client/`:
 
 ```bash
-cd client
-npm run lint
-npm run typecheck
-npm test
+npm run lint          # ESLint; lint:fix applies fixes
+npm run typecheck     # Strict TypeScript
+npm test              # API configuration tests (Node test runner)
+npm run check         # Lint, type-check, and formatting check
+npm run format        # Apply Prettier formatting
+npx expo install <package>
+npx expo install --check
 ```
 
+Screens live in `client/src/app/` with file-based routing. Use Expo's installer
+for compatible dependencies (`--dev` for development tools). The starter reset
+utility, `npm run reset-project`, can move or delete starter files; it is optional.
+
+For backend checks or running the API outside Docker, from `backend/`:
+
 ```bash
-cd backend
+python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
 python -m ruff check .
 python -m mypy
 python -m pytest
 ```
+
+To run the API in this environment, start the database with `docker compose up -d db`,
+apply migrations with `alembic upgrade head`, then run
+`uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload`.
+Stop the Docker API first if it is already using port 8001.
+
+### Database migrations
+
+Import new models in `backend/app/models/__init__.py`. From `backend/` with the
+virtual environment active and database running:
+
+```bash
+alembic revision --autogenerate -m "describe schema change"
+# Review the generated migration before applying it.
+alembic upgrade head
+alembic downgrade -1   # Roll back one revision
+```
+
+The initial migration is an empty baseline. Migrations run explicitly.
+
+## CI
+
+On every push and pull request, GitHub Actions runs client lint, type-checking,
+and tests, plus backend Ruff, mypy, pytest, and PostgreSQL migration checks.
+CI generates its own temporary secret key.
+
+## Project layout
+
+- `client/` — Cross-platform app and tests.
+- `backend/` — API, migrations, and tests.
+- `docs/` — [Requirements](docs/requirement.txt), [decisions](docs/decisions.md),
+  [planned structure](docs/file_skeleton.md), and design assets.
+- `.github/workflows/` — Client and backend CI.
