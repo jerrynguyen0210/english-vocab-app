@@ -49,7 +49,9 @@ def test_native_lifecycle(auth):
     db.commit()
     assert client.get("/api/v1/auth/me", headers=header).status_code == 401
     refreshed = client.post(
-        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}, headers=NATIVE
+        "/api/v1/auth/refresh",
+        json={"refresh_token": tokens["refresh_token"]},
+        headers=NATIVE,
     )
     assert refreshed.status_code == 200
     assert (
@@ -63,13 +65,16 @@ def test_native_lifecycle(auth):
     new = refreshed.json()
     assert (
         client.post(
-            "/api/v1/auth/logout", json={"refresh_token": new["refresh_token"]}, headers=NATIVE
+            "/api/v1/auth/logout",
+            json={"refresh_token": new["refresh_token"]},
+            headers=NATIVE,
         ).status_code
         == 204
     )
     assert (
         client.get(
-            "/api/v1/auth/me", headers={"Authorization": "Bearer " + new["access_token"]}
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + new["access_token"]},
         ).status_code
         == 401
     )
@@ -106,7 +111,10 @@ def test_credentials_disabled_and_expired_refresh(auth):
         == 422
     )
     client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE)
-    assert client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).status_code == 409
+    assert (
+        client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).status_code
+        == 409
+    )
     assert (
         client.post(
             "/api/v1/auth/sign-in",
@@ -119,7 +127,10 @@ def test_credentials_disabled_and_expired_refresh(auth):
     user = db.scalar(select(User))
     user.disabled_at = datetime.now(UTC)
     db.commit()
-    assert client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE).status_code == 401
+    assert (
+        client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE).status_code
+        == 401
+    )
     assert (
         client.post(
             "/api/v1/auth/refresh",
@@ -150,10 +161,51 @@ def test_rate_limit_shared_between_auth_routes(auth):
     try:
         for _ in range(2):
             assert (
-                client.post("/api/v1/auth/refresh", json={}, headers=NATIVE).status_code == 401
+                client.post("/api/v1/auth/refresh", json={}, headers=NATIVE).status_code
+                == 401
             )
         response = client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE)
         assert response.status_code == 429
         assert int(response.headers["retry-after"]) > 0
     finally:
         settings.auth_rate_limit = previous
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"email": "learner@example.com"},
+        {"password": "long test password"},
+        {"email": "not-an-email", "password": "long test password"},
+        {"email": None, "password": "long test password"},
+        {"email": "learner@example.com", "password": None},
+        {"email": "learner@example.com", "password": "x" * 129},
+        {"email": "learner@example.com", "password": 123456789012},
+        {**CREDS, "user_id": "someone-else"},
+    ],
+)
+def test_auth_input_validation(auth, body):
+    client, db = auth
+    for endpoint in ["register", "sign-in"]:
+        assert (
+            client.post(
+                f"/api/v1/auth/{endpoint}", json=body, headers=NATIVE
+            ).status_code
+            == 422
+        )
+    assert db.scalar(select(User)) is None
+
+
+def test_refresh_rejects_invalid_and_unexpected_fields(auth):
+    client, _ = auth
+    for body in [
+        {"refresh_token": "short"},
+        {"refresh_token": "x" * 257},
+        {"refresh_token": 123},
+        {"user_id": "someone-else"},
+    ]:
+        assert (
+            client.post("/api/v1/auth/refresh", json=body, headers=NATIVE).status_code
+            == 422
+        )

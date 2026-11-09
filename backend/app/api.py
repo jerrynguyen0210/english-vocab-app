@@ -83,6 +83,15 @@ def create_word(
         db.commit()
     except IntegrityError:
         db.rollback()
+        # Only the per-owner normalized duplicate is a client conflict.
+        duplicate = db.scalar(
+            select(Word.id).where(
+                Word.user_id == user.id,
+                Word.normalised_word == normalise_word(body.word),
+            )
+        )
+        if duplicate is None:
+            raise
         raise HTTPException(409, "Word already exists") from None
     response.headers["Cache-Control"] = "no-store"
     return WordCreated(

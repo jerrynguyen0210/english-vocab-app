@@ -174,3 +174,127 @@ def test_only_versioned_product_routes(api):
         assert path == "/health" or path.startswith("/api/v1/")
     item = schema["components"]["schemas"]["ReviewItem"]["properties"]
     assert set(item) == {"word_id", "english_explanation"}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"word": "hello"},
+        {"english_explanation": "greeting"},
+        {"word": None, "english_explanation": "greeting"},
+        {"word": "hello", "english_explanation": None},
+        {"word": 12, "english_explanation": "greeting"},
+        {"word": "hello", "english_explanation": ["greeting"]},
+        {"word": "\u3000\t\n", "english_explanation": "greeting"},
+        {"word": "hello", "english_explanation": "\u3000\t\n"},
+        {"word": "hello", "english_explanation": "x" * 5001},
+        {
+            "word": "hello",
+            "english_explanation": "greeting",
+            "user_id": str(uuid.uuid4()),
+        },
+    ],
+)
+def test_invalid_word_requests_do_not_write(api, body):
+    client, db, owner, _, _ = api
+    assert client.post("/api/v1/words", headers=owner, json=body).status_code == 422
+    assert db.scalar(select(func.count()).select_from(Word)) == 0
+    assert db.scalar(select(func.count()).select_from(ReviewState)) == 0
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"typed_answer": "hello"},
+        {"time_taken_ms": 1},
+        {"typed_answer": None, "time_taken_ms": 1},
+        {"typed_answer": 123, "time_taken_ms": 1},
+        {"typed_answer": "x" * 201, "time_taken_ms": 1},
+        {"typed_answer": "hello", "time_taken_ms": True},
+        {"typed_answer": "hello", "time_taken_ms": "1"},
+        {"typed_answer": "hello", "time_taken_ms": 1.5},
+        {"typed_answer": "hello", "time_taken_ms": None},
+        {"typed_answer": "hello", "time_taken_ms": 2147483648},
+        {"typed_answer": "hello", "time_taken_ms": 1, "result": "correct"},
+        {"typed_answer": "hello", "time_taken_ms": 1, "user_id": str(uuid.uuid4())},
+    ],
+)
+def test_invalid_answer_requests_do_not_change_progress(api, body):
+    client, db, owner, _, _ = api
+    word_id = create(client, owner).json()["id"]
+    state = db.get(ReviewState, uuid.UUID(word_id))
+    due_at = state.due_at
+    assert (
+        client.post(
+            f"/api/v1/reviews/{word_id}/answer", headers=owner, json=body
+        ).status_code
+        == 422
+    )
+    db.refresh(state)
+    assert state.due_at == due_at and state.correct_count == state.incorrect_count == 0
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 0
+
+
+def test_limits_and_duplicate_rule_preserve_existing_word(api):
+    client, db, owner, other, _ = api
+    body = {"word": "x" * 200, "english_explanation": "e" * 5000}
+    response = client.post("/api/v1/words", headers=owner, json=body)
+    assert response.status_code == 201
+    word_id = uuid.UUID(response.json()["id"])
+    state = db.get(ReviewState, word_id)
+    due_at = state.due_at
+    assert (
+        client.post(
+            "/api/v1/words",
+            headers=owner,
+            json={**body, "word": "X" * 200, "english_explanation": "different"},
+        ).status_code
+        == 409
+    )
+    assert db.get(Word, word_id).english_explanation == body["english_explanation"]
+    db.refresh(state)
+    assert state.due_at == due_at
+    assert client.post("/api/v1/words", headers=other, json=body).status_code == 201
+    assert len(client.get("/api/v1/reviews/next", headers=owner).json()) == 1
+    assert (
+        client.post(
+            f"/api/v1/reviews/{word_id}/answer",
+            headers=owner,
+            json={"typed_answer": "X" * 200, "time_taken_ms": 2147483647},
+        ).status_code
+        == 200
+    )
+
+
+def test_queue_and_submission_isolate_accounts(api):
+    client, db, owner, other, _ = api
+    owner_id = create(client, owner, "OwnerWord").json()["id"]
+    other_id = create(client, other, "OtherWord").json()["id"]
+    assert client.get("/api/v1/reviews/next?limit=50", headers=owner).json() == [
+        {"word_id": owner_id, "english_explanation": "A greeting"}
+    ]
+    state = db.get(ReviewState, uuid.UUID(other_id))
+    original_due = state.due_at
+    response = client.post(
+        f"/api/v1/reviews/{other_id}/answer",
+        headers=owner,
+        json={"typed_answer": "OtherWord", "time_taken_ms": 1},
+    )
+    assert response.status_code == 404 and "OtherWord" not in response.text
+    db.refresh(state)
+    assert state.due_at == original_due and state.correct_count == 0
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 0
+    assert client.get("/api/v1/reviews/next?limit=0", headers=owner).status_code == 422
+    assert (
+        client.get("/api/v1/reviews/next?limit=abc", headers=owner).status_code == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/reviews/not-a-uuid/answer",
+            headers=owner,
+            json={"typed_answer": "x", "time_taken_ms": 1},
+        ).status_code
+        == 422
+    )

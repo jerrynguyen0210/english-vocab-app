@@ -9,7 +9,7 @@ from typing import Annotated
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, EmailStr, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -75,11 +75,15 @@ def guard(request: Request, db: DB) -> None:
 
 
 class Credentials(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr = Field(max_length=320)
     password: SecretStr = Field(min_length=12, max_length=128)
 
 
 class RefreshInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     refresh_token: str | None = Field(default=None, min_length=32, max_length=256)
 
 
