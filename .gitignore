@@ -33,3 +33,7 @@ service_account*.json
 *-firebase-adminsdk-*.json
 google-services.json
 GoogleService-Info.plist
+
+# Python analysis caches
+.mypy_cache/
+.ruff_cache/

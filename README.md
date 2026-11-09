@@ -174,3 +174,29 @@ open `exp://192.168.0.50:8081` in Expo Go or scan the terminal QR code. The clie
 uses `http://192.168.0.50:8001` for API requests, including on the phone. Replace
 the IP in both client configuration and backend CORS origins if the Pi's IP changes.
 Stop Expo with Ctrl+C and the containers with `docker compose down` from `backend/`.
+
+## Continuous integration
+
+GitHub Actions runs both client and backend checks on every push and pull request,
+without path filters. The client uses Node 24 and runs ESLint, TypeScript, and
+Node's test runner (`npm test`), including API URL configuration tests. The backend
+uses Python 3.13 and runs Ruff, mypy, pytest, and migration checks against a
+PostgreSQL service. CI generates its own ephemeral secret key.
+
+Run the same code checks locally:
+
+```bash
+cd client
+npm run lint
+npm run typecheck
+npm test
+```
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+python -m ruff check .
+python -m mypy
+python -m pytest
+```

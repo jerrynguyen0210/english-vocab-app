@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3,<10", "httpx>=0.28,<1"]
+dev = ["pytest>=8.3,<10", "httpx>=0.28,<1", "ruff>=0.9,<1", "mypy>=1.14,<3"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
@@ -25,3 +25,13 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.mypy]
+files = ["app", "migrations"]
+plugins = ["pydantic.mypy"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+warn_unused_ignores = true
