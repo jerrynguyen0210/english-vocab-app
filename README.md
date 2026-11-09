@@ -50,3 +50,55 @@ npm run check        # Run all three checks
 ```
 
 Install libraries from `client/` with `npx expo install <package>` (or add `--dev` for development tools) so Expo selects SDK-compatible versions where available. Run `npx expo install --check` to verify compatibility.
+
+## Backend development
+
+Requires Python 3.12+ and Docker with Docker Compose. Run these commands from `backend/`:
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+cp .env.example .env
+
+docker compose up -d db
+alembic upgrade head
+uvicorn app.main:app --reload
+```
+
+The API is available at <http://localhost:8000>, interactive API docs at
+<http://localhost:8000/docs>, and the process health endpoint at
+<http://localhost:8000/health>. Health does not query the database.
+`DATABASE_URL` can be set in `backend/.env` or the shell; shell values take priority.
+The example credentials are for local development. If you change the database port
+or credentials, update `DATABASE_URL` for host commands as well. URL-encode special
+characters in credentials used in a connection URL.
+
+To run both the API (with live reload) and PostgreSQL in containers:
+
+```bash
+docker compose up -d --build
+docker compose exec api alembic upgrade head
+```
+
+Run tests in the virtual environment; the initial API test needs no database:
+
+```bash
+python -m pytest
+```
+
+Database schema changes use Alembic. Import new SQLAlchemy models in
+`app/models/__init__.py` so autogeneration discovers them, then generate and review
+an explicit migration before applying it:
+
+```bash
+alembic revision --autogenerate -m "describe schema change"
+alembic upgrade head
+alembic downgrade -1
+```
+
+The initial migration is an empty baseline; product tables are not defined yet.
+Migrations run explicitly, rather than on API startup. Stop containers with
+`docker compose down`; database data stays in the named volume. To intentionally
+remove all local database data, use `docker compose down -v`.
