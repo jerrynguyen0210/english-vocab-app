@@ -9,7 +9,7 @@ from typing import Annotated
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -81,6 +81,16 @@ class Credentials(BaseModel):
     password: SecretStr = Field(min_length=12, max_length=128)
 
 
+class RegistrationCredentials(Credentials):
+    # Optional for existing clients; new clients collect the name during sign-up.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def trim_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
 class RefreshInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -137,9 +147,10 @@ def issue(
 
 @router.post("/register", status_code=201, dependencies=[Depends(guard)])
 def register(
-    body: Credentials, request: Request, response: Response, db: DB
+    body: RegistrationCredentials, request: Request, response: Response, db: DB
 ) -> dict[str, object]:
     user = User(
+        name=body.name,
         email=str(body.email).lower(),
         password_hash=hasher.hash(body.password.get_secret_value()),
     )
@@ -242,6 +253,11 @@ def get_current_user(request: Request, db: DB) -> User:
 @router.get("/me")
 def me(
     response: Response, user: Annotated[User, Depends(get_current_user)]
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     response.headers["Cache-Control"] = "no-store"
-    return {"id": str(user.id), "email": user.email, "timezone": user.timezone}
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "timezone": user.timezone,
+    }

@@ -267,7 +267,7 @@ def test_refresh_invalidates_old_access_and_preserves_absolute_expiry(auth):
         "/api/v1/auth/me", headers={"Authorization": "Bearer " + new["access_token"]}
     )
     assert me.status_code == 200
-    assert set(me.json()) == {"id", "email", "timezone"}
+    assert set(me.json()) == {"id", "email", "name", "timezone"}
     assert (
         response.headers["cache-control"] == me.headers["cache-control"] == "no-store"
     )
@@ -389,3 +389,29 @@ def test_duplicate_registration_is_case_insensitive(auth):
         == 409
     )
     assert len(list(db.scalars(select(User)))) == 1
+
+
+@pytest.mark.parametrize("name", ["  Alex  ", "李明", "A" * 100])
+def test_registration_persists_name_and_returns_it_in_profile(auth, name):
+    client, db = auth
+    response = client.post(
+        "/api/v1/auth/register", json={**CREDS, "name": name}, headers=NATIVE
+    )
+    assert response.status_code == 201
+    assert db.scalar(select(User)).name == name.strip()
+    profile = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": "Bearer " + response.json()["access_token"]},
+    )
+    assert profile.status_code == 200
+    assert profile.json()["name"] == name.strip()
+
+
+@pytest.mark.parametrize("name", ["", "   ", "A" * 101, 123])
+def test_registration_rejects_invalid_names(auth, name):
+    client, db = auth
+    response = client.post(
+        "/api/v1/auth/register", json={**CREDS, "name": name}, headers=NATIVE
+    )
+    assert response.status_code == 422
+    assert db.scalar(select(User)) is None

@@ -46,8 +46,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
           await auth.signIn(email, password);
           setSignedIn(true);
         },
-        signUp: async (email, password) => {
-          await auth.register(email, password);
+        signUp: async (email, password, name) => {
+          await auth.register(email, password, name);
           setSignedIn(true);
         },
         signOut: async () => {

@@ -168,8 +168,11 @@ CI generates its own temporary secret key.
 
 ## Authentication
 
-Apply migrations through `0008` before using auth. JSON `POST /api/v1/auth/register` and
+Apply migrations through `0009` before using auth. JSON `POST /api/v1/auth/register` and
 `/api/v1/auth/sign-in` accept `email` and `password` (12–128 characters).
+Registration also accepts `name`, trimmed to 1–100 characters. The client requires
+it at sign-up; it remains optional in the API for older clients. Existing users
+retain a null name. The `/me` profile includes `name`.
 `POST /api/v1/auth/refresh` and `/api/v1/auth/logout` accept `{}` on web or
 `{"refresh_token":"..."}` on native. `GET /api/v1/auth/me` requires
 `Authorization: Bearer <access_token>`. Email identities are lowercased.
@@ -183,8 +186,9 @@ users cannot sign in, refresh or access protected routes. Use the
 `get_current_user` dependency for future protected routes.
 
 `client/src/services/auth.ts` provides register, signIn, refreshSession (call on
-startup), signOut, and authenticatedFetch (one refresh/retry). Screen integration
-is separate from this foundation. Native refresh tokens use Expo SecureStore;
+startup), signOut, and authenticatedFetch (one refresh/retry). The Sign up and
+Sign in screens follow `docs/Wordwell_Unified_Figma_Import.svg`, with validation,
+password visibility controls, accessible labels, and loading/error states. Native refresh tokens use Expo SecureStore;
 requests use `X-Auth-Platform: native`. Browser refresh tokens use an HttpOnly,
 SameSite=Strict cookie scoped to `/api/v1/auth`. Access tokens stay in memory on both
 platforms. Credentials never use localStorage or AsyncStorage.

@@ -39,8 +39,8 @@ async function acceptTokens(response: Response) {
   accessToken = tokens.access_token;
 }
 
-export async function register(email: string, password: string) {
-  await acceptTokens(await authRequest('register', { email, password }));
+export async function register(email: string, password: string, name: string) {
+  await acceptTokens(await authRequest('register', { email, password, name }));
 }
 
 export async function signIn(email: string, password: string) {

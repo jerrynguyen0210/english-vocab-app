@@ -17,12 +17,42 @@ def test_upgrade_and_repeated_run(tmp_path, monkeypatch):
     get_settings.cache_clear()
     try:
         command.upgrade(Config("alembic.ini"), "0007")
+        engine = create_engine(url)
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO users (id, email, password_hash) VALUES (:id, :email, :hash)"
+                ),
+                {
+                    "id": "1" * 32,
+                    "email": "existing@example.com",
+                    "hash": "placeholder-hash",
+                },
+            )
+        engine.dispose()
         upgrade_database()
         upgrade_database()
         engine = create_engine(url)
         with engine.connect() as conn:
             assert (
-                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0008"
+                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0009"
+            )
+            assert (
+                conn.scalar(
+                    text("SELECT name FROM users WHERE email = 'existing@example.com'")
+                )
+                is None
+            )
+            conn.execute(
+                text(
+                    "UPDATE users SET name = 'Alex' WHERE email = 'existing@example.com'"
+                )
+            )
+            assert (
+                conn.scalar(
+                    text("SELECT name FROM users WHERE email = 'existing@example.com'")
+                )
+                == "Alex"
             )
         engine.dispose()
     finally:

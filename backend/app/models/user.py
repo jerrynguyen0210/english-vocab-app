@@ -30,6 +30,7 @@ class User(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str | None] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(320), unique=True)
     password_hash: Mapped[str | None] = mapped_column(String(1024))
     auth_provider_id: Mapped[str | None] = mapped_column(String(512), unique=True)

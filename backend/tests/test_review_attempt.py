@@ -30,6 +30,9 @@ def history():
             "0004_review_states",
             "0005_review_attempts",
             "0006_user_timezone",
+            "0007_auth",
+            "0008_account_erasure",
+            "0009_user_name",
         ]:
             spec = importlib.util.spec_from_file_location(
                 name, f"migrations/versions/{name}.py"
