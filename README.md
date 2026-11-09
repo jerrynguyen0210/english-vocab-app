@@ -31,8 +31,9 @@ Replace `SECRET_KEY` in `.env` with the generated value, then start the containe
 
 ```bash
 docker compose up -d --build
-docker compose exec api alembic upgrade head
 ```
+
+The API container applies pending migrations before starting; migration failure stops startup.
 
 The API uses port **8001** by default (`API_PORT` overrides it), with live reload.
 PostgreSQL stays on the Pi's loopback interface. Stop containers with
@@ -120,7 +121,7 @@ python -m pytest
 ```
 
 To run the API in this environment, start the database with `docker compose up -d db`,
-apply migrations with `alembic upgrade head`, then run
+apply migrations with `python -m app.migrate`, then run
 `uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload`.
 Stop the Docker API first if it is already using port 8001.
 
@@ -133,10 +134,23 @@ virtual environment active and database running:
 alembic revision --autogenerate -m "describe schema change"
 # Review the generated migration before applying it.
 alembic upgrade head
-alembic downgrade -1   # Roll back one revision
+python -m app.migrate  # Same forward-only runner used on deploy
 ```
 
-The initial migration is an empty baseline. Migrations run explicitly.
+The initial migration is an empty baseline. Container startup runs the forward-only
+migration runner before starting Uvicorn, including Compose development startup.
+For non-container deployments, run `python -m app.migrate` as the release step
+before starting API processes. PostgreSQL advisory locking serializes concurrent
+runners; migration failure prevents that container from serving traffic.
+
+Never edit, delete, rename, downgrade or stamp a migration that has shipped.
+Add a new revision for fixes. CI rejects changes to migration files already in
+the PR base or previous push, checks upgrades and schema drift, and runs upgrades
+again to verify a no-op. Existing downgrade functions remain historical code;
+they are not used by deployment. Keep schema changes compatible with the previous
+app version during rolling deployments; use additive changes and defer removal
+until all old processes have stopped. Back up production before schema changes;
+recover mistakes with a new forward migration.
 
 ## CI
 

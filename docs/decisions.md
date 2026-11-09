@@ -50,3 +50,24 @@ another user both return 404 without revealing the answer or recording an
 attempt. Authentication necessarily resolves accounts by validated credentials
 or opaque tokens before a user is signed in. Shared IP rate-limit housekeeping
 is infrastructure data and has no account owner.
+
+## D13 — Immutable migrations and forward-only deployment
+
+Status: Accepted
+
+Alembic revisions are versioned and immutable after shipping. All revisions
+already present in the PR base or previous push are protected by CI: only new
+files may be added to `backend/migrations/versions/`. Fix schema mistakes with a
+new revision, never by editing history, downgrading or stamping deployed databases.
+
+The Docker entrypoint runs `python -m app.migrate` before starting the API and
+exits on failure. Non-container deployments run the same command in their release
+step. The runner requires one head, upgrades only to head, and uses a PostgreSQL
+session advisory lock on the same connection used by Alembic to serialize
+concurrent deploys. Re-running at head is a no-op. CI checks forward upgrades,
+model/schema agreement, and a repeated upgrade; it never downgrades a database.
+Existing historical downgrade functions remain unchanged.
+
+Rolling releases require compatible schema changes: add first, transition app
+usage, then remove obsolete schema in a later revision. Production backup and
+retention policies remain the deployment operator's responsibility.
