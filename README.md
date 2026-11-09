@@ -110,3 +110,10 @@ The initial migration is an empty baseline; product tables are not defined yet.
 Migrations run explicitly, rather than on API startup. Stop containers with
 `docker compose down`; database data stays in the named volume. To intentionally
 remove all local database data, use `docker compose down -v`.
+
+## Repository rules
+
+Never commit secrets, real `.env` files, keystores, or Apple/Google credentials
+(including signing keys, provisioning profiles, and service-account keys).
+Provide a sanitized `.env.example` with placeholder or local-development values
+instead. See [backend/.env.example](backend/.env.example) for the backend template.

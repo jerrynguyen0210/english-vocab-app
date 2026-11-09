@@ -13,3 +13,23 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Private keys, keystores, and signing credentials
+*.keystore
+*.jks
+*.key
+*.pem
+*.p8
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+
+# Apple / Google credential files
+credentials.json
+client_secret*.json
+service-account*.json
+service_account*.json
+*-firebase-adminsdk-*.json
+google-services.json
+GoogleService-Info.plist
