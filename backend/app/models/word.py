@@ -1,0 +1,52 @@
+"""User-owned vocabulary and shared normalization for answer comparison."""
+
+import unicodedata
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, validates
+
+from app.core.database import Base
+
+
+def normalise_word(value: str) -> str:
+    """Fold Unicode compatibility, case and whitespace; retain accents/punctuation."""
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
+
+
+class Word(Base):
+    __tablename__ = "words"
+    __table_args__ = (
+        UniqueConstraint("user_id", "normalised_word", name="uq_words_user_normalised"),
+        CheckConstraint("length(trim(word)) > 0", name="ck_words_word_nonempty"),
+        CheckConstraint(
+            "length(trim(normalised_word)) > 0", name="ck_words_normalised_nonempty"
+        ),
+        CheckConstraint(
+            "length(trim(english_explanation)) > 0",
+            name="ck_words_explanation_nonempty",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    word: Mapped[str] = mapped_column(Text)
+    normalised_word: Mapped[str] = mapped_column(Text)
+    english_explanation: Mapped[str] = mapped_column(Text)
+    example_sentence: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    @validates("word")
+    def _set_normalised_word(self, key: str, value: str) -> str:
+        self.normalised_word = normalise_word(value)
+        return value
