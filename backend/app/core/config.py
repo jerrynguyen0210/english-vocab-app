@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +12,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = "postgresql+psycopg://vocab:vocab@localhost:5432/vocab"
+    database_url: str
+    secret_key: SecretStr
+    cors_origins: list[str] = []
 
 
 @lru_cache

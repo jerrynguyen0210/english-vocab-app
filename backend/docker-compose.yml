@@ -17,6 +17,8 @@ services:
 
   api:
     build: .
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-vocab}:${POSTGRES_PASSWORD:-vocab}@db:5432/${POSTGRES_DB:-vocab}
     ports:
