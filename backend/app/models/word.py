@@ -25,6 +25,7 @@ def normalise_word(value: str) -> str:
 class Word(Base):
     __tablename__ = "words"
     __table_args__ = (
+        UniqueConstraint("id", "user_id", name="uq_words_id_user"),
         UniqueConstraint("user_id", "normalised_word", name="uq_words_user_normalised"),
         CheckConstraint("length(trim(word)) > 0", name="ck_words_word_nonempty"),
         CheckConstraint(
