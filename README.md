@@ -72,7 +72,7 @@ not database connectivity.
 | --- | --- |
 | Client `EXPO_PUBLIC_API_BASE_URL` | API endpoint read by `getApiBaseUrl()` in `client/src/constants/api.ts` |
 | Backend `DATABASE_URL` | Required SQLAlchemy database URL |
-| Backend `SECRET_KEY` | Required secret reserved for future authentication |
+| Backend `SECRET_KEY` | Required secret for authentication rate-limit keys |
 | Backend `CORS_ORIGINS` | JSON array of exact allowed web origins, such as `["http://192.168.0.50:8081"]`; defaults to none |
 
 The backend reads environment variables before `backend/.env`; Compose overrides
@@ -84,7 +84,7 @@ supply separate database URLs and secret keys through your hosting provider.
 Allow each deployed web origin in CORS. Client variables are embedded at build
 time, so rebuild when switching environments. Do not select environments with
 `NODE_ENV` or `.env.preview`. Restart the backend after changing its settings.
-Authentication and product database tables are not implemented yet.
+Authentication and product tables are managed by Alembic.
 
 **Never commit secrets, real `.env` files, keystores, or Apple/Google credentials.**
 Use sanitized [client](client/.env.example) and [backend](backend/.env.example)
@@ -151,3 +151,42 @@ CI generates its own temporary secret key.
 - `docs/` — [Requirements](docs/requirement.txt), [decisions](docs/decisions.md),
   [planned structure](docs/file_skeleton.md), and design assets.
 - `.github/workflows/` — Client and backend CI.
+
+## Authentication
+
+Apply migration `0007` before using auth. JSON `POST /auth/register` and
+`/auth/sign-in` accept `email` and `password` (12–128 characters).
+`POST /auth/refresh` and `/auth/logout` accept `{}` on web or
+`{"refresh_token":"..."}` on native. `GET /auth/me` requires
+`Authorization: Bearer <access_token>`. Email identities are lowercased.
+Passwords use Argon2id with 19 MiB memory, two iterations, one lane, random salts
+and rehash on sign-in.
+
+Access tokens expire after 15 minutes. Refresh sessions have a fixed 30-day
+lifetime. Each refresh atomically replaces both tokens; only SHA-256 token
+digests are stored. Logout immediately revokes the session. Disabled/deleted
+users cannot sign in, refresh or access protected routes. Use the
+`get_current_user` dependency for future protected routes.
+
+`client/src/services/auth.ts` provides register, signIn, refreshSession (call on
+startup), signOut, and authenticatedFetch (one refresh/retry). Screen integration
+is separate from this foundation. Native refresh tokens use Expo SecureStore;
+requests use `X-Auth-Platform: native`. Browser refresh tokens use an HttpOnly,
+SameSite=Strict cookie scoped to `/auth`. Access tokens stay in memory on both
+platforms. Credentials never use localStorage or AsyncStorage.
+
+Deploy web and API on the same site over HTTPS, such as app.example.com and
+api.example.com, and configure the exact web origin in `CORS_ORIGINS`. Cookie
+auth POSTs require an allowed Origin. Browsers cannot select native token
+responses. `AUTH_COOKIE_SECURE` defaults to true; set false only for local HTTP
+development in your untracked backend environment. Unrelated web/API domains
+are not supported by this Strict-cookie setup. SecureStore is configured through
+the Expo plugin; device reinstall/backup behavior follows the platform store.
+
+Auth POSTs share a database-backed fixed-window rate limit of 20 requests per
+peer IP per minute, including failures, across all workers. Only trust known
+reverse proxies in Uvicorn's proxy-header configuration to prevent IP spoofing.
+Expired rate buckets are cleaned during auth requests; periodically delete
+expired `auth_sessions` rows in deployment. Lifetimes and limits are configurable
+in the backend environment example. Do not log auth bodies, tokens, cookies or
+Authorization headers.
