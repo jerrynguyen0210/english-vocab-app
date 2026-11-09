@@ -34,7 +34,7 @@ WEB = {"Origin": "http://localhost:8081"}
 
 def test_native_lifecycle(auth):
     client, db = auth
-    response = client.post("/auth/register", json=CREDS, headers=NATIVE)
+    response = client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE)
     assert response.status_code == 201
     tokens = response.json()
     user = db.scalar(select(User))
@@ -44,17 +44,17 @@ def test_native_lifecycle(auth):
     record = db.scalar(select(AuthSession))
     assert record.refresh_hash != tokens["refresh_token"]
     header = {"Authorization": "Bearer " + tokens["access_token"]}
-    assert client.get("/auth/me", headers=header).status_code == 200
+    assert client.get("/api/v1/auth/me", headers=header).status_code == 200
     record.access_expires_at = datetime.now(UTC) - timedelta(seconds=1)
     db.commit()
-    assert client.get("/auth/me", headers=header).status_code == 401
+    assert client.get("/api/v1/auth/me", headers=header).status_code == 401
     refreshed = client.post(
-        "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}, headers=NATIVE
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}, headers=NATIVE
     )
     assert refreshed.status_code == 200
     assert (
         client.post(
-            "/auth/refresh",
+            "/api/v1/auth/refresh",
             json={"refresh_token": tokens["refresh_token"]},
             headers=NATIVE,
         ).status_code
@@ -63,13 +63,13 @@ def test_native_lifecycle(auth):
     new = refreshed.json()
     assert (
         client.post(
-            "/auth/logout", json={"refresh_token": new["refresh_token"]}, headers=NATIVE
+            "/api/v1/auth/logout", json={"refresh_token": new["refresh_token"]}, headers=NATIVE
         ).status_code
         == 204
     )
     assert (
         client.get(
-            "/auth/me", headers={"Authorization": "Bearer " + new["access_token"]}
+            "/api/v1/auth/me", headers={"Authorization": "Bearer " + new["access_token"]}
         ).status_code
         == 401
     )
@@ -77,23 +77,23 @@ def test_native_lifecycle(auth):
 
 def test_web_cookie_csrf_and_rotation(auth):
     client, _ = auth
-    response = client.post("/auth/register", json=CREDS, headers=WEB)
+    response = client.post("/api/v1/auth/register", json=CREDS, headers=WEB)
     assert response.status_code == 201
     assert "refresh_token" not in response.json()
     cookie = response.headers["set-cookie"].lower()
     assert "httponly" in cookie and "secure" in cookie and "samesite=strict" in cookie
     old = client.cookies.get(COOKIE)
-    assert client.post("/auth/refresh", json={}).status_code == 403
+    assert client.post("/api/v1/auth/refresh", json={}).status_code == 403
     assert (
         client.post(
-            "/auth/refresh", json={}, headers={"Origin": "https://evil.example"}
+            "/api/v1/auth/refresh", json={}, headers={"Origin": "https://evil.example"}
         ).status_code
         == 403
     )
-    response = client.post("/auth/refresh", json={}, headers=WEB)
+    response = client.post("/api/v1/auth/refresh", json={}, headers=WEB)
     assert response.status_code == 200
     assert client.cookies.get(COOKIE) != old
-    assert client.post("/auth/logout", json={}, headers=WEB).status_code == 204
+    assert client.post("/api/v1/auth/logout", json={}, headers=WEB).status_code == 204
     assert client.cookies.get(COOKIE) is None
 
 
@@ -101,28 +101,28 @@ def test_credentials_disabled_and_expired_refresh(auth):
     client, db = auth
     assert (
         client.post(
-            "/auth/register", json={**CREDS, "password": "short"}, headers=NATIVE
+            "/api/v1/auth/register", json={**CREDS, "password": "short"}, headers=NATIVE
         ).status_code
         == 422
     )
-    client.post("/auth/register", json=CREDS, headers=NATIVE)
-    assert client.post("/auth/register", json=CREDS, headers=NATIVE).status_code == 409
+    client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE)
+    assert client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).status_code == 409
     assert (
         client.post(
-            "/auth/sign-in",
+            "/api/v1/auth/sign-in",
             json={**CREDS, "password": "wrong long password"},
             headers=NATIVE,
         ).status_code
         == 401
     )
-    tokens = client.post("/auth/sign-in", json=CREDS, headers=NATIVE).json()
+    tokens = client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE).json()
     user = db.scalar(select(User))
     user.disabled_at = datetime.now(UTC)
     db.commit()
-    assert client.post("/auth/sign-in", json=CREDS, headers=NATIVE).status_code == 401
+    assert client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE).status_code == 401
     assert (
         client.post(
-            "/auth/refresh",
+            "/api/v1/auth/refresh",
             json={"refresh_token": tokens["refresh_token"]},
             headers=NATIVE,
         ).status_code
@@ -134,7 +134,7 @@ def test_credentials_disabled_and_expired_refresh(auth):
     db.commit()
     assert (
         client.post(
-            "/auth/refresh",
+            "/api/v1/auth/refresh",
             json={"refresh_token": tokens["refresh_token"]},
             headers=NATIVE,
         ).status_code
@@ -150,9 +150,9 @@ def test_rate_limit_shared_between_auth_routes(auth):
     try:
         for _ in range(2):
             assert (
-                client.post("/auth/refresh", json={}, headers=NATIVE).status_code == 401
+                client.post("/api/v1/auth/refresh", json={}, headers=NATIVE).status_code == 401
             )
-        response = client.post("/auth/sign-in", json=CREDS, headers=NATIVE)
+        response = client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE)
         assert response.status_code == 429
         assert int(response.headers["retry-after"]) > 0
     finally:

@@ -16,7 +16,7 @@ export class AuthError extends Error {
 }
 
 async function authRequest(path: string, body: object) {
-  const response = await fetch(`${getApiBaseUrl()}/auth/${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/auth/${path}`, {
     method: 'POST',
     credentials: nativeAuth ? 'omit' : 'include',
     headers: {
@@ -87,7 +87,7 @@ export async function authenticatedFetch(path: string, init: RequestInit = {}) {
   const send = () => {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${accessToken}`);
-    return fetch(`${getApiBaseUrl()}${path}`, {
+    return fetch(`${getApiBaseUrl()}/api/v1${path}`, {
       ...init,
       headers,
       credentials: 'omit',

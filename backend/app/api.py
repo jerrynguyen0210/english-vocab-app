@@ -1,0 +1,182 @@
+"""Version-one vocabulary and typed-recall API."""
+
+import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
+
+from app.auth import COOKIE, DB, get_current_user
+from app.core.config import get_settings
+from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
+from app.models.word import normalise_word
+
+router = APIRouter()
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def lock_account(db: DB, user: User) -> None:
+    # Serialize mutations with account erasure and recheck after acquiring the lock.
+    active = db.scalar(
+        select(User.id)
+        .where(
+            User.id == user.id, User.deleted_at.is_(None), User.disabled_at.is_(None)
+        )
+        .with_for_update()
+    )
+    if active is None:
+        raise HTTPException(401, "Account unavailable")
+
+
+class CreateWord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    word: str = Field(min_length=1, max_length=200)
+    english_explanation: str = Field(min_length=1, max_length=5000)
+
+    @field_validator("word", "english_explanation")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not normalise_word(value):
+            raise ValueError("Must not be blank")
+        return value.strip()
+
+
+class WordCreated(BaseModel):
+    id: uuid.UUID
+    word: str
+    english_explanation: str
+
+
+class ReviewItem(BaseModel):
+    word_id: uuid.UUID
+    english_explanation: str
+
+
+class AnswerInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    typed_answer: str = Field(max_length=200)
+    time_taken_ms: int = Field(ge=0, le=2147483647, strict=True)
+
+
+class AnswerResult(BaseModel):
+    attempt_id: uuid.UUID
+    result: Literal["correct", "incorrect"]
+    correct_word: str
+    next_due_at: datetime
+
+
+@router.post("/words", status_code=201, response_model=WordCreated)
+def create_word(
+    body: CreateWord, response: Response, db: DB, user: CurrentUser
+) -> WordCreated:
+    lock_account(db, user)
+    word = Word(
+        user_id=user.id, word=body.word, english_explanation=body.english_explanation
+    )
+    db.add(word)
+    try:
+        db.flush()
+        db.add(ReviewState(word_id=word.id, due_at=datetime.now(UTC)))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Word already exists") from None
+    response.headers["Cache-Control"] = "no-store"
+    return WordCreated(
+        id=word.id, word=word.word, english_explanation=word.english_explanation
+    )
+
+
+@router.get("/reviews/next", response_model=list[ReviewItem])
+def next_reviews(
+    response: Response,
+    db: DB,
+    user: CurrentUser,
+    limit: Annotated[int, Query(ge=1, le=50)] = 1,
+) -> list[ReviewItem]:
+    # Explicit projection: never serialize a Word or expose its normalized answer.
+    rows = db.execute(
+        select(Word.id, Word.english_explanation)
+        .join(ReviewState, ReviewState.word_id == Word.id)
+        .where(Word.user_id == user.id, ReviewState.due_at <= datetime.now(UTC))
+        .order_by(ReviewState.due_at, Word.id)
+        .limit(limit)
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return [
+        ReviewItem(word_id=row.id, english_explanation=row.english_explanation)
+        for row in rows
+    ]
+
+
+@router.post("/reviews/{word_id}/answer", response_model=AnswerResult)
+def submit_answer(
+    word_id: uuid.UUID, body: AnswerInput, response: Response, db: DB, user: CurrentUser
+) -> AnswerResult:
+    lock_account(db, user)
+    pair = db.execute(
+        select(Word, ReviewState)
+        .join(ReviewState, ReviewState.word_id == Word.id)
+        .where(Word.id == word_id, Word.user_id == user.id)
+        .with_for_update()
+    ).first()
+    if pair is None:
+        raise HTTPException(404, "Review item not found")
+    word, state = pair
+    now = datetime.now(UTC)
+    if state.due_at > now:
+        raise HTTPException(409, "Review item is not due")
+    correct = normalise_word(body.typed_answer) == word.normalised_word
+    result: Literal["correct", "incorrect"] = "correct" if correct else "incorrect"
+    attempt = ReviewAttempt(
+        word_id=word.id,
+        user_id=user.id,
+        typed_answer=body.typed_answer,
+        result=result,
+        reviewed_at=now,
+        time_taken_ms=body.time_taken_ms,
+    )
+    db.add(attempt)
+    state.last_reviewed_at = now
+    if correct:
+        state.correct_count += 1
+        state.level = min(state.level + 1, 7)
+        state.due_at = now + timedelta(days=(1, 2, 4, 7, 14, 30, 60)[state.level - 1])
+    else:
+        state.incorrect_count += 1
+        state.level = 0
+        state.due_at = now + timedelta(minutes=10)
+    db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return AnswerResult(
+        attempt_id=attempt.id,
+        result=result,
+        correct_word=word.word,
+        next_due_at=state.due_at,
+    )
+
+
+@router.delete("/account", status_code=204)
+def delete_account(response: Response, db: DB, user: CurrentUser) -> None:
+    lock_account(db, user)
+    # The trigger permits erasure only after this marker, in the same transaction.
+    user.deleted_at = datetime.now(UTC)
+    db.flush()
+    word_ids = select(Word.id).where(Word.user_id == user.id)
+    db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+    db.execute(delete(ReviewAttempt).where(ReviewAttempt.user_id == user.id))
+    db.execute(delete(ReviewState).where(ReviewState.word_id.in_(word_ids)))
+    db.execute(delete(Word).where(Word.user_id == user.id))
+    db.delete(user)
+    db.commit()
+    response.delete_cookie(
+        COOKIE,
+        path="/api/v1/auth",
+        httponly=True,
+        secure=get_settings().auth_cookie_secure,
+        samesite="strict",
+    )
+    response.headers["Cache-Control"] = "no-store"

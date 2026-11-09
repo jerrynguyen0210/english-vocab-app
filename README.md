@@ -154,10 +154,10 @@ CI generates its own temporary secret key.
 
 ## Authentication
 
-Apply migration `0007` before using auth. JSON `POST /auth/register` and
-`/auth/sign-in` accept `email` and `password` (12–128 characters).
-`POST /auth/refresh` and `/auth/logout` accept `{}` on web or
-`{"refresh_token":"..."}` on native. `GET /auth/me` requires
+Apply migrations through `0008` before using auth. JSON `POST /api/v1/auth/register` and
+`/api/v1/auth/sign-in` accept `email` and `password` (12–128 characters).
+`POST /api/v1/auth/refresh` and `/api/v1/auth/logout` accept `{}` on web or
+`{"refresh_token":"..."}` on native. `GET /api/v1/auth/me` requires
 `Authorization: Bearer <access_token>`. Email identities are lowercased.
 Passwords use Argon2id with 19 MiB memory, two iterations, one lane, random salts
 and rehash on sign-in.
@@ -172,7 +172,7 @@ users cannot sign in, refresh or access protected routes. Use the
 startup), signOut, and authenticatedFetch (one refresh/retry). Screen integration
 is separate from this foundation. Native refresh tokens use Expo SecureStore;
 requests use `X-Auth-Platform: native`. Browser refresh tokens use an HttpOnly,
-SameSite=Strict cookie scoped to `/auth`. Access tokens stay in memory on both
+SameSite=Strict cookie scoped to `/api/v1/auth`. Access tokens stay in memory on both
 platforms. Credentials never use localStorage or AsyncStorage.
 
 Deploy web and API on the same site over HTTPS, such as app.example.com and
@@ -190,3 +190,39 @@ Expired rate buckets are cleaned during auth requests; periodically delete
 expired `auth_sessions` rows in deployment. Lifetimes and limits are configurable
 in the backend environment example. Do not log auth bodies, tokens, cookies or
 Authorization headers.
+
+## Versioned API
+
+Product routes use `/api/v1`; unversioned product routes are not exposed.
+`/health`, `/docs`, and `/openapi.json` remain operational/documentation routes.
+Client `authenticatedFetch` accepts v1-relative paths, such as `/words`.
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| POST | `/api/v1/words` | `word`, `english_explanation` → created word (201) |
+| GET | `/api/v1/reviews/next?limit=1` | Due items; limit 1–50; empty array when none |
+| POST | `/api/v1/reviews/{word_id}/answer` | `typed_answer`, `time_taken_ms` → grading result |
+| DELETE | `/api/v1/account` | Erase account and owned data (204) |
+
+All routes above require a bearer access token. Auth registration, sign-in,
+refresh, logout and me routes also use the `/api/v1/auth` prefix.
+Creating a word also creates its immediately due review state atomically.
+Normalized duplicates within an account return 409. Review items contain only
+`word_id` and `english_explanation`, never the word, normalized answer or example.
+Explanations are user-supplied text and are returned as entered.
+
+Answer checking uses Unicode NFKC, case folding and collapsed whitespace;
+accents and punctuation remain significant. Responses contain `attempt_id`,
+`result` (`correct` or `incorrect`), `correct_word`, and `next_due_at`.
+Correct answers advance through 1, 2, 4, 7, 14, 30 and 60 days; incorrect answers
+reset the level and retry in 10 minutes. Each accepted answer records an immutable
+attempt and updates scheduling in one transaction. Items not yet due return 409
+without another attempt. Missing items and another account's items both return
+404. Invalid input returns 422. Protected responses disable caching.
+
+Account deletion permanently removes the user, all sessions, words, review states
+and attempts in one transaction. Migration `0008` permits history erasure only
+when its owner is marked for deletion; ordinary history updates and deletes remain
+blocked. Other accounts are untouched. Infrastructure logs/backups follow the
+deployment's retention policy. Web sessions from the earlier unversioned API must
+sign in again after this version change.

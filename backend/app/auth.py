@@ -125,7 +125,7 @@ def issue(
             httponly=True,
             secure=settings.auth_cookie_secure,
             samesite="strict",
-            path="/auth",
+            path="/api/v1/auth",
             max_age=max(0, int((record.refresh_expires_at - now).total_seconds())),
         )
     return result
@@ -204,7 +204,7 @@ def logout(body: RefreshInput, request: Request, response: Response, db: DB) -> 
     db.commit()
     response.delete_cookie(
         COOKIE,
-        path="/auth",
+        path="/api/v1/auth",
         secure=get_settings().auth_cookie_secure,
         httponly=True,
         samesite="strict",
