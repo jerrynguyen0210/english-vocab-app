@@ -1,0 +1,9 @@
+- The app saves new English words and helps you remember them.
+- It's for your personal use first. Friends may use it later.
+- Preferred stack: React Native targeting **web, iOS and Android**.
+- You write all the code yourself. The plan has no source code.
+- **Product features are limited to two:**
+    - **Add a word**: save a new English word with its English explanation.
+    - **Typed-recall review**: the app shows the word's English explanation, you **type the learned word**, and the app checks your answer. There are no other review modes.
+- Users have registered **accounts**. A **FastAPI backend** handles the learning logic: storing words, picking review items, checking answers and scheduling.
+- The web UI is designed in **Figma**.
