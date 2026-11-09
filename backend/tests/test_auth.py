@@ -209,3 +209,183 @@ def test_refresh_rejects_invalid_and_unexpected_fields(auth):
             client.post("/api/v1/auth/refresh", json=body, headers=NATIVE).status_code
             == 422
         )
+
+
+@pytest.mark.parametrize(
+    "authorization", [None, "", "Bearer", "Bearer unknown", "Basic unknown"]
+)
+def test_missing_or_invalid_bearer_is_unauthorized(auth, authorization):
+    client, _ = auth
+    headers = {} if authorization is None else {"Authorization": authorization}
+    response = client.get("/api/v1/auth/me", headers=headers)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_unknown_email_and_wrong_password_have_same_response(auth):
+    client, _ = auth
+    assert (
+        client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).status_code
+        == 201
+    )
+    wrong = client.post(
+        "/api/v1/auth/sign-in",
+        headers=NATIVE,
+        json={**CREDS, "password": "incorrect password"},
+    )
+    unknown = client.post(
+        "/api/v1/auth/sign-in",
+        headers=NATIVE,
+        json={**CREDS, "email": "unknown@example.com"},
+    )
+    assert wrong.status_code == unknown.status_code == 401
+    assert wrong.json() == unknown.json() == {"detail": "Invalid email or password"}
+
+
+def test_refresh_invalidates_old_access_and_preserves_absolute_expiry(auth):
+    client, db = auth
+    tokens = client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).json()
+    expiry = db.scalar(select(AuthSession)).refresh_expires_at
+    response = client.post(
+        "/api/v1/auth/refresh",
+        headers=NATIVE,
+        json={"refresh_token": tokens["refresh_token"]},
+    )
+    assert response.status_code == 200
+    new = response.json()
+    assert new["access_token"] != tokens["access_token"]
+    assert new["refresh_token"] != tokens["refresh_token"]
+    assert db.scalar(select(AuthSession)).refresh_expires_at == expiry
+    assert (
+        client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + tokens["access_token"]},
+        ).status_code
+        == 401
+    )
+    me = client.get(
+        "/api/v1/auth/me", headers={"Authorization": "Bearer " + new["access_token"]}
+    )
+    assert me.status_code == 200
+    assert set(me.json()) == {"id", "email", "timezone"}
+    assert (
+        response.headers["cache-control"] == me.headers["cache-control"] == "no-store"
+    )
+
+
+def test_logout_revokes_only_selected_device(auth):
+    client, _ = auth
+    first = client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).json()
+    second = client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE).json()
+    assert (
+        client.post(
+            "/api/v1/auth/logout",
+            headers=NATIVE,
+            json={"refresh_token": first["refresh_token"]},
+        ).status_code
+        == 204
+    )
+    assert (
+        client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + first["access_token"]},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/refresh",
+            headers=NATIVE,
+            json={"refresh_token": first["refresh_token"]},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + second["access_token"]},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/refresh",
+            headers=NATIVE,
+            json={"refresh_token": second["refresh_token"]},
+        ).status_code
+        == 200
+    )
+
+
+@pytest.mark.parametrize("status_field", ["disabled_at", "deleted_at"])
+def test_inactive_account_denied_across_auth_routes(auth, status_field):
+    client, db = auth
+    tokens = client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).json()
+    user = db.scalar(select(User))
+    setattr(user, status_field, datetime.now(UTC))
+    db.commit()
+    assert (
+        client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + tokens["access_token"]},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/refresh",
+            headers=NATIVE,
+            json={"refresh_token": tokens["refresh_token"]},
+        ).status_code
+        == 401
+    )
+
+
+def test_browser_cannot_select_native_token_delivery(auth):
+    client, _ = auth
+    headers = {**WEB, **NATIVE}
+    response = client.post("/api/v1/auth/register", json=CREDS, headers=headers)
+    assert response.status_code == 201
+    assert "refresh_token" not in response.json()
+    assert COOKIE in client.cookies
+    assert (
+        client.post("/api/v1/auth/refresh", json={}, headers=headers).status_code == 200
+    )
+
+
+def test_web_refresh_replay_and_cross_platform_use_rejected(auth):
+    client, _ = auth
+    client.post("/api/v1/auth/register", json=CREDS, headers=WEB)
+    old = client.cookies.get(COOKIE)
+    assert client.post("/api/v1/auth/refresh", json={}, headers=WEB).status_code == 200
+    current = client.cookies.get(COOKIE)
+    client.cookies.clear()
+    assert (
+        client.post(
+            "/api/v1/auth/refresh", headers=NATIVE, json={"refresh_token": current}
+        ).status_code
+        == 401
+    )
+    client.cookies.set(COOKIE, old, path="/api/v1/auth")
+    assert client.post("/api/v1/auth/refresh", json={}, headers=WEB).status_code == 401
+
+
+def test_duplicate_registration_is_case_insensitive(auth):
+    client, db = auth
+    assert (
+        client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={**CREDS, "email": CREDS["email"].upper()},
+            headers=NATIVE,
+        ).status_code
+        == 409
+    )
+    assert len(list(db.scalars(select(User)))) == 1

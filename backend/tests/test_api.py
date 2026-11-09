@@ -298,3 +298,96 @@ def test_queue_and_submission_isolate_accounts(api):
         ).status_code
         == 422
     )
+
+
+@pytest.mark.parametrize(
+    "method,path,body",
+    [
+        ("GET", "/api/v1/auth/me", None),
+        ("POST", "/api/v1/words", {"word": "Secret", "english_explanation": "Hidden"}),
+        ("GET", "/api/v1/reviews/next", None),
+        (
+            "POST",
+            f"/api/v1/reviews/{uuid.uuid4()}/answer",
+            {"typed_answer": "Secret", "time_taken_ms": 1},
+        ),
+        ("DELETE", "/api/v1/account", None),
+    ],
+)
+@pytest.mark.parametrize("credential", ["missing", "invalid", "expired"])
+def test_every_protected_route_rejects_unauthorized_requests(
+    api, method, path, body, credential
+):
+    client, db, owner, _, _ = api
+    headers = {}
+    if credential == "invalid":
+        headers = {"Authorization": "Bearer invalid-token"}
+    elif credential == "expired":
+        user_id = uuid.UUID(client.get("/api/v1/auth/me", headers=owner).json()["id"])
+        for record in db.scalars(
+            select(AuthSession).where(AuthSession.user_id == user_id)
+        ):
+            record.access_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        db.commit()
+        headers = owner
+    response = client.request(method, path, headers=headers, json=body)
+    assert response.status_code == 401
+    assert db.scalar(select(func.count()).select_from(User)) == 2
+    assert db.scalar(select(func.count()).select_from(Word)) == 0
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 0
+
+
+def test_account_deletion_preserves_other_users_history_and_sessions(api):
+    client, db, owner, other, tokens = api
+    second_device = client.post(
+        "/api/v1/auth/sign-in",
+        headers={"X-Auth-Platform": "native"},
+        json={"email": "owner@example.com", "password": "long test password"},
+    ).json()
+    owner_word = create(client, owner, "Owner").json()["id"]
+    other_word = create(client, other, "Other").json()["id"]
+    for headers, word_id, answer in [
+        (owner, owner_word, "Owner"),
+        (other, other_word, "Other"),
+    ]:
+        assert (
+            client.post(
+                f"/api/v1/reviews/{word_id}/answer",
+                headers=headers,
+                json={"typed_answer": answer, "time_taken_ms": 10},
+            ).status_code
+            == 200
+        )
+    other_identity = client.get("/api/v1/auth/me", headers=other).json()
+    other_state = db.get(ReviewState, uuid.UUID(other_word))
+    snapshot = (other_state.due_at, other_state.correct_count, other_state.level)
+    assert client.delete("/api/v1/account", headers=owner).status_code == 204
+    for session in [tokens, second_device]:
+        assert (
+            client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": "Bearer " + session["access_token"]},
+            ).status_code
+            == 401
+        )
+        assert (
+            client.post(
+                "/api/v1/auth/refresh",
+                headers={"X-Auth-Platform": "native"},
+                json={"refresh_token": session["refresh_token"]},
+            ).status_code
+            == 401
+        )
+    assert client.get("/api/v1/auth/me", headers=other).json() == other_identity
+    db.refresh(other_state)
+    assert (
+        other_state.due_at,
+        other_state.correct_count,
+        other_state.level,
+    ) == snapshot
+    attempts = list(db.scalars(select(ReviewAttempt)))
+    assert len(attempts) == 1
+    assert str(attempts[0].user_id) == other_identity["id"]
+    assert str(attempts[0].word_id) == other_word
+    assert attempts[0].typed_answer == "Other"
+    assert db.get(Word, uuid.UUID(owner_word)) is None
