@@ -67,14 +67,14 @@ cp .env.example .env
 
 docker compose up -d db
 alembic upgrade head
-uvicorn app.main:app --host 0.0.0.0 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
 From another device on the same LAN, use the Raspberry Pi's LAN IP:
 
-- API: <http://192.168.0.50:8000>
-- Interactive API docs: <http://192.168.0.50:8000/docs>
-- Process health: <http://192.168.0.50:8000/health>
+- API: <http://192.168.0.50:8001>
+- Interactive API docs: <http://192.168.0.50:8001/docs>
+- Process health: <http://192.168.0.50:8001/health>
 
 `localhost` refers to the device running the browser, so on your Mac it points to
 your Mac. Both the Uvicorn command above and the Docker Compose API port bind to
@@ -127,7 +127,7 @@ Client API calls should use `getApiBaseUrl()` from `client/src/constants/api.ts`
 For local development, copy `client/.env.example` to `client/.env.local` and set
 `EXPO_PUBLIC_API_BASE_URL` to the API address reachable from the device (currently
 `http://192.168.0.50:8001` for the Pi). Start the API with `--port 8001` if 8000 is
-occupied. For Compose, change the published API port to `0.0.0.0:8001:8000`.
+occupied. Compose publishes the API on port 8001 by default (`API_PORT` overrides it).
 
 For preview and production builds, set `EXPO_PUBLIC_API_BASE_URL` in the build
 provider's environment to the corresponding HTTPS API URL. It is embedded at
@@ -153,3 +153,24 @@ these are placeholders. The default allows no cross-origin browser access.
 Restart the backend after changing settings. Compose loads backend variables from
 `.env` and overrides the database host to its internal `db` service. The secret
 key is configuration for future authentication; authentication is not implemented yet.
+
+## Run on the LAN
+
+From `backend/`, after configuring `.env`:
+
+```bash
+docker compose up -d --build
+docker compose exec api alembic upgrade head
+```
+
+From `client/`, copy `.env.example` to `.env.local`, then run:
+
+```bash
+REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.50 npx expo start --go --lan --web
+```
+
+Open <http://192.168.0.50:8081> on your Mac. On a phone connected to the same Wi-Fi,
+open `exp://192.168.0.50:8081` in Expo Go or scan the terminal QR code. The client
+uses `http://192.168.0.50:8001` for API requests, including on the phone. Replace
+the IP in both client configuration and backend CORS origins if the Pi's IP changes.
+Stop Expo with Ctrl+C and the containers with `docker compose down` from `backend/`.
