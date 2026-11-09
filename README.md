@@ -64,12 +64,20 @@ cp .env.example .env
 
 docker compose up -d db
 alembic upgrade head
-uvicorn app.main:app --reload
+uvicorn app.main:app --host 0.0.0.0 --reload
 ```
 
-The API is available at <http://localhost:8000>, interactive API docs at
-<http://localhost:8000/docs>, and the process health endpoint at
-<http://localhost:8000/health>. Health does not query the database.
+From another device on the same LAN, use the Raspberry Pi's LAN IP:
+
+- API: <http://192.168.0.50:8000>
+- Interactive API docs: <http://192.168.0.50:8000/docs>
+- Process health: <http://192.168.0.50:8000/health>
+
+`localhost` refers to the device running the browser, so on your Mac it points to
+your Mac. Both the Uvicorn command above and the Docker Compose API port bind to
+`0.0.0.0` to accept LAN connections. If the Pi's address changes, find its current
+LAN IP with `hostname -I` on the Pi and replace `192.168.0.50` in these URLs.
+Health does not query the database.
 `DATABASE_URL` can be set in `backend/.env` or the shell; shell values take priority.
 The example credentials are for local development. If you change the database port
 or credentials, update `DATABASE_URL` for host commands as well. URL-encode special
