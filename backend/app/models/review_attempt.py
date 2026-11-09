@@ -5,7 +5,6 @@ from datetime import datetime
 
 from sqlalchemy import (
     CheckConstraint,
-    DateTime,
     ForeignKeyConstraint,
     Index,
     Integer,
@@ -17,6 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.core.database import Base
+from app.core.time import UTCDateTime
 from app.models.word import normalise_word
 
 
@@ -45,7 +45,7 @@ class ReviewAttempt(Base):
     normalised_answer: Mapped[str] = mapped_column(Text)
     result: Mapped[str] = mapped_column(String(9))
     reviewed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        UTCDateTime(), server_default=func.now()
     )
     time_taken_ms: Mapped[int] = mapped_column(Integer)
 

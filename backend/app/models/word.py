@@ -6,7 +6,6 @@ from datetime import datetime
 
 from sqlalchemy import (
     CheckConstraint,
-    DateTime,
     ForeignKey,
     Text,
     UniqueConstraint,
@@ -15,6 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.core.database import Base
+from app.core.time import UTCDateTime
 
 
 def normalise_word(value: str) -> str:
@@ -44,7 +44,7 @@ class Word(Base):
     english_explanation: Mapped[str] = mapped_column(Text)
     example_sentence: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        UTCDateTime(), server_default=func.now()
     )
 
     @validates("word")
