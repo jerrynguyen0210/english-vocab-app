@@ -22,6 +22,11 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    if (
+        get_settings().app_environment in {"preview", "production"}
+        and not config.attributes.get("backup_verified")
+    ):
+        raise RuntimeError("Use python -m app.migrate: a pre-migration backup is required")
     supplied_connection = config.attributes.get("connection")
     if supplied_connection is not None:
         context.configure(

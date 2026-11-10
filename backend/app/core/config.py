@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,8 @@ class Settings(BaseSettings):
 
     database_url: str
     secret_key: SecretStr
+    app_environment: Literal["development", "test", "preview", "production"] = "development"
+    migration_backup_dir: Path | None = None
     cors_origins: list[str] = []
 
     access_token_seconds: int = Field(default=900, ge=1)

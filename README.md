@@ -173,8 +173,10 @@ the PR base or previous push, checks upgrades and schema drift, and runs upgrade
 again to verify a no-op. Existing downgrade functions remain historical code;
 they are not used by deployment. Keep schema changes compatible with the previous
 app version during rolling deployments; use additive changes and defer removal
-until all old processes have stopped. Back up production before schema changes;
-recover mistakes with a new forward migration.
+until all old processes have stopped. Set `APP_ENVIRONMENT=preview` or
+`APP_ENVIRONMENT=production` to require a verified persistent backup before every
+migration run; backup failure blocks deployment. See the [backup setup](docs/database-backups.md)
+for required storage configuration. Recover mistakes with a new forward migration.
 
 ## CI
 

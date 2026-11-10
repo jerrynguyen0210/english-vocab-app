@@ -56,6 +56,31 @@ journalctl -t english-vocab-backup
 
 ## Practise recovery
 
+### Required backups before deployment migrations
+
+Set `APP_ENVIRONMENT=preview` or `APP_ENVIRONMENT=production` in each deployment.
+Both environments require a new verified custom-format backup before every
+`python -m app.migrate` invocation, including no-op runs. The backup runs under
+the PostgreSQL migration advisory lock before Alembic changes the schema.
+Missing storage, dump errors, archive verification errors, or persistence errors
+stop the migration and API startup. Direct online Alembic commands in these
+environments are blocked; use the deployment runner. Offline SQL generation
+does not back up a database and must not be used to bypass this deployment flow.
+
+Set `MIGRATION_BACKUP_DIR` to an absolute, writable path on persistent storage
+for non-Compose deployments, and install PostgreSQL 17 `pg_dump`/`pg_restore`.
+The Docker image includes those tools. Compose mounts the host directory
+`~/.local/state/english-vocab-app/migration-backups` into the API container;
+override `MIGRATION_BACKUP_HOST_DIR` with a separate absolute path for each
+preview/production deployment. Rebuild the API image to install the tools.
+Do not use ephemeral container storage for backups.
+
+Pre-migration archives and checksum sidecars are retained for **30 days**;
+expired archives are pruned only after a successful new backup. This is separate
+from the daily backup schedule. Run the restore drill with a pre-migration archive
+to verify recovery (the drill accepts either archive naming convention).
+Development/test environments retain their existing migration behavior.
+
 Run this monthly and after database/tooling changes, supplying an actual archive:
 
 ```sh

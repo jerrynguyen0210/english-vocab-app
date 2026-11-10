@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
+from app.migration_backup import backup_before_migration
 
 # Stable application-specific PostgreSQL session advisory lock.
 MIGRATION_LOCK = 824671935102
@@ -18,7 +19,8 @@ def upgrade_database() -> None:
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     if len(ScriptDirectory.from_config(config).get_heads()) != 1:
         raise RuntimeError("Deployment requires exactly one migration head")
-    engine = create_engine(get_settings().database_url, poolclass=NullPool)
+    settings = get_settings()
+    engine = create_engine(settings.database_url, poolclass=NullPool)
     try:
         with engine.connect() as connection:
             postgres = connection.dialect.name == "postgresql"
@@ -28,6 +30,9 @@ def upgrade_database() -> None:
                 )
                 connection.commit()
             try:
+                if settings.app_environment in {"preview", "production"}:
+                    backup_before_migration(settings)
+                    config.attributes["backup_verified"] = True
                 config.attributes["connection"] = connection
                 command.upgrade(config, "head")
             finally:
