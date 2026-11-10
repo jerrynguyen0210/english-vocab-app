@@ -67,3 +67,33 @@ test('web API override keeps native LAN configuration unchanged', () => {
     else process.env.EXPO_PUBLIC_WEB_API_BASE_URL = web;
   }
 });
+
+test('local web development follows the page host without rewriting production APIs', () => {
+  const previousWindow = globalThis.window;
+  const previousWeb = process.env.EXPO_PUBLIC_WEB_API_BASE_URL;
+  const previousMode = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = 'development';
+    process.env.EXPO_PUBLIC_WEB_API_BASE_URL = 'http://localhost:8001';
+    globalThis.window = { location: new URL('http://192.168.0.50:8081') };
+    assert.equal(getWebApiBaseUrl(), 'http://192.168.0.50:8001');
+    globalThis.window = { location: new URL('http://localhost:8081') };
+    assert.equal(getWebApiBaseUrl(), 'http://localhost:8001');
+    globalThis.window = { location: new URL('https://app.example.com') };
+    assert.equal(getWebApiBaseUrl(), 'http://localhost:8001');
+    globalThis.window = { location: new URL('http://192.168.0.50:8081') };
+    process.env.NODE_ENV = 'production';
+    assert.equal(getWebApiBaseUrl(), 'http://localhost:8001');
+    process.env.NODE_ENV = 'development';
+    process.env.EXPO_PUBLIC_WEB_API_BASE_URL = 'https://api.example.com';
+    assert.equal(getWebApiBaseUrl(), 'https://api.example.com');
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousWeb === undefined)
+      delete process.env.EXPO_PUBLIC_WEB_API_BASE_URL;
+    else process.env.EXPO_PUBLIC_WEB_API_BASE_URL = previousWeb;
+    if (previousMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousMode;
+  }
+});
