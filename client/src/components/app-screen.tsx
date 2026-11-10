@@ -1,5 +1,11 @@
 import { Image } from 'expo-image';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { type PropsWithChildren } from 'react';
 import { NavigationLink } from '@/components/navigation-link';
@@ -32,7 +38,7 @@ const navigation = [
 export function AppScreen({
   children,
   selected,
-}: PropsWithChildren<{ selected: 'Home' | 'Account' }>) {
+}: PropsWithChildren<{ selected: 'Home' | 'Add' | 'Account' }>) {
   return (
     <SafeAreaView style={styles.page} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -59,12 +65,18 @@ export function AppScreen({
           </NavigationLink>
         </View>
       </View>
-      <ScrollView
+      <KeyboardAvoidingView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {children}
-      </ScrollView>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
       <SafeAreaView edges={['bottom']} style={styles.footer}>
         <View style={styles.navigation}>
           {navigation.map(({ label, href, icon }) => (
@@ -80,9 +92,11 @@ export function AppScreen({
                 source={
                   label === 'Home' && selected !== 'Home'
                     ? require('@/assets/images/wordwell/home-muted.svg')
-                    : label === 'Account' && selected === 'Account'
-                      ? require('@/assets/images/wordwell/account-active.svg')
-                      : icon
+                    : label === 'Add' && selected === 'Add'
+                      ? require('@/assets/images/wordwell/add-active.svg')
+                      : label === 'Account' && selected === 'Account'
+                        ? require('@/assets/images/wordwell/account-active.svg')
+                        : icon
                 }
                 style={styles.icon}
                 accessible={false}

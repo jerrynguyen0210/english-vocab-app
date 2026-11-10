@@ -36,6 +36,13 @@ class CreateWord(BaseModel):
     word: str = Field(min_length=1, max_length=200)
     english_explanation: str = Field(min_length=1, max_length=5000)
 
+    example_sentence: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("example_sentence")
+    @classmethod
+    def optional_sentence(cls, value: str | None) -> str | None:
+        return (value.strip() or None) if value is not None else None
+
     @field_validator("word", "english_explanation")
     @classmethod
     def nonblank(cls, value: str) -> str:
@@ -45,6 +52,7 @@ class CreateWord(BaseModel):
 
 
 class WordCreated(BaseModel):
+    example_sentence: str | None = None
     id: uuid.UUID
     word: str
     english_explanation: str
@@ -74,7 +82,10 @@ def create_word(
 ) -> WordCreated:
     lock_account(db, user)
     word = Word(
-        user_id=user.id, word=body.word, english_explanation=body.english_explanation
+        user_id=user.id,
+        word=body.word,
+        english_explanation=body.english_explanation,
+        example_sentence=body.example_sentence,
     )
     db.add(word)
     try:
@@ -95,7 +106,10 @@ def create_word(
         raise HTTPException(409, "Word already exists") from None
     response.headers["Cache-Control"] = "no-store"
     return WordCreated(
-        id=word.id, word=word.word, english_explanation=word.english_explanation
+        id=word.id,
+        word=word.word,
+        english_explanation=word.english_explanation,
+        example_sentence=word.example_sentence,
     )
 
 

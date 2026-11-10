@@ -1,5 +1,20 @@
 # Project decisions
 
+| ID | Decision | Options | Recommended default | Decide by |
+| --- | --- | --- | --- | --- |
+| D1 | Fields captured when adding a word | Word + English explanation only · plus example sentence · plus where you met it | Word + English explanation (required); example sentence optional | P0 |
+| D2 | Answer checking rules | Exact match · ignore case and leading/trailing spaces · also ignore punctuation · allow small typos | Ignore case and leading/trailing spaces; otherwise exact spelling | P6 |
+| D3 | Hints and retries | No hints · first letter / word length · one retry before revealing | No hints, one attempt, then reveal the correct word | P6 |
+| D4 | Review scheduling (which words come back, and when) | Simple Leitner boxes · SM-2-style · FSRS | Leitner boxes driven by correct/incorrect (it fits pass/fail typed answers) | P6 |
+| D5 | Session rules | Fixed count per session · all due words · daily cap | Due words first with a daily cap | P6 |
+| D6 | Connectivity when offline | Online required · read-only cache · queue adds/answers locally and sync later | Online required for R0; revisit before R1 | P3/P7 |
+| D7 | Auth method | Email + password · email magic link · OAuth/social | Email + password or magic link through your own FastAPI auth | P3 |
+| D8 | Backend hosting | VPS/Docker host · managed container platform · BaaS for the database only | Docker on a host you're comfortable with; check pricing when you choose | P10 |
+| D9 | First platform you use daily | Android phone · iPhone · web | The phone you carry every day; web for desktop | P2 |
+| D10 | iOS build path | Mac + Xcode locally · cloud builds (Expo Build) · skip iOS for now | Depends on Mac access and the Apple account (see Platform realities) | Before P8 iOS testing |
+| D11 | App name, bundle ID / package name | App name: **WordRecall**<br>iOS bundle ID: `com.jerrynguyen.wordrecall`<br>Android package name: `com.jerrynguyen.wordrecall` | Choose before the first native build | P2 |
+| D12 | How friends get the app | Web link · Android APK · Play internal/closed testing · TestFlight | Web link + Android internal first | P10 |
+
 ## D11 — App identity
 
 Status: Accepted
@@ -13,7 +28,7 @@ Status: Accepted
 
 The slug is derived from the display name in lowercase. These values are configured in `client/app.json`.
 
-## D12 — Validation, duplicate words, and account isolation
+## D14 — Validation, duplicate words, and account isolation
 
 Status: Accepted
 

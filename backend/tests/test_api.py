@@ -391,3 +391,36 @@ def test_account_deletion_preserves_other_users_history_and_sessions(api):
     assert str(attempts[0].word_id) == other_word
     assert attempts[0].typed_answer == "Other"
     assert db.get(Word, uuid.UUID(owner_word)) is None
+
+
+@pytest.mark.parametrize("sentence", [None, "", "   ", "  She showed resilience.  "])
+def test_create_word_optional_sentence(api, sentence):
+    client, db, owner, _, _ = api
+    response = client.post(
+        "/api/v1/words",
+        headers=owner,
+        json={
+            "word": "resilience",
+            "english_explanation": "Recovery",
+            "example_sentence": sentence,
+        },
+    )
+    assert response.status_code == 201
+    expected = (sentence.strip() or None) if sentence is not None else None
+    assert response.json()["example_sentence"] == expected
+    assert db.get(Word, uuid.UUID(response.json()["id"])).example_sentence == expected
+
+
+@pytest.mark.parametrize("sentence", [123, "x" * 5001])
+def test_create_word_invalid_sentence(api, sentence):
+    client, _, owner, _, _ = api
+    response = client.post(
+        "/api/v1/words",
+        headers=owner,
+        json={
+            "word": "resilience",
+            "english_explanation": "Recovery",
+            "example_sentence": sentence,
+        },
+    )
+    assert response.status_code == 422
