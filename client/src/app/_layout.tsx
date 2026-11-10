@@ -62,6 +62,7 @@ function Navigation() {
         animationType="slide"
         presentationStyle="fullScreen"
         onRequestClose={() => {}}
+        accessibilityLabel="Sign in to continue"
       >
         <AuthForm reauthenticate />
       </Modal>

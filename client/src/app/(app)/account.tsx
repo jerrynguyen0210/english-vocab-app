@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentRef } from 'react';
+import { useId, useRef, useState, type ComponentRef } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -15,6 +15,7 @@ import { useSession } from '@/context/session';
 import { AuthError } from '@/services/auth';
 
 export default function AccountScreen() {
+  const dialogId = useId();
   const { profile, signOut, deleteAccount } = useSession();
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState<'logout' | 'delete' | null>(null);
@@ -37,7 +38,6 @@ export default function AccountScreen() {
     if (busy.current) return;
     setConfirming(false);
     setError('');
-    deleteButton.current?.focus();
   }
   async function perform(action: 'logout' | 'delete') {
     if (busy.current) return;
@@ -152,6 +152,14 @@ export default function AccountScreen() {
         animationType="fade"
         onRequestClose={cancel}
         onShow={() => cancelButton.current?.focus()}
+        onDismiss={() => deleteButton.current?.focus()}
+        accessibilityLabel="Delete account confirmation"
+        {...(Platform.OS === 'web'
+          ? {
+              'aria-labelledby': `${dialogId}-title`,
+              'aria-describedby': `${dialogId}-description`,
+            }
+          : {})}
       >
         <View style={styles.backdrop}>
           <ScrollView
@@ -162,10 +170,17 @@ export default function AccountScreen() {
               <View style={styles.warningIcon} accessible={false}>
                 <ThemedText style={styles.warningMark}>!</ThemedText>
               </View>
-              <ThemedText style={styles.dialogTitle} accessibilityRole="header">
+              <ThemedText
+                nativeID={`${dialogId}-title`}
+                style={styles.dialogTitle}
+                accessibilityRole="header"
+              >
                 Delete your account?
               </ThemedText>
-              <ThemedText style={styles.description}>
+              <ThemedText
+                nativeID={`${dialogId}-description`}
+                style={styles.description}
+              >
                 This permanently deletes your account and saved words. It cannot
                 be undone.
               </ThemedText>

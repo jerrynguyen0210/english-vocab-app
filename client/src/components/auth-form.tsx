@@ -1,16 +1,22 @@
 import { Link } from 'expo-router';
-import { useId, useRef, useState, type ComponentRef } from 'react';
+import { useEffect, useId, useRef, useState, type ComponentRef } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
-  TextInput,
   StyleSheet,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  AuthInput as TextInput,
+  type AuthInputHandle,
+} from '@/components/auth-input';
+import { AuthLabel } from '@/components/auth-label';
+import { AuthSubmit } from '@/components/auth-submit';
+import { AuthFormShell, type AuthValues } from '@/components/auth-form-shell';
 import { ThemedText } from '@/components/themed-text';
 import { AuthColors as colors } from '@/constants/auth-theme';
 import { useSession } from '@/context/session';
@@ -22,11 +28,12 @@ import {
 } from '@/utils/auth-validation';
 
 type Field = 'name' | 'email' | 'password';
-type InputInstance = ComponentRef<typeof TextInput>;
+type InputInstance = AuthInputHandle;
 
-function FieldError({ message }: { message?: string }) {
+function FieldError({ message, id }: { message?: string; id: string }) {
   return message ? (
     <ThemedText
+      nativeID={id}
       style={styles.fieldError}
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
@@ -49,6 +56,7 @@ export function AuthForm({
   const emailInput = useRef<InputInstance>(null);
   const passwordInput = useRef<InputInstance>(null);
   const submitting = useRef(false);
+  const errorSummary = useRef<ComponentRef<typeof View>>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -61,16 +69,24 @@ export function AuthForm({
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    if (error) errorSummary.current?.focus();
+  }, [error]);
   const validation = validateCredentials(email, password);
   const invalidName = signUp ? validateName(name) : undefined;
   const nameError = touched.name ? invalidName : undefined;
   const emailError = touched.email ? validation.email : undefined;
   const passwordError = touched.password ? validation.password : undefined;
   const action = signUp ? 'Create account' : 'Sign in';
+  useEffect(() => {
+    if (Platform.OS === 'web' || reauthenticate)
+      (signUp ? nameInput : emailInput).current?.focus();
+  }, [signUp, reauthenticate]);
 
-  function blur(field: Field) {
+  function blur() {
+    // Validate on submit, then while editing. Adding errors during pointer blur
+    // can move the next label/button between mouse-down and mouse-up.
     setFocused(null);
-    setTouched((previous) => ({ ...previous, [field]: true }));
   }
   function fieldStyle(field: Field, invalid?: string) {
     return [
@@ -79,14 +95,20 @@ export function AuthForm({
       !!invalid && styles.invalid,
     ];
   }
-  async function submit() {
+  async function submit(values?: AuthValues) {
     if (submitting.current) return;
+    const submitted = values ?? { name, email, password };
+    setName(submitted.name);
+    setEmail(submitted.email);
+    setPassword(submitted.password);
+    const errors = validateCredentials(submitted.email, submitted.password);
+    const nameIssue = signUp ? validateName(submitted.name) : undefined;
     setTouched({ name: true, email: true, password: true });
     setError('');
-    if (invalidName || validation.email || validation.password) {
-      (invalidName
+    if (nameIssue || errors.email || errors.password) {
+      (nameIssue
         ? nameInput
-        : validation.email
+        : errors.email
           ? emailInput
           : passwordInput
       ).current?.focus();
@@ -95,8 +117,13 @@ export function AuthForm({
     submitting.current = true;
     setPending(true);
     try {
-      if (signUp) await session.signUp(email.trim(), password, name.trim());
-      else await session.signIn(email.trim(), password);
+      if (signUp)
+        await session.signUp(
+          submitted.email.trim(),
+          submitted.password,
+          submitted.name.trim(),
+        );
+      else await session.signIn(submitted.email.trim(), submitted.password);
     } catch (cause) {
       setError(
         authErrorMessage(
@@ -141,191 +168,246 @@ export function AuthForm({
                     : 'Sign in to continue learning.'}
               </ThemedText>
             </View>
-            <View style={[styles.form, signUp && styles.signUpForm]}>
-              {signUp ? (
-                <View style={[styles.field, styles.nameField]}>
-                  <ThemedText
+            <AuthFormShell label={action} onSubmit={submit}>
+              <View style={[styles.form, signUp && styles.signUpForm]}>
+                {signUp ? (
+                  <View style={[styles.field, styles.nameField]}>
+                    <AuthLabel
+                      style={styles.label}
+                      id={`${fieldId}-name-label`}
+                      inputId={`${fieldId}-name`}
+                    >
+                      Your name
+                    </AuthLabel>
+                    <TextInput
+                      ref={nameInput}
+                      nativeID={`${fieldId}-name`}
+                      name="name"
+                      aria-required
+                      importantForAutofill="yes"
+                      describedBy={
+                        nameError ? `${fieldId}-name-error` : undefined
+                      }
+                      accessibilityLabel="Your name"
+                      accessibilityLabelledBy={`${fieldId}-name-label`}
+                      accessibilityHint={nameError}
+                      aria-invalid={!!nameError}
+                      placeholder="e.g. Alex"
+                      placeholderTextColor={colors.placeholder}
+                      style={fieldStyle('name', nameError)}
+                      value={name}
+                      onChangeText={(value) => {
+                        setName(value);
+                        setError('');
+                      }}
+                      onFocus={() => setFocused('name')}
+                      onBlur={blur}
+                      autoCapitalize="words"
+                      autoComplete="name"
+                      textContentType="name"
+                      editable={!pending}
+                      returnKeyType="next"
+                      submitBehavior="submit"
+                      onSubmitEditing={
+                        Platform.OS === 'web'
+                          ? undefined
+                          : () => emailInput.current?.focus()
+                      }
+                    />
+                    <FieldError
+                      id={`${fieldId}-name-error`}
+                      message={nameError}
+                    />
+                  </View>
+                ) : null}
+                <View style={styles.field}>
+                  <AuthLabel
                     style={styles.label}
-                    nativeID={`${fieldId}-name-label`}
+                    id={`${fieldId}-email-label`}
+                    inputId={`${fieldId}-email`}
                   >
-                    Your name
-                  </ThemedText>
+                    Email address
+                  </AuthLabel>
                   <TextInput
-                    ref={nameInput}
-                    accessibilityLabel="Your name"
-                    accessibilityLabelledBy={`${fieldId}-name-label`}
-                    accessibilityHint={nameError}
-                    aria-invalid={!!nameError}
-                    placeholder="e.g. Alex"
+                    ref={emailInput}
+                    nativeID={`${fieldId}-email`}
+                    name="email"
+                    aria-required
+                    importantForAutofill="yes"
+                    describedBy={
+                      emailError ? `${fieldId}-email-error` : undefined
+                    }
+                    accessibilityLabel="Email address"
+                    accessibilityLabelledBy={`${fieldId}-email-label`}
+                    accessibilityHint={emailError}
+                    aria-invalid={!!emailError}
+                    placeholder="you@example.com"
                     placeholderTextColor={colors.placeholder}
-                    style={fieldStyle('name', nameError)}
-                    value={name}
+                    style={fieldStyle('email', emailError)}
+                    value={email}
                     onChangeText={(value) => {
-                      setName(value);
+                      setEmail(value);
                       setError('');
                     }}
-                    onFocus={() => setFocused('name')}
-                    onBlur={() => blur('name')}
-                    autoCapitalize="words"
-                    autoComplete="name"
+                    onFocus={() => setFocused('email')}
+                    onBlur={blur}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    autoComplete="username"
+                    textContentType="username"
                     editable={!pending}
                     returnKeyType="next"
                     submitBehavior="submit"
-                    onSubmitEditing={() => emailInput.current?.focus()}
+                    onSubmitEditing={
+                      Platform.OS === 'web'
+                        ? undefined
+                        : () => passwordInput.current?.focus()
+                    }
                   />
-                  <FieldError message={nameError} />
+                  <FieldError
+                    id={`${fieldId}-email-error`}
+                    message={emailError}
+                  />
                 </View>
-              ) : null}
-              <View style={styles.field}>
-                <ThemedText
-                  style={styles.label}
-                  nativeID={`${fieldId}-email-label`}
-                >
-                  Email address
-                </ThemedText>
-                <TextInput
-                  ref={emailInput}
-                  accessibilityLabel="Email address"
-                  accessibilityLabelledBy={`${fieldId}-email-label`}
-                  accessibilityHint={emailError}
-                  aria-invalid={!!emailError}
-                  placeholder="you@example.com"
-                  placeholderTextColor={colors.placeholder}
-                  style={fieldStyle('email', emailError)}
-                  value={email}
-                  onChangeText={(value) => {
-                    setEmail(value);
-                    setError('');
-                  }}
-                  onFocus={() => setFocused('email')}
-                  onBlur={() => blur('email')}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  autoComplete="email"
-                  editable={!pending}
-                  returnKeyType="next"
-                  submitBehavior="submit"
-                  onSubmitEditing={() => passwordInput.current?.focus()}
-                />
-                <FieldError message={emailError} />
-              </View>
-              <View style={styles.field}>
-                <ThemedText
-                  style={styles.label}
-                  nativeID={`${fieldId}-password-label`}
-                >
-                  Password
-                </ThemedText>
-                <View
-                  style={[
-                    ...fieldStyle('password', passwordError),
-                    styles.passwordRow,
-                  ]}
-                >
-                  <TextInput
-                    ref={passwordInput}
-                    accessibilityLabel="Password"
-                    accessibilityLabelledBy={`${fieldId}-password-label`}
-                    accessibilityHint={
-                      passwordError ?? 'Use 12 to 128 characters.'
-                    }
-                    aria-invalid={!!passwordError}
-                    placeholder="••••••••"
-                    placeholderTextColor={colors.placeholder}
-                    style={styles.passwordInput}
-                    value={password}
-                    onChangeText={(value) => {
-                      setPassword(value);
-                      setError('');
-                    }}
-                    onFocus={() => setFocused('password')}
-                    onBlur={() => blur('password')}
-                    secureTextEntry={!visible}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete={signUp ? 'new-password' : 'current-password'}
-                    editable={!pending}
-                    returnKeyType="go"
-                    onSubmitEditing={submit}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      visible ? 'Hide password' : 'Show password'
-                    }
-                    accessibilityState={{ disabled: pending }}
-                    disabled={pending}
-                    onPress={() => setVisible((value) => !value)}
-                    style={({ pressed }) => [
-                      styles.visibility,
-                      pressed && styles.pressed,
+                <View style={styles.field}>
+                  <AuthLabel
+                    style={styles.label}
+                    id={`${fieldId}-password-label`}
+                    inputId={`${fieldId}-password`}
+                  >
+                    Password
+                  </AuthLabel>
+                  <View
+                    style={[
+                      ...fieldStyle('password', passwordError),
+                      styles.passwordRow,
                     ]}
                   >
-                    <ThemedText style={styles.visibilityText}>
-                      {visible ? 'Hide' : 'Show'}
+                    <TextInput
+                      ref={passwordInput}
+                      nativeID={`${fieldId}-password`}
+                      name="password"
+                      aria-required
+                      importantForAutofill="yes"
+                      describedBy={
+                        passwordError
+                          ? `${fieldId}-password-error`
+                          : signUp
+                            ? `${fieldId}-password-help`
+                            : undefined
+                      }
+                      accessibilityLabel="Password"
+                      accessibilityLabelledBy={`${fieldId}-password-label`}
+                      accessibilityHint={
+                        passwordError ?? 'Use 12 to 128 characters.'
+                      }
+                      aria-invalid={!!passwordError}
+                      placeholder="••••••••"
+                      placeholderTextColor={colors.placeholder}
+                      style={styles.passwordInput}
+                      value={password}
+                      onChangeText={(value) => {
+                        setPassword(value);
+                        setError('');
+                      }}
+                      onFocus={() => setFocused('password')}
+                      onBlur={blur}
+                      secureTextEntry={!visible}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete={
+                        signUp ? 'new-password' : 'current-password'
+                      }
+                      textContentType={signUp ? 'newPassword' : 'password'}
+                      editable={!pending}
+                      returnKeyType="go"
+                      onSubmitEditing={
+                        Platform.OS === 'web' ? undefined : () => submit()
+                      }
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        visible ? 'Hide password' : 'Show password'
+                      }
+                      accessibilityState={{ disabled: pending }}
+                      disabled={pending}
+                      onPress={() => setVisible((value) => !value)}
+                      style={({ pressed }) => [
+                        styles.visibility,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <ThemedText style={styles.visibilityText}>
+                        {visible ? 'Hide' : 'Show'}
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                  {passwordError ? (
+                    <FieldError
+                      id={`${fieldId}-password-error`}
+                      message={passwordError}
+                    />
+                  ) : signUp ? (
+                    <ThemedText
+                      nativeID={`${fieldId}-password-help`}
+                      style={styles.helper}
+                    >
+                      Use 12–128 characters.
                     </ThemedText>
-                  </Pressable>
+                  ) : null}
                 </View>
-                {passwordError ? (
-                  <FieldError message={passwordError} />
-                ) : signUp ? (
-                  <ThemedText style={styles.helper}>
-                    Use 12–128 characters.
-                  </ThemedText>
-                ) : null}
               </View>
-            </View>
-            <View style={[styles.actions, signUp && styles.signUpActions]}>
-              {error ? (
-                <ThemedText
-                  style={styles.errorBanner}
-                  accessibilityRole="alert"
-                  accessibilityLiveRegion="polite"
-                >
-                  {error}
-                </ThemedText>
-              ) : null}
-              <Pressable
-                onPress={submit}
-                disabled={pending}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  pending
-                    ? signUp
-                      ? 'Creating your account'
-                      : 'Signing in'
-                    : action
-                }
-                accessibilityState={{ disabled: pending, busy: pending }}
-                style={({ pressed }) => [
-                  styles.primary,
-                  (pressed || pending) && styles.pressed,
-                ]}
-              >
-                {pending ? <ActivityIndicator color={colors.surface} /> : null}
-                <ThemedText style={styles.primaryText}>
-                  {pending
-                    ? signUp
-                      ? 'Creating account…'
-                      : 'Signing in…'
-                    : action}
-                </ThemedText>
-              </Pressable>
-              <View style={styles.linkSlot}>
-                {pending || reauthenticate ? null : (
-                  <Link
-                    replace
-                    href={signUp ? '/sign-in' : '/sign-up'}
-                    style={styles.link}
+              <View style={[styles.actions, signUp && styles.signUpActions]}>
+                {error ? (
+                  <View
+                    ref={errorSummary}
+                    tabIndex={-1}
+                    accessibilityRole="alert"
+                    accessibilityLabel={error}
                   >
-                    {signUp
-                      ? 'Already have an account?  Sign in'
-                      : 'New here?  Create an account'}
-                  </Link>
-                )}
+                    <ThemedText style={styles.errorBanner}>{error}</ThemedText>
+                  </View>
+                ) : null}
+                <AuthSubmit
+                  onPress={() => submit()}
+                  disabled={pending}
+                  label={
+                    pending
+                      ? signUp
+                        ? 'Creating your account'
+                        : 'Signing in'
+                      : action
+                  }
+                  style={[styles.primary, pending && styles.pressed]}
+                >
+                  {pending ? (
+                    <ActivityIndicator color={colors.surface} />
+                  ) : null}
+                  <ThemedText style={styles.primaryText}>
+                    {pending
+                      ? signUp
+                        ? 'Creating account…'
+                        : 'Signing in…'
+                      : action}
+                  </ThemedText>
+                </AuthSubmit>
+                <View style={styles.linkSlot}>
+                  {pending || reauthenticate ? null : (
+                    <Link
+                      replace
+                      href={signUp ? '/sign-in' : '/sign-up'}
+                      style={styles.link}
+                    >
+                      {signUp
+                        ? 'Already have an account?  Sign in'
+                        : 'New here?  Create an account'}
+                    </Link>
+                  )}
+                </View>
               </View>
-            </View>
+            </AuthFormShell>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

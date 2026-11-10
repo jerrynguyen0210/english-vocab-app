@@ -10,3 +10,13 @@
     sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
+
+:where(a, button, [role='button'], [role='alert'], input):focus-visible {
+  outline: 2px solid #4058d9;
+  outline-offset: 3px;
+}
+
+input::placeholder {
+  color: #64758e;
+  opacity: 1;
+}

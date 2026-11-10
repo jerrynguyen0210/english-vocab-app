@@ -225,6 +225,18 @@ screens. This preserves active drafts during reauthentication; it does not persi
 unsaved form data through process termination. Deep links retain their destination
 through startup restoration or reauthentication. Passwords are never persisted.
 
+On web, auth screens use named HTML forms and inputs with username,
+current-password/new-password, and name autofill hints. Enter submits from any
+input; native keyboards keep Next between fields and Go for password submission.
+Tab order follows the visible fields, password visibility control, submit button,
+and auth link. Visible focus rings, linked field errors, and focus on failed
+validation/server errors support keyboard and screen-reader use. Web submission
+reads current form values so password-manager autofill is retained. Validation
+starts on submit and updates while editing, avoiding layout shifts during clicks.
+The delete confirmation is named and described, initially focuses Cancel, traps
+focus, closes on Cancel/Escape when idle, and returns focus to Delete account.
+
+
 Account displays the profile returned by `/auth/me`. Sign out revokes the current
 session. Delete account requires an explicit confirmation before sending an
 authenticated `DELETE /api/v1/account`; failed requests keep the account session
