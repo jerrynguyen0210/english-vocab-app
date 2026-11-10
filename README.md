@@ -143,6 +143,12 @@ apply migrations with `python -m app.migrate`, then run
 `uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload`.
 Stop the Docker API first if it is already using port 8001.
 
+### Database backups
+
+The host runs daily PostgreSQL backups with 30-day retention. See
+[backup operations and the completed restore drill](docs/database-backups.md)
+for storage, scheduling, monitoring, and recovery instructions.
+
 ### Database migrations
 
 Import new models in `backend/app/models/__init__.py`. From `backend/` with the

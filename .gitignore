@@ -10,6 +10,8 @@ build/
 dist/
 
 # Local secrets
+*.dump
+*.dump.sha256
 .env
 .env.*
 !.env.example
