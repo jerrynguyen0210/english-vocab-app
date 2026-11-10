@@ -12,6 +12,7 @@ function harness(fetch) {
   let effects = [];
   let tree;
   let signedIn = true;
+  let dismissToast;
   class AuthError extends Error {
     constructor(status) {
       super();
@@ -81,6 +82,11 @@ function harness(fetch) {
     exports,
     performance,
     URLSearchParams,
+    setTimeout: (callback) => {
+      dismissToast = callback;
+      return 1;
+    },
+    clearTimeout: () => {},
     require: (id) => (id.endsWith('.svg') ? id : dependencies[id]),
   });
   function render() {
@@ -112,6 +118,16 @@ function harness(fetch) {
     filter: (label) => nodes().find((n) => n.props?.label === label),
     input: () => nodes().find((n) => n.type === 'Input'),
     text,
+    toast: () => tree.props.toast,
+    dismissToast: () => dismissToast(),
+    saveButton: (word) =>
+      nodes().find(
+        (n) =>
+          n.type === 'Button' &&
+          ['Save', 'Saved'].some(
+            (label) => n.props.accessibilityLabel === `${label} ${word}`,
+          ),
+      ),
     button: (label) =>
       nodes().find((n) => n.type === 'Button' && text(n) === label),
     setSignedIn(value) {
@@ -159,8 +175,79 @@ test('required search and selected filters reach the API; results save and detec
   await h.button('Save').props.onPress();
   await h.flush();
   assert.equal(JSON.parse(calls[1].init.body).word, 'created');
-  assert.match(h.text(), /already in your word bank/);
+  assert.match(h.toast(), /already in your word bank/);
   assert.equal(h.button('Saved').props.disabled, true);
+});
+
+test('saving one result shows a temporary confirmation and leaves other results unsaved', async () => {
+  const calls = [];
+  const h = harness(async (path, init) => {
+    if (init) {
+      calls.push(JSON.parse(init.body));
+      return Response.json({}, { status: 201 });
+    }
+    return Response.json([
+      entry,
+      { ...entry, word: 'create', verb_forms: ['V1'] },
+    ]);
+  });
+  h.input().props.onChangeText('create');
+  await h.flush();
+  await h.button('Search').props.onPress();
+  await h.flush();
+  await h.saveButton('create').props.onPress();
+  await h.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].word, 'create');
+  assert.equal(h.saveButton('create').props.accessibilityLabel, 'Saved create');
+  assert.equal(h.saveButton('create').props.disabled, true);
+  assert.equal(
+    h.saveButton('created').props.accessibilityLabel,
+    'Save created',
+  );
+  assert.equal(h.saveButton('created').props.disabled, false);
+  assert.equal(h.toast(), '“create” added to your word bank.');
+  h.dismissToast();
+  await h.flush();
+  assert.equal(h.toast(), undefined);
+  assert.equal(h.saveButton('create').props.disabled, true);
+  await h.saveButton('created').props.onPress();
+  await h.flush();
+  assert.deepEqual(
+    calls.map((call) => call.word),
+    ['create', 'created'],
+  );
+  assert.equal(h.toast(), '“created” added to your word bank.');
+});
+
+test('editing filters preserves the word and searches again with updated selections', async () => {
+  const calls = [];
+  const h = harness(async (path) => {
+    calls.push(new URL(path, 'https://example.test').searchParams);
+    return Response.json([entry]);
+  });
+  h.input().props.onChangeText('create');
+  await h.flush();
+  await h.button('Search').props.onPress();
+  await h.flush();
+  assert.match(h.text(), /Search results/);
+
+  for (const label of ['Include word family', 'Noun', 'V1 · Base']) {
+    h.filter(label).props.onPress();
+    await h.flush();
+    assert.equal(h.input().props.value, 'create');
+    assert.equal(calls.length, 1);
+  }
+  assert.doesNotMatch(h.text(), /Search results/);
+  await h.button('Search').props.onPress();
+  await h.flush();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].get('q'), 'create');
+  assert.equal(calls[1].get('include_family'), 'false');
+  assert.deepEqual(calls[1].getAll('parts'), ['verb', 'adjective', 'adverb']);
+  assert.deepEqual(calls[1].getAll('forms'), ['V2', 'V3']);
+  assert.equal(h.input().props.value, 'create');
+  assert.match(h.text(), /Search results/);
 });
 
 test('blank searches show validation and preserve every selected filter', async () => {

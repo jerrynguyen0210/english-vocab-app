@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentRef } from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { WordForm } from '@/components/word-form';
 import { AppScreen } from '@/components/app-screen';
@@ -74,6 +74,7 @@ export default function AddWordScreen() {
   const [selectedForms, setSelectedForms] = useState<string[]>([...forms]);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [toast, setToast] = useState<{ text: string } | null>(null);
   const [focused, setFocused] = useState(false);
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<Entry[] | null>(null);
@@ -83,6 +84,12 @@ export default function AddWordScreen() {
   const pending = useRef(false);
   const pendingSaves = useRef(new Set<string>());
   const generation = useRef(0);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   function changed() {
     generation.current += 1;
@@ -168,11 +175,12 @@ export default function AddWordScreen() {
         throw new Error('Save failed');
       setSaved((current) => [...current, entry.word]);
       if (requestGeneration === generation.current)
-        setMessage(
-          response.status === 409
-            ? `“${entry.word}” is already in your word bank.`
-            : `“${entry.word}” saved to your word bank.`,
-        );
+        setToast({
+          text:
+            response.status === 409
+              ? `“${entry.word}” is already in your word bank.`
+              : `“${entry.word}” added to your word bank.`,
+        });
     } catch (failure) {
       if (requestGeneration === generation.current)
         setMessage(
@@ -188,7 +196,7 @@ export default function AddWordScreen() {
   }
 
   return (
-    <AppScreen selected="Add">
+    <AppScreen selected="Add" toast={toast?.text}>
       <View style={styles.content}>
         <ThemedText accessibilityRole="header" style={styles.title}>
           Add a word
