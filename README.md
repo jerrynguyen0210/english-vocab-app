@@ -72,6 +72,7 @@ not database connectivity.
 | Setting | Purpose |
 | --- | --- |
 | Client `EXPO_PUBLIC_API_BASE_URL` | API endpoint read by `getApiBaseUrl()` in `client/src/constants/api.ts` |
+| Client `EXPO_PUBLIC_WEB_API_BASE_URL` | Optional browser API override; defaults to the shared API URL |
 | Backend `DATABASE_URL` | Required SQLAlchemy database URL |
 | Backend `SECRET_KEY` | Required secret for authentication rate-limit keys |
 | Backend `CORS_ORIGINS` | JSON array of exact allowed web origins, such as `["http://192.168.0.50:8081"]`; defaults to none |
@@ -87,6 +88,23 @@ time, so rebuild when switching environments. Do not select environments with
 `NODE_ENV` or `.env.preview`. Restart the backend after changing its settings.
 Authentication and product tables are managed by Alembic.
 
+For browser authentication, the web app and API must use the same site (matching
+scheme and hostname; ports may differ). When opening `http://localhost:8081`, set
+`EXPO_PUBLIC_WEB_API_BASE_URL=http://localhost:8001` in `client/.env.local` and
+restart Expo. Native devices keep using the LAN URL in `EXPO_PUBLIC_API_BASE_URL`.
+When opening the web app using the LAN IP, remove the web override or set it to
+the same LAN hostname. CORS must allow the web app's exact origin.
+
+After pulling backend schema changes, apply pending migrations to the running
+Compose database before using new fields:
+
+```bash
+cd backend
+docker compose exec api python -m app.migrate
+```
+
+This is a forward-only upgrade. `/health` alone does not confirm schema currency.
+
 **Never commit secrets, real `.env` files, keystores, or Apple/Google credentials.**
 Use sanitized [client](client/.env.example) and [backend](backend/.env.example)
 env examples instead. Never put secrets in `EXPO_PUBLIC_*` variables.
@@ -98,7 +116,7 @@ From `client/`:
 ```bash
 npm run lint          # ESLint; lint:fix applies fixes
 npm run typecheck     # Strict TypeScript
-npm test              # API configuration tests (Node test runner)
+npm test              # API configuration, auth validation, and token-storage tests
 npm run check         # Lint, type-check, and formatting check
 npm run format        # Apply Prettier formatting
 npx expo install <package>
