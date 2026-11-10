@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -26,6 +26,7 @@ export default function ReviewScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reviewed, setReviewed] = useState(0);
+  const answerInput = useRef<ComponentRef<typeof TextInput>>(null);
   const busy = useRef(false);
   const started = useRef(0);
   const mounted = useRef(true);
@@ -69,6 +70,13 @@ export default function ReviewScreen() {
       mounted.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    // Wait until the loaded prompt is editable, including after a failed submit.
+    if (item && !loading && !result) {
+      answerInput.current?.focus();
+    }
+  }, [item, loading, result]);
 
   async function submit() {
     if (!item || !answer.trim() || result || busy.current) return;
@@ -182,6 +190,8 @@ export default function ReviewScreen() {
               <>
                 <ThemedText style={styles.question}>Your answer</ThemedText>
                 <TextInput
+                  ref={answerInput}
+                  multiline={false}
                   accessibilityLabel="Your answer"
                   style={styles.input}
                   value={answer}
