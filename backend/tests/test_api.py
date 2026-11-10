@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.database import get_session
 from app.main import app
 from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
+from app.models.word import normalise_word
 
 
 @pytest.fixture
@@ -830,3 +831,53 @@ def test_topic_search_is_deferred_and_tags_are_not_accepted(api):
             ).status_code
             == 422
         )
+
+
+@pytest.mark.parametrize(
+    ("word", "example", "explanation", "expected"),
+    [
+        (
+            "resilience",
+            "Her RESILIENCE helped; resilience matters.",
+            "Resilience is the ability to recover.",
+            "Her _____ helped; _____ matters.",
+        ),
+        (
+            "straße",
+            "Try ＳＴＲＡＳＳＥ and Straße.",
+            "A road.",
+            "Try _____ and _____. ",
+        ),
+        ("take a break", "We take\na break at noon.", "To pause.", "We _____ at noon."),
+        ("hello", None, "A greeting.", "“_____” means: A greeting."),
+        (
+            "hello",
+            "An unrelated sentence.",
+            "A greeting.",
+            "“_____” means: A greeting.",
+        ),
+    ],
+)
+def test_session_provides_masked_cloze_sentence_including_fallback(
+    api, word, example, explanation, expected
+):
+    client, db, owner, _, _ = api
+    saved = client.post(
+        "/api/v1/words",
+        headers=owner,
+        json={
+            "word": word,
+            "english_explanation": explanation,
+            "example_sentence": example,
+        },
+    )
+    assert saved.status_code == 201
+    response = client.get("/api/v1/reviews/session", headers=owner)
+    assert response.status_code == 200
+    item = response.json()[0]
+    assert item["prompt_sentence"] == expected.strip()
+    assert "_____" in item["prompt_sentence"]
+    assert normalise_word(word) not in normalise_word(item["prompt_sentence"])
+    assert normalise_word(word) not in normalise_word(item["english_explanation"])
+    assert "correct_word" not in item and "word" not in item
+    assert db.get(Word, uuid.UUID(saved.json()["id"])).example_sentence == example

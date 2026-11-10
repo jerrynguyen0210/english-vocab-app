@@ -30,6 +30,7 @@ type Prompt = {
   attempt_id: string;
   english_explanation: string;
   example_sentence: string | null;
+  prompt_sentence: string;
   review_token?: string;
   choices?: string[];
 };
@@ -146,6 +147,9 @@ export default function ReviewScreen() {
   }, [signedIn, mode, item, loading, result, pendingBody]);
 
   const finished = !loading && !error && !item;
+  const progressPercent =
+    total > 0 ? Math.min(100, Math.round((position / total) * 100)) : 0;
+  const progressLabel = `Word ${position} of ${total}, ${progressPercent}% complete`;
   const announcement = result
     ? result.result === 'correct'
       ? 'Correct! Well done.'
@@ -242,7 +246,7 @@ export default function ReviewScreen() {
             ? total
               ? 'You have completed this review.'
               : 'No reviews available right now.'
-            : 'Read the explanation. Choose or type the word.'}
+            : 'Fill the blank with the missing word.'}
         </ThemedText>
         <ThemedText
           accessibilityLiveRegion="polite"
@@ -259,9 +263,23 @@ export default function ReviewScreen() {
         )}
         {item && (
           <>
-            <ThemedText style={styles.progress}>
-              WORD {position} OF {total}
-            </ThemedText>
+            <View
+              accessible
+              accessibilityLabel={progressLabel}
+              style={styles.progressRow}
+            >
+              <ThemedText style={styles.progress}>
+                Word {position} of {total}
+              </ThemedText>
+              <ThemedText style={styles.subtitle}>
+                {progressPercent}% complete
+              </ThemedText>
+            </View>
+            <View accessible={false} style={styles.progressTrack}>
+              <View
+                style={[styles.progressFill, { width: `${progressPercent}%` }]}
+              />
+            </View>
             {!result && (
               <View style={styles.modeRow}>
                 {(['choice', 'typing'] as const).map((value) => (
@@ -305,21 +323,13 @@ export default function ReviewScreen() {
               </View>
             )}
             <ThemedText style={styles.question}>
-              Which word matches this meaning?
+              Complete the sentence
             </ThemedText>
             <View style={styles.card}>
-              <ThemedText style={styles.label}>ENGLISH EXPLANATION</ThemedText>
-              <ThemedText style={styles.explanation}>
-                {item.english_explanation}
+              <ThemedText style={styles.label}>FILL IN THE BLANK</ThemedText>
+              <ThemedText style={styles.sentence}>
+                {item.prompt_sentence}
               </ThemedText>
-              {!!item.example_sentence && (
-                <>
-                  <ThemedText style={styles.label}>EXAMPLE SENTENCE</ThemedText>
-                  <ThemedText style={styles.example}>
-                    {item.example_sentence}
-                  </ThemedText>
-                </>
-              )}
             </View>
             {result ? (
               <>
@@ -482,6 +492,30 @@ export default function ReviewScreen() {
 }
 
 const styles = StyleSheet.create({
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 3,
+  },
+  sentence: {
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 29,
+    fontWeight: '600',
+  },
   modeRow: {
     flexDirection: 'row',
     gap: 6,
@@ -590,7 +624,6 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     fontWeight: '600',
   },
-  example: { color: colors.secondary, fontSize: 16, lineHeight: 25 },
   input: {
     backgroundColor: colors.surface,
     color: colors.text,

@@ -36,7 +36,8 @@ saved-tag search endpoint or topic fields on word creation.
 ## Review sessions and answers
 
 `GET /api/v1/reviews/session` accepts the same selection and returns a bounded
-snapshot. Each prompt includes masked explanation/example, `word_id`,
+snapshot. Each prompt includes a masked fill-in-the-blank `prompt_sentence`,
+masked explanation/example, `word_id`,
 `attempt_id`, `review_token` and shuffled `choices`. Choices include the answer
 and up to three other owned saved words, without identifying the correct option.
 A one-word bank returns no choices, so typing remains available. The legacy

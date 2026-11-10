@@ -21,7 +21,7 @@ from app.services.dictionary import (
     search_dictionary,
 )
 from app.services.review_preparation import ReviewSelection, selected_words
-from app.services.review_prompt import mask_target
+from app.services.review_prompt import mask_target, prompt_sentence
 from app.services.review_queue import (
     answer_matches,
     remaining_daily_reviews,
@@ -80,6 +80,7 @@ class ReviewItem(BaseModel):
 
 
 class SessionItem(ReviewItem):
+    prompt_sentence: str
     attempt_id: uuid.UUID
     review_token: str
     choices: list[str]
@@ -285,6 +286,9 @@ def review_session(
                 attempt_id=attempt_id,
                 review_token=issue_ticket(user.id, state, attempt_id, now),
                 choices=choices,
+                prompt_sentence=prompt_sentence(
+                    word.example_sentence, word.english_explanation, word.word
+                ),
                 english_explanation=mask_target(word.english_explanation, word.word),
                 example_sentence=mask_target(word.example_sentence, word.word)
                 if word.example_sentence

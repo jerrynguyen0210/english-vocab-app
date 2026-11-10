@@ -167,6 +167,16 @@ function harness(fetch, params = {}, screen = 'review') {
     toggle: () => nodes().find((n) => n.type === 'Switch'),
     input: () => nodes().find((n) => n.type === 'Input'),
     text,
+    progress: () =>
+      nodes().find((node) =>
+        node.props?.accessibilityLabel?.startsWith('Word '),
+      ),
+    sentence: () =>
+      nodes().find(
+        (node) =>
+          node.type === 'Text' &&
+          node.props.children === 'She said _____ when we met.',
+      ),
     button: (label) =>
       nodes().find((n) => n.type === 'Button' && text(n) === label),
     setSignedIn(value) {
@@ -181,6 +191,7 @@ const prompts = [
     attempt_id: 'attempt-one',
     english_explanation: 'A greeting',
     example_sentence: null,
+    prompt_sentence: 'She said _____ when we met.',
   },
 ];
 
@@ -346,4 +357,51 @@ test('preparation retries counts and topic remains unavailable without backend r
   assert.equal(h.input(), undefined);
   assert.match(h.text(), /Topic search is coming later/);
   assert.equal(paths.length, requestsBeforeTopic);
+});
+
+test('cloze prompt remains masked across modes and progress tracks the current word', async () => {
+  let submitted = 0;
+  const h = harness(async (_, init) => {
+    if (!init)
+      return Response.json(
+        Array.from({ length: 12 }, (_, index) => ({
+          ...prompts[0],
+          word_id: String(index),
+          attempt_id: `attempt-${index}`,
+          choices: ['Hello', 'Goodbye'],
+        })),
+      );
+    submitted++;
+    return Response.json({ result: 'correct', correct_word: 'Hello' });
+  });
+  await h.flush();
+  assert.equal(
+    h.progress().props.accessibilityLabel,
+    'Word 1 of 12, 8% complete',
+  );
+  assert.ok(h.sentence());
+  h.button('Typing').props.onPress();
+  await h.flush();
+  assert.doesNotMatch(h.text(), /Hello/);
+  assert.ok(h.sentence());
+  for (let index = 0; index < 2; index++) {
+    h.input().props.onChangeText('Hello');
+    await h.flush();
+    await h.button('Submit answer').props.onPress();
+    await h.flush();
+    assert.ok(h.sentence());
+    h.button('Next word').props.onPress();
+    await h.flush();
+  }
+  assert.equal(
+    h.progress().props.accessibilityLabel,
+    'Word 3 of 12, 25% complete',
+  );
+  assert.match(h.text(), /25% complete/);
+  assert.doesNotMatch(h.text(), /Hello/);
+  assert.equal(submitted, 2);
+  h.button('Multiple choice').props.onPress();
+  await h.flush();
+  assert.ok(h.sentence());
+  assert.ok(h.button('A Hello'));
 });

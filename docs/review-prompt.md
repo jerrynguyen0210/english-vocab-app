@@ -1,38 +1,56 @@
 # Review prompt
 
-The Review screen follows screens 6–9 of `Wordwell_Unified_Figma_Import.svg`.
-It loads a fixed due-word snapshot from `GET /api/v1/reviews/session`. Each item
-includes a server-generated attempt ID for safe retries.
-The prompt contains `word_id`, `english_explanation`, and nullable
-`example_sentence` (D1). Missing examples do not render an empty section.
+The Review screen follows the review states in
+`Wordwell_Complete_With_Review_Preparation_Figma.svg`. It loads a fixed snapshot
+from `GET /api/v1/reviews/session` using the source selected in preparation.
+
+Each item includes a server-generated attempt ID, signed review token, a required
+`prompt_sentence`, masked explanation/example fields and optional answer choices.
+The screen displays the current position and a rounded percentage, for example
+**Word 3 of 12, 25% complete**, with a matching progress bar. The percentage uses
+current position divided by snapshot size, as in the supplied design; loading and
+empty states do not show a progress count.
+
+Multiple choice and Typing share the same fill-in-the-blank sentence. Changing
+mode clears the draft answer and preserves the prompt and progress. A bank with
+no distractors uses Typing. Editing and mode changes are disabled while submitting
+or retrying an unconfirmed submission.
+
+## Masked sentences
 
 Before serialization, the server replaces every occurrence of the target with
-`_____` in both hint fields. Matching handles Unicode compatibility, case folding,
-and variable whitespace in phrases. Substring matches are deliberately masked,
-including targets inside compounds, to avoid exposing the answer. Hints without
-the target remain readable; the stored word and hints are not modified.
+`_____`. Matching handles Unicode compatibility, case folding, and variable
+whitespace in phrases. Substring matches are deliberately masked, including
+targets inside compounds, to avoid exposing the answer.
 
-The answer and normalized answer are never included in the prompt response.
-The prompt stays masked after submission. Separate answer feedback can reveal the
-correct word, as in screens 7–8. The next prompt clears that feedback and input.
+The server uses the saved example when it contains the target. A missing, blank,
+or unrelated example uses a definition-based fallback, such as
+`“_____” means: A greeting.` The entire fallback is masked too, including its
+connective wording. A pre-existing blank in an unrelated example is insufficient.
+Stored words and examples remain unchanged.
+
+The screen renders only `prompt_sentence` as the question body. The target is not
+shown there in either answer mode, including after submission. Multiple-choice
+options necessarily contain the target among distractors; no option is identified
+as correct until feedback. No `word` or `correct_word` field is included in the
+session response. Separate answer feedback may reveal the correct word. The next
+prompt clears that feedback and the draft.
+
+## Submission and verification
 
 Submission uses D2 (case and outer whitespace ignored; otherwise exact spelling)
-and records the original answer and elapsed time on the server. Empty answers
-are allowed as failed recall. Incorrect feedback places the entered answer next
-to the correct word; narrow layouts wrap these columns. A persistent polite live
-region announces feedback on web/Android, and VoiceOver uses an explicit iOS
-announcement. Finished sessions announce and display the correct-answer count.
+and records the original answer and elapsed time on the server. Incorrect feedback
+compares the entered answer with the correct word. A persistent polite live region
+announces feedback on web/Android, and VoiceOver uses an explicit iOS announcement.
+Finished sessions announce and display the correct-answer count.
 
-The snapshot and every submission respect D5's 20-attempt daily cap across sessions/devices.
-The client increments totals only after a successful server response and blocks
-concurrent submissions. An already-reviewed item can be skipped; a cap conflict ends the session
-without counting an unconfirmed attempt. New words wait for the next session.
-Network retries resend the same attempt ID, answer and duration; the server
-returns the saved result without recording or scheduling twice. The client uses
-a monotonic elapsed timer; due times and day boundaries come only from the server.
+The snapshot and every submission respect the daily cap across sessions/devices.
+Only a confirmed answer increments totals. Network retries resend the same attempt
+ID, signed token, answer and duration; the server returns the saved result without
+recording or scheduling twice. Due times and day boundaries use the server clock.
 
-Verification: backend rule tests were written before this UI revision and run
-against extracted scheduling/normalization functions. API tests cover replay after
-a lost response and owner isolation. Screen-handler tests cover retained drafts,
-identical retry payloads, sign-in interruption, empty sessions and snapshot
-completion. These tests do not emulate native layout or screen-reader speech.
+Backend tests cover Unicode/phrase/repeated-target masking, fallback sentences,
+HTTP serialization and unchanged stored examples. Screen-handler tests cover the
+masked question in both modes, Word 3 of 12 at 25%, progression, retained drafts,
+identical retry payloads, sign-in interruption, empty states and completion.
+These tests do not emulate native layout or screen-reader speech.
