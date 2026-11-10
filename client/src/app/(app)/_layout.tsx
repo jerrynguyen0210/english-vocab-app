@@ -10,7 +10,10 @@ export default function AppLayout() {
       />
       <Stack.Screen name="add-word" options={{ title: 'Add word' }} />
       <Stack.Screen name="review" options={{ title: 'Review' }} />
-      <Stack.Screen name="account" options={{ title: 'Account' }} />
+      <Stack.Screen
+        name="account"
+        options={{ title: 'Account', headerShown: false }}
+      />
     </Stack>
   );
 }

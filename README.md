@@ -225,6 +225,15 @@ screens. This preserves active drafts during reauthentication; it does not persi
 unsaved form data through process termination. Deep links retain their destination
 through startup restoration or reauthentication. Passwords are never persisted.
 
+Account displays the profile returned by `/auth/me`. Sign out revokes the current
+session. Delete account requires an explicit confirmation before sending an
+authenticated `DELETE /api/v1/account`; failed requests keep the account session
+available for retry. On success, the client clears its in-memory token/profile,
+native SecureStore refresh credential, and mounted account state. Browser deletion
+accepts the backend's expired HttpOnly cookie. No password or token is stored in
+browser storage, and unrelated browser data is left intact.
+
+
 
 Deploy web and API on the same site over HTTPS, such as app.example.com and
 api.example.com, and configure the exact web origin in `CORS_ORIGINS`. Cookie

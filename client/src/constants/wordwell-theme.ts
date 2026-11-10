@@ -9,6 +9,9 @@ export const WordwellColors = {
   primary: '#4058D9',
   primarySoft: '#EEF0FF',
   highlight: '#546AE5',
+  success: '#13734C',
+  successBackground: '#E8F7EE',
+  overlay: 'rgba(27, 41, 65, 0.44)',
   error: '#B42318',
   errorBackground: '#FCEDEA',
 };

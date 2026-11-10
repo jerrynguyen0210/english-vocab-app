@@ -375,3 +375,71 @@ test('a late logout cannot clear a newer sign-in credential', async () => {
   await rejected;
   assert.equal(h.values.get('wordrecall.refresh'), 'test-new-refresh');
 });
+
+for (const native of [true, false]) {
+  test(`${native ? 'native' : 'web'} account deletion uses the authenticated endpoint and clears local credentials`, async () => {
+    const h = harness({
+      native,
+      fetchImpl: async (url) =>
+        url.endsWith('/account')
+          ? new Response(null, { status: 204 })
+          : tokens(),
+    });
+    await h.service.signIn('learner@example.com', 'test-password-only');
+    await h.service.deleteAccount();
+    const deletion = h.calls.find((call) => call.url.endsWith('/account'));
+    assert.equal(deletion.method, 'DELETE');
+    assert.equal(deletion.headers.get('Authorization'), 'Bearer test-access');
+    assert.equal(deletion.credentials, native ? 'omit' : 'include');
+    assert.equal(h.values.size, 0);
+    assert.equal(
+      h.calls.some((call) => call.url.endsWith('/logout')),
+      false,
+    );
+    // There is no access credential left to use after deleting the account.
+    const before = h.calls.length;
+    if (native) {
+      await assert.rejects(
+        h.service.authenticatedFetch('/auth/me'),
+        (error) => error.status === 401,
+      );
+      assert.equal(h.calls.length, before);
+    }
+  });
+}
+
+test('failed account deletion preserves credentials for a retry', async () => {
+  let status = 503;
+  const h = harness({
+    fetchImpl: async (url) =>
+      url.endsWith('/account') ? new Response(null, { status }) : tokens(),
+  });
+  await h.service.signIn('learner@example.com', 'test-password-only');
+  await assert.rejects(
+    h.service.deleteAccount(),
+    (error) => error.status === 503,
+  );
+  assert.equal(h.values.get('wordrecall.refresh'), 'test-refresh');
+  status = 204;
+  await h.service.deleteAccount();
+  assert.equal(h.values.size, 0);
+});
+
+test('account deletion refreshes an expired access token once before retrying', async () => {
+  let deletions = 0;
+  const h = harness({
+    fetchImpl: async (url) => {
+      if (url.endsWith('/account'))
+        return new Response(null, { status: ++deletions === 1 ? 401 : 204 });
+      return tokens();
+    },
+  });
+  await h.service.signIn('learner@example.com', 'test-password-only');
+  await h.service.deleteAccount();
+  assert.equal(deletions, 2);
+  assert.equal(
+    h.calls.filter((call) => call.url.endsWith('/refresh')).length,
+    1,
+  );
+  assert.equal(h.values.size, 0);
+});

@@ -152,7 +152,7 @@ export async function authenticatedFetch(path: string, init: RequestInit = {}) {
     return fetch(`${getApiBaseUrl()}/api/v1${path}`, {
       ...init,
       headers,
-      credentials: 'omit',
+      credentials: nativeAuth ? 'omit' : (init.credentials ?? 'omit'),
     });
   };
   const requestVersion = sessionVersion;
@@ -174,4 +174,30 @@ export async function authenticatedFetch(path: string, init: RequestInit = {}) {
     throw new AuthError(401);
   }
   return retried;
+}
+
+/** The account has been removed remotely, even if device storage cleanup failed. */
+export class AccountDeletedError extends Error {
+  constructor() {
+    super('Account deleted. Local session cleanup could not finish.');
+  }
+}
+
+export async function deleteAccount() {
+  const version = sessionVersion;
+  // Include browser credentials so the DELETE response can expire the HttpOnly cookie.
+  const response = await authenticatedFetch('/account', {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (response.status !== 204) throw new AuthError(response.status);
+  if (version !== sessionVersion)
+    throw new Error('Session changed during request.');
+  ++sessionVersion;
+  accessToken = null;
+  try {
+    await updateStorage(clearRefreshToken);
+  } catch {
+    throw new AccountDeletedError();
+  }
 }

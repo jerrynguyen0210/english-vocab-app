@@ -10,7 +10,15 @@ import {
 import { AppState } from 'react-native';
 import * as auth from '@/services/auth';
 
+export type SessionProfile = {
+  id: string;
+  email: string;
+  name: string | null;
+  timezone: string;
+};
+
 const SessionContext = createContext<{
+  profile: SessionProfile | null;
   signedIn: boolean;
   loading: boolean;
   needsSignIn: boolean;
@@ -20,9 +28,11 @@ const SessionContext = createContext<{
   signIn: typeof auth.signIn;
   signUp: typeof auth.register;
   signOut: typeof auth.signOut;
+  deleteAccount: typeof auth.deleteAccount;
 } | null>(null);
 
 export function SessionProvider({ children }: PropsWithChildren) {
+  const [profile, setProfile] = useState<SessionProfile | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [needsSignIn, setNeedsSignIn] = useState(false);
@@ -37,13 +47,14 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const acceptSession = useCallback(async (version = lifecycle.current) => {
     const response = await auth.authenticatedFetch('/auth/me');
     if (!response.ok) throw new auth.AuthError(response.status);
-    const profile: { id: string } = await response.json();
+    const profile: SessionProfile = await response.json();
     if (!profile.id) throw new Error('Missing profile identity.');
     if (!mounted.current || version !== lifecycle.current) return;
     // Retain drafts only for the same account; another account gets fresh screens.
     if (userId.current && userId.current !== profile.id)
       setAppKey((key) => key + 1);
     userId.current = profile.id;
+    setProfile(profile);
     hadSession.current = true;
     setSignedIn(true);
     setNeedsSignIn(false);
@@ -102,9 +113,22 @@ export function SessionProvider({ children }: PropsWithChildren) {
     };
   }, [retryRestore]);
 
+  function clearLocalState() {
+    ++lifecycle.current;
+    setLoading(false);
+    hadSession.current = false;
+    userId.current = null;
+    setProfile(null);
+    setSignedIn(false);
+    setNeedsSignIn(false);
+    setRestoreError(false);
+    setAppKey((key) => key + 1);
+  }
+
   return (
     <SessionContext.Provider
       value={{
+        profile,
         signedIn,
         loading,
         needsSignIn,
@@ -121,17 +145,25 @@ export function SessionProvider({ children }: PropsWithChildren) {
           await auth.register(email, password, name);
           await acceptSession(version);
         },
+        deleteAccount: async () => {
+          const version = ++lifecycle.current;
+          try {
+            await auth.deleteAccount();
+          } catch (error) {
+            if (
+              error instanceof auth.AccountDeletedError &&
+              version === lifecycle.current
+            )
+              clearLocalState();
+            throw error;
+          }
+          if (version === lifecycle.current) clearLocalState();
+        },
         signOut: async () => {
           const version = ++lifecycle.current;
           await auth.signOut();
           if (version !== lifecycle.current) return;
-          setLoading(false);
-          hadSession.current = false;
-          userId.current = null;
-          setSignedIn(false);
-          setNeedsSignIn(false);
-          setRestoreError(false);
-          setAppKey((key) => key + 1);
+          clearLocalState();
         },
       }}
     >
