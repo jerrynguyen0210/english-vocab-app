@@ -25,7 +25,9 @@ def api(api_database_url, monkeypatch):
     get_settings.cache_clear()
     command.upgrade(Config("alembic.ini"), "head")
     sqlite = url.startswith("sqlite:")
-    engine = create_engine(url, connect_args={"check_same_thread": False} if sqlite else {})
+    engine = create_engine(
+        url, connect_args={"check_same_thread": False} if sqlite else {}
+    )
 
     @event.listens_for(engine, "connect")
     def foreign_keys(connection, _):
@@ -1020,3 +1022,86 @@ def test_review_summary_distinguishes_empty_bank_nothing_due_and_cap(api, monkey
         "count": 0,
     }
     assert client.get("/api/v1/reviews/summary").status_code == 401
+
+
+@pytest.mark.parametrize("form,spelling", [("V2", "wrote"), ("V3", "written")])
+def test_search_form_can_be_saved_and_reviewed_independently(api, form, spelling):
+    client, db, owner, other, _ = api
+    params = {"q": "write", "parts": "verb", "forms": form}
+    response = client.get("/api/v1/words/search", params=params, headers=owner)
+    assert response.status_code == 200
+    entry = next(item for item in response.json() if item["word"] == spelling)
+    assert entry["saved"] is False
+    saved = client.post(
+        "/api/v1/words",
+        headers=owner,
+        json={
+            "word": entry["word"],
+            "english_explanation": entry["english_explanation"],
+        },
+    )
+    assert saved.status_code == 201
+    word = db.get(Word, uuid.UUID(saved.json()["id"]))
+    assert word.word == spelling
+    state = db.get(ReviewState, word.id)
+    assert (state.repetitions, state.interval_days, state.ease_factor) == (0, 0, 2.5)
+    for headers, expected in [(owner, True), (other, False)]:
+        entries = client.get(
+            "/api/v1/words/search", params=params, headers=headers
+        ).json()
+        assert (
+            next(item for item in entries if item["word"] == spelling)["saved"]
+            is expected
+        )
+    assert create(client, owner, "write").status_code == 201
+    items = client.get("/api/v1/reviews/session", headers=owner).json()
+    assert {item["word_id"] for item in items} == {
+        saved.json()["id"],
+        str(db.scalar(select(Word.id).where(Word.normalised_word == "write"))),
+    }
+    assert client.get("/api/v1/reviews/session", headers=other).json() == []
+
+
+@pytest.mark.parametrize("correct", [True, False])
+def test_choice_answer_persists_result_and_sm2_schedule(api, correct):
+    client, db, owner, _, _ = api
+    word_id = create(client, owner).json()["id"]
+    item = client.get(
+        "/api/v1/reviews/session?answer_mode=choice", headers=owner
+    ).json()[0]
+    selected = (
+        "Hello"
+        if correct
+        else next(choice for choice in item["choices"] if choice != "Hello")
+    )
+    response = client.post(
+        f"/api/v1/reviews/{word_id}/answer",
+        headers=owner,
+        json={
+            "attempt_id": item["attempt_id"],
+            "review_token": item["review_token"],
+            "typed_answer": selected,
+            "time_taken_ms": 123,
+        },
+    )
+    assert response.status_code == 200
+    expected = "correct" if correct else "incorrect"
+    assert response.json()["result"] == expected
+    assert response.json()["correct_word"] == "Hello"
+    db.expire_all()
+    attempt = db.scalar(select(ReviewAttempt))
+    assert attempt.result == expected
+    assert attempt.typed_answer == selected
+    assert attempt.time_taken_ms == 123
+    state = db.get(ReviewState, uuid.UUID(word_id))
+    assert (state.correct_count, state.incorrect_count) == (
+        (1, 0) if correct else (0, 1)
+    )
+    assert state.repetitions == (1 if correct else 0)
+    assert state.interval_days == (1 if correct else 0)
+    assert state.ease_factor == pytest.approx(2.5 if correct else 1.96)
+    from app.core.time import as_utc
+
+    assert as_utc(state.due_at) - as_utc(attempt.reviewed_at) == (
+        timedelta(days=1) if correct else timedelta(minutes=10)
+    )
