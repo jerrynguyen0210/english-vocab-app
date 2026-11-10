@@ -27,6 +27,8 @@ function harness(fetch, params = {}, screen = 'review') {
   let cursor = 0;
   let effects = [];
   let tree;
+  let focusCalls = 0;
+  let previousInputRef;
   let signedIn = true;
   class AuthError extends Error {
     constructor(status) {
@@ -123,6 +125,15 @@ function harness(fetch, params = {}, screen = 'review') {
   function render() {
     cursor = 0;
     tree = exports.default();
+    if (previousInputRef) previousInputRef.current = null;
+    const inputNode = nodes().find((node) => node.type === 'Input');
+    previousInputRef = inputNode?.props.ref;
+    if (previousInputRef)
+      previousInputRef.current = {
+        focus: () => {
+          focusCalls++;
+        },
+      };
     const pending = effects;
     effects = [];
     pending.forEach((fn) => fn());
@@ -142,6 +153,7 @@ function harness(fetch, params = {}, screen = 'review') {
   render();
   return {
     AuthError,
+    focusCalls: () => focusCalls,
     async flush() {
       await new Promise((resolve) => setImmediate(resolve));
       render();
@@ -276,6 +288,8 @@ test('selected source loads a live session; answer modes share the signed submis
     new URLSearchParams(requests[0].path.split('?')[1]).get('period'),
     'Monthly',
   );
+  h.button('Multiple choice').props.onPress();
+  await h.flush();
   h.button('A Hello').props.onPress();
   await h.flush();
   h.button('Typing').props.onPress();
@@ -415,6 +429,8 @@ test('multiple choice renders exactly the server options in order and submits th
     return Response.json({ result: 'correct', correct_word: 'Hello' });
   });
   await h.flush();
+  h.button('Multiple choice').props.onPress();
+  await h.flush();
   assert.equal(h.input(), undefined);
   assert.equal(h.button('Check answer').props.disabled, true);
   choices.forEach((value, index) =>
@@ -442,7 +458,158 @@ for (const choices of [
     await h.flush();
     assert.ok(h.input());
     assert.equal(h.button('Multiple choice').props.disabled, true);
-    assert.match(h.text(), /Four answer options are unavailable/);
+    assert.match(h.text(), /Spelling matters · Enter to submit/);
     assert.equal(h.button('A Hello'), undefined);
   });
 }
+
+test('typing auto-focuses with spelling assistance off and Enter uses the exact D2 draft once', async () => {
+  const requests = [];
+  const h = harness(async (path, init) => {
+    requests.push({ path, init });
+    if (!init)
+      return Response.json([
+        { ...prompts[0], review_token: 'signed' },
+        {
+          ...prompts[0],
+          word_id: 'two',
+          attempt_id: 'attempt-two',
+          review_token: 'signed-two',
+        },
+      ]);
+    return Response.json({ result: 'correct', correct_word: 'Hello' });
+  });
+  await h.flush();
+  assert.match(requests[0].path, /answer_mode=typing/);
+  assert.equal(requests.length, 1);
+  assert.equal(h.input().props.autoCorrect, false);
+  assert.equal(h.input().props.autoCapitalize, 'none');
+  assert.equal(h.input().props.autoComplete, 'off');
+  assert.equal(h.input().props.spellCheck, false);
+  assert.ok(h.focusCalls() > 0);
+  assert.match(h.text(), /Spelling matters · Enter to submit/);
+  h.input().props.onChangeText(' HeLLo ');
+  await h.flush();
+  h.input().props.onSubmitEditing();
+  h.input().props.onSubmitEditing();
+  await h.flush();
+  assert.equal(requests.length, 2);
+  assert.equal(JSON.parse(requests[1].init.body).typed_answer, ' HeLLo ');
+  const beforeNext = h.focusCalls();
+  h.button('Next word').props.onPress();
+  await h.flush();
+  assert.equal(h.input().props.value, '');
+  assert.ok(h.focusCalls() > beforeNext);
+});
+
+test('typing loads no choices; switching modes fetches only the current item and preserves progress', async () => {
+  const requests = [];
+  const prompt = { ...prompts[0], review_token: 'signed' };
+  const h = harness(async (path, init) => {
+    requests.push({ path, init });
+    if (!init) return Response.json([prompt]);
+    if (path.endsWith('/choices'))
+      return Response.json({
+        ...prompt,
+        choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'],
+      });
+    throw new Error('No answer should be submitted');
+  });
+  await h.flush();
+  assert.equal(requests.length, 1);
+  assert.doesNotMatch(h.text(), /Hello/);
+  assert.ok(h.input());
+  const progress = h.progress().props.accessibilityLabel;
+  await h.button('Multiple choice').props.onPress();
+  await h.flush();
+  assert.equal(requests[1].path, '/reviews/one/choices');
+  assert.deepEqual(JSON.parse(requests[1].init.body), {
+    attempt_id: 'attempt-one',
+    review_token: 'signed',
+  });
+  assert.ok(h.button('A Hello'));
+  assert.equal(h.progress().props.accessibilityLabel, progress);
+  const beforeTyping = h.focusCalls();
+  h.button('Typing').props.onPress();
+  await h.flush();
+  assert.doesNotMatch(h.text(), /Hello/);
+  assert.ok(h.focusCalls() > beforeTyping);
+  assert.equal(requests.length, 2);
+});
+
+test('multiple-choice mode loads each next snapshot item without restarting the session', async () => {
+  const items = [
+    { ...prompts[0], review_token: 'signed-one' },
+    {
+      ...prompts[0],
+      word_id: 'two',
+      attempt_id: 'attempt-two',
+      review_token: 'signed-two',
+    },
+  ];
+  const paths = [];
+  const h = harness(async (path, init) => {
+    paths.push(path);
+    if (!init) return Response.json(items);
+    if (path.endsWith('/choices')) {
+      const item = path.includes('/two/') ? items[1] : items[0];
+      return Response.json({
+        ...item,
+        choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'],
+      });
+    }
+    return Response.json({ result: 'correct', correct_word: 'Hello' });
+  });
+  await h.flush();
+  await h.button('Multiple choice').props.onPress();
+  await h.flush();
+  h.button('A Hello').props.onPress();
+  await h.flush();
+  await h.button('Check answer').props.onPress();
+  await h.flush();
+  h.button('Next word').props.onPress();
+  await h.flush();
+  assert.ok(h.button('A Hello'));
+  assert.equal(h.input(), undefined);
+  assert.equal(
+    h.progress().props.accessibilityLabel,
+    'Word 2 of 2, 100% complete',
+  );
+  assert.equal(
+    paths.filter((path) => path.startsWith('/reviews/session')).length,
+    1,
+  );
+  assert.ok(paths.includes('/reviews/two/choices'));
+});
+
+test('option load failure returns to focused typing and can retry the current prompt', async () => {
+  let fail = true;
+  let resolveOptions;
+  const prompt = { ...prompts[0], review_token: 'signed' };
+  const h = harness(async (path) => {
+    if (path.startsWith('/reviews/session')) return Response.json([prompt]);
+    if (fail)
+      return new Promise((resolve) => {
+        resolveOptions = resolve;
+      });
+    return Response.json({
+      ...prompt,
+      choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'],
+    });
+  });
+  await h.flush();
+  const before = h.focusCalls();
+  h.button('Multiple choice').props.onPress();
+  await h.flush();
+  assert.equal(h.input().props.editable, false);
+  resolveOptions(Response.json({}, { status: 503 }));
+  await h.flush();
+  assert.ok(h.input());
+  assert.ok(h.focusCalls() > before);
+  assert.match(h.text(), /Could not load answer options/);
+  fail = false;
+  await h.button('Multiple choice').props.onPress();
+  await h.flush();
+  assert.ok(h.button('A Hello'));
+  assert.doesNotMatch(h.text(), /Could not load answer options/);
+});

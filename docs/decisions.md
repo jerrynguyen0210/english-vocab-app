@@ -256,7 +256,8 @@ claim that backend export alone guarantees compliance in every jurisdiction.
 
 Status: Accepted.
 
-The server returns exactly four nonblank, unique options: the saved target once
+For an explicit multiple-choice request, the server returns exactly four
+nonblank, unique options: the saved target once
 and three distractors, selected in this order:
 
 1. Other saved words sharing at least one dictionary-inferred part of speech.
@@ -282,3 +283,19 @@ creates, replaces, pads, sorts, or reshuffles them. Check answer requires a sele
 option and sends its exact text through the existing answer endpoint. Invalid
 option payloads disable multiple choice and allow Typing without synthesizing
 options. Network retries retain the exact original submission.
+
+
+### Typing payloads and input
+
+Typing is the default review-session response (`answer_mode=typing`). It contains
+masked prompt fields and signed attempt metadata, with no options or correct
+word before submission. The client requests choices only after an explicit
+Multiple choice selection, preserving the current attempt and progress. Such
+requests include the signed review token in the body, never in a URL. They
+validate ownership, current scheduling state and daily allowance without
+recording an answer. Returning to Typing removes the displayed options.
+
+Typing displays “Spelling matters · Enter to submit”, auto-focuses the input,
+and disables autocorrect, auto-capitalisation, autocomplete and spell checking.
+Enter and Check answer share the same guarded submission. The client sends the
+unaltered draft; D2 comparison and correct-word feedback remain server-owned.

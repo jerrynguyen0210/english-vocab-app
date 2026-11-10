@@ -735,7 +735,7 @@ def test_time_session_authorizes_not_due_answers(api):
             UTC
         ) + timedelta(days=20)
     db.commit()
-    query = "?source=time&period=Weekly"
+    query = "?source=time&period=Weekly&answer_mode=choice"
     response = client.get("/api/v1/reviews/preparation" + query, headers=owner)
     assert response.json() == {"count": 2, "matching_count": 2}
     assert response.headers["cache-control"] == "no-store"
@@ -787,7 +787,9 @@ def test_preparation_daily_allowance_and_four_options_for_small_bank(api, monkey
     client, _, owner, _, _ = api
     monkeypatch.setattr(get_settings(), "review_daily_cap", 1)
     create(client, owner)
-    item = client.get("/api/v1/reviews/session?source=recall", headers=owner).json()[0]
+    item = client.get(
+        "/api/v1/reviews/session?source=recall&answer_mode=choice", headers=owner
+    ).json()[0]
     assert len(item["choices"]) == 4
     assert len({normalise_word(option) for option in item["choices"]}) == 4
     assert sum(normalise_word(option) == "hello" for option in item["choices"]) == 1
@@ -883,3 +885,77 @@ def test_session_provides_masked_cloze_sentence_including_fallback(
     assert normalise_word(word) not in normalise_word(item["english_explanation"])
     assert "correct_word" not in item and "word" not in item
     assert db.get(Word, uuid.UUID(saved.json()["id"])).example_sentence == example
+
+
+@pytest.mark.parametrize(
+    "typed_answer,expected",
+    [
+        (" HELLO ", "correct"),
+        ("helo", "incorrect"),
+        ("hello!", "incorrect"),
+        ("ＨＥＬＬＯ", "incorrect"),
+    ],
+)
+def test_typing_session_hides_answer_until_d2_submission(api, typed_answer, expected):
+    client, _, owner, _, _ = api
+    saved = client.post(
+        "/api/v1/words",
+        headers=owner,
+        json={
+            "word": "Hello",
+            "english_explanation": "Hello is a greeting.",
+            "example_sentence": "She said HELLO, then hello again.",
+        },
+    )
+    assert saved.status_code == 201
+    response = client.get("/api/v1/reviews/session?answer_mode=typing", headers=owner)
+    assert response.status_code == 200
+    item = response.json()[0]
+    assert "choices" not in item and "word" not in item and "correct_word" not in item
+    for key in ["prompt_sentence", "english_explanation", "example_sentence"]:
+        assert "hello" not in item[key].casefold()
+    assert response.headers["cache-control"] == "no-store"
+    answer = client.post(
+        f"/api/v1/reviews/{item['word_id']}/answer",
+        headers=owner,
+        json={
+            "attempt_id": item["attempt_id"],
+            "review_token": item["review_token"],
+            "typed_answer": typed_answer,
+            "time_taken_ms": 1,
+        },
+    )
+    assert answer.status_code == 200
+    assert answer.json()["result"] == expected
+    assert answer.json()["correct_word"] == "Hello"
+
+
+def test_typing_is_default_and_choice_requires_explicit_authorized_request(api):
+    client, db, owner, other, _ = api
+    create(client, owner)
+    item = client.get("/api/v1/reviews/session", headers=owner).json()[0]
+    assert "choices" not in item
+    body = {"attempt_id": item["attempt_id"], "review_token": item["review_token"]}
+    path = f"/api/v1/reviews/{item['word_id']}/choices"
+    assert client.post(path, headers=other, json=body).status_code == 404
+    assert (
+        client.post(
+            path, headers=owner, json={**body, "review_token": "forged"}
+        ).status_code
+        == 409
+    )
+    result = client.post(path, headers=owner, json=body)
+    assert result.status_code == 200, result.text
+    choices = result.json()
+    assert len(choices["choices"]) == 4
+    assert "Hello" in choices["choices"]
+    assert choices["attempt_id"] == item["attempt_id"]
+    assert choices["review_token"] == item["review_token"]
+    assert choices["prompt_sentence"] == item["prompt_sentence"]
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 0
+    client.post(
+        f"/api/v1/reviews/{item['word_id']}/answer",
+        headers=owner,
+        json={**body, "typed_answer": "Hello", "time_taken_ms": 1},
+    )
+    assert client.post(path, headers=owner, json=body).status_code == 409

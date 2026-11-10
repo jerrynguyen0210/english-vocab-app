@@ -37,14 +37,14 @@ saved-tag search endpoint or topic fields on word creation.
 
 `GET /api/v1/reviews/session` accepts the same selection and returns a bounded
 snapshot. Each prompt includes a masked fill-in-the-blank `prompt_sentence`,
-masked explanation/example, `word_id`,
-`attempt_id`, `review_token` and shuffled `choices`. Choices contain exactly four
-unique options, including the target once, without
-identifying the correct option. D16 selects similar-POS saved words, then family
-forms, other saved words and finally general dictionary vocabulary. Small banks
-still receive four options. The client displays them unchanged as A–D with
-Check answer. The legacy
-`/reviews/next` endpoint remains typing-only and selects currently due instants.
+masked explanation/example, `word_id`, `attempt_id` and `review_token`.
+`answer_mode` defaults to `typing`, which returns no choices or correct word.
+Explicit `answer_mode=choice` returns four unique options using D16, with the
+target included once. The client starts with Typing and loads options for an
+existing prompt only when Multiple choice is selected, using authenticated
+`POST /reviews/{word_id}/choices` with its attempt ID and signed token in the
+body. This preserves the snapshot, progress and attempt when changing mode.
+The legacy `/reviews/next` endpoint remains typing-only and masks its hints.
 
 Answers submit the prompt's `attempt_id` and `review_token`, `typed_answer`
 (the selected option for choice mode), and `time_taken_ms` to the existing

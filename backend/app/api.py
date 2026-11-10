@@ -80,10 +80,13 @@ class ReviewItem(BaseModel):
     example_sentence: str | None = None
 
 
-class SessionItem(ReviewItem):
+class TypingSessionItem(ReviewItem):
     prompt_sentence: str
     attempt_id: uuid.UUID
     review_token: str
+
+
+class SessionItem(TypingSessionItem):
     choices: list[str] = Field(min_length=4, max_length=4)
 
     @field_validator("choices")
@@ -96,6 +99,12 @@ class SessionItem(ReviewItem):
         ):
             raise ValueError("Multiple choice requires four distinct nonblank options")
         return values
+
+
+class ChoiceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    attempt_id: uuid.UUID
+    review_token: str = Field(max_length=4096)
 
 
 class AnswerInput(BaseModel):
@@ -259,13 +268,13 @@ def review_preparation(
     }
 
 
-@router.get("/reviews/session", response_model=list[SessionItem])
+@router.get("/reviews/session", response_model=list[SessionItem | TypingSessionItem])
 def review_session(
     response: Response,
     db: DB,
     user: CurrentUser,
     selection: Annotated[ReviewSelection, Query()],
-) -> list[SessionItem]:
+) -> list[TypingSessionItem]:
     response.headers["Cache-Control"] = "no-store"
     now = datetime.now(UTC)
     remaining = min(50, remaining_daily_reviews(db, user, now))
@@ -273,30 +282,89 @@ def review_session(
     if not rows:
         return []
     # Infer POS once per saved word; all prompts share these cached profiles.
-    bank = list(
-        db.scalars(select(Word.word).where(Word.user_id == user.id).order_by(Word.id))
-    )
-    saved_parts = {word: review_parts(word) for word in bank}
-    items = []
-    for word, state in rows:
-        attempt_id = uuid.uuid4()
-        choices = review_options(word.word, saved_parts)
-        items.append(
-            SessionItem(
-                word_id=word.id,
-                attempt_id=attempt_id,
-                review_token=issue_ticket(user.id, state, attempt_id, now),
-                choices=choices,
-                prompt_sentence=prompt_sentence(
-                    word.example_sentence, word.english_explanation, word.word
-                ),
-                english_explanation=mask_target(word.english_explanation, word.word),
-                example_sentence=mask_target(word.example_sentence, word.word)
-                if word.example_sentence
-                else None,
+    bank = (
+        list(
+            db.scalars(
+                select(Word.word).where(Word.user_id == user.id).order_by(Word.id)
             )
         )
+        if selection.answer_mode == "choice"
+        else []
+    )
+    saved_parts = (
+        {word: review_parts(word) for word in bank}
+        if selection.answer_mode == "choice"
+        else {}
+    )
+    items: list[TypingSessionItem] = []
+    for word, state in rows:
+        attempt_id = uuid.uuid4()
+        item = TypingSessionItem(
+            word_id=word.id,
+            attempt_id=attempt_id,
+            review_token=issue_ticket(user.id, state, attempt_id, now),
+            prompt_sentence=prompt_sentence(
+                word.example_sentence, word.english_explanation, word.word
+            ),
+            english_explanation=mask_target(word.english_explanation, word.word),
+            example_sentence=mask_target(word.example_sentence, word.word)
+            if word.example_sentence
+            else None,
+        )
+        if selection.answer_mode == "choice":
+            items.append(
+                SessionItem(
+                    **item.model_dump(), choices=review_options(word.word, saved_parts)
+                )
+            )
+        else:
+            items.append(item)
     return items
+
+
+@router.post("/reviews/{word_id}/choices", response_model=SessionItem)
+def word_choices(
+    word_id: uuid.UUID,
+    body: ChoiceRequest,
+    response: Response,
+    db: DB,
+    user: CurrentUser,
+) -> SessionItem:
+    """Reveal D16 options only after an explicit switch to multiple choice."""
+    pair = db.execute(
+        select(Word, ReviewState)
+        .join(ReviewState, ReviewState.word_id == Word.id)
+        .where(Word.id == word_id, Word.user_id == user.id)
+    ).first()
+    if pair is None:
+        raise HTTPException(404, "Review item not found")
+    word, state = pair
+    now = datetime.now(UTC)
+    if not valid_ticket(body.review_token, user.id, state, body.attempt_id, now):
+        raise HTTPException(
+            409, "Review session expired or changed. Start a new review."
+        )
+    if remaining_daily_reviews(db, user, now) == 0:
+        raise HTTPException(409, "Daily review cap reached")
+    bank = db.scalars(
+        select(Word.word).where(Word.user_id == user.id).order_by(Word.id)
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return SessionItem(
+        word_id=word.id,
+        attempt_id=body.attempt_id,
+        review_token=body.review_token,
+        prompt_sentence=prompt_sentence(
+            word.example_sentence, word.english_explanation, word.word
+        ),
+        english_explanation=mask_target(word.english_explanation, word.word),
+        example_sentence=mask_target(word.example_sentence, word.word)
+        if word.example_sentence
+        else None,
+        choices=review_options(
+            word.word, {value: review_parts(value) for value in bank}
+        ),
+    )
 
 
 @router.post("/reviews/{word_id}/answer", response_model=AnswerResult)

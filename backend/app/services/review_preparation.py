@@ -15,6 +15,7 @@ class ReviewSelection(BaseModel):
     source: Literal["time", "recall"] = "recall"
     period: Literal["Yesterday", "Weekly", "Monthly"] = "Weekly"
     include_overdue: bool = True
+    answer_mode: Literal["typing", "choice"] = "typing"
 
 
 def selected_words(

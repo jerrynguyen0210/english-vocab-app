@@ -35,6 +35,18 @@ type Prompt = {
   choices?: string[];
 };
 type Result = { result: 'correct' | 'incorrect'; correct_word: string };
+function hasFourChoices(choices: string[] | undefined): choices is string[] {
+  return (
+    Array.isArray(choices) &&
+    choices.length === 4 &&
+    choices.every(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    ) &&
+    new Set(
+      choices.map((value) => value.normalize('NFKC').trim().toLowerCase()),
+    ).size === 4
+  );
+}
 
 export default function ReviewScreen() {
   const params = useLocalSearchParams<{
@@ -42,7 +54,7 @@ export default function ReviewScreen() {
     period?: string;
     includeOverdue?: string;
   }>();
-  const [mode, setMode] = useState<'choice' | 'typing'>('choice');
+  const [mode, setMode] = useState<'choice' | 'typing'>('typing');
   const query = reviewQuery(params);
   const { signedIn } = useSession();
   const queue = useRef<Prompt[]>([]);
@@ -67,7 +79,7 @@ export default function ReviewScreen() {
     if (busy.current) return;
     busy.current = true;
     const version = ++loadVersion.current;
-    void authenticatedFetch(`/reviews/session?${query}`)
+    void authenticatedFetch(`/reviews/session?${query}&answer_mode=typing`)
       .then(async (response) => {
         if (!response.ok) throw new Error();
         const items: Prompt[] = await response.json();
@@ -103,7 +115,7 @@ export default function ReviewScreen() {
       });
   }, [query]);
 
-  function next() {
+  function next(startedAt: number) {
     if (busy.current) return;
     setLoading(true);
     setError('');
@@ -116,10 +128,12 @@ export default function ReviewScreen() {
       void load();
       return;
     }
-    setItem(queue.current.shift() ?? null);
+    const following = queue.current.shift() ?? null;
+    setItem(following);
     setPosition((value) => value + 1);
-    started.current = performance.now();
+    started.current = startedAt;
     setLoading(false);
+    if (following && mode === 'choice') void chooseMode('choice', following);
   }
 
   useEffect(() => {
@@ -133,17 +147,69 @@ export default function ReviewScreen() {
   }, [load]);
 
   const serverChoices = item?.choices;
-  const choiceAvailable =
-    Array.isArray(serverChoices) &&
-    serverChoices.length === 4 &&
-    serverChoices.every(
-      (value) => typeof value === 'string' && value.trim().length > 0,
-    ) &&
-    new Set(
-      serverChoices.map((value) =>
-        value.normalize('NFKC').trim().toLowerCase(),
-      ),
-    ).size === 4;
+  const choiceAvailable = hasFourChoices(serverChoices);
+  const canLoadChoices =
+    choiceAvailable || (!!item?.review_token && serverChoices === undefined);
+
+  async function chooseMode(value: 'typing' | 'choice', prompt = item) {
+    if (!prompt || busy.current || (prompt === item && (pendingBody || result)))
+      return;
+    setAnswer('');
+    setError('');
+    if (value === 'typing') {
+      setMode(value);
+      setItem({ ...prompt, choices: undefined });
+      return;
+    }
+    if (hasFourChoices(prompt.choices)) {
+      setMode(value);
+      return;
+    }
+    if (!prompt.review_token) return;
+    busy.current = true;
+    setLoading(true);
+    const version = loadVersion.current;
+    try {
+      const response = await authenticatedFetch(
+        `/reviews/${prompt.word_id}/choices`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            attempt_id: prompt.attempt_id,
+            review_token: prompt.review_token,
+          }),
+        },
+      );
+      if (!response.ok) throw new Error();
+      const loaded: Prompt = await response.json();
+      if (
+        !hasFourChoices(loaded.choices) ||
+        loaded.word_id !== prompt.word_id ||
+        loaded.attempt_id !== prompt.attempt_id
+      )
+        throw new Error();
+      if (mounted.current && version === loadVersion.current) {
+        setItem({ ...prompt, choices: loaded.choices });
+        setMode('choice');
+      }
+    } catch (failure) {
+      if (mounted.current && version === loadVersion.current) {
+        setMode('typing');
+        setError(
+          connectionMessage(
+            failure,
+            'Could not load answer options. Try Multiple choice again, or type your answer.',
+          ),
+        );
+      }
+    } finally {
+      if (version === loadVersion.current) {
+        busy.current = false;
+        if (mounted.current) setLoading(false);
+      }
+    }
+  }
 
   useEffect(() => {
     // Wait until the loaded prompt is editable, including after a failed submit.
@@ -181,7 +247,15 @@ export default function ReviewScreen() {
   }, [announcement]);
 
   async function submit() {
-    if (!signedIn || !item || result || conflict || busy.current) return;
+    if (
+      !signedIn ||
+      !item ||
+      result ||
+      conflict ||
+      busy.current ||
+      (!pendingBody && !answer.trim())
+    )
+      return;
     busy.current = true;
     setLoading(true);
     setError('');
@@ -301,20 +375,17 @@ export default function ReviewScreen() {
                     disabled={
                       loading ||
                       !!pendingBody ||
-                      (value === 'choice' && !choiceAvailable)
+                      (value === 'choice' && !canLoadChoices)
                     }
                     accessibilityRole="radio"
                     accessibilityState={{
                       disabled:
                         loading ||
                         !!pendingBody ||
-                        (value === 'choice' && !choiceAvailable),
+                        (value === 'choice' && !canLoadChoices),
                       checked: (choiceAvailable ? mode : 'typing') === value,
                     }}
-                    onPress={() => {
-                      setMode(value);
-                      setAnswer('');
-                    }}
+                    onPress={() => void chooseMode(value)}
                     style={[
                       styles.modeButton,
                       (choiceAvailable ? mode : 'typing') === value &&
@@ -383,7 +454,7 @@ export default function ReviewScreen() {
                 <Pressable
                   accessibilityRole="button"
                   style={styles.button}
-                  onPress={next}
+                  onPress={() => next(performance.now())}
                   disabled={loading}
                 >
                   <ThemedText style={styles.buttonText}>Next word</ThemedText>
@@ -424,6 +495,7 @@ export default function ReviewScreen() {
                     placeholderTextColor={colors.placeholder}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    autoComplete="off"
                     spellCheck={false}
                     maxLength={200}
                     editable={!loading && !pendingBody && signedIn}
@@ -446,9 +518,9 @@ export default function ReviewScreen() {
                   </ThemedText>
                 </Pressable>
                 <ThemedText style={styles.subtitle}>
-                  {choiceAvailable
-                    ? 'Choose an answer or type the missing word.'
-                    : 'Four answer options are unavailable for this word. Type your answer to continue.'}
+                  {mode === 'typing' || !choiceAvailable
+                    ? 'Spelling matters · Enter to submit'
+                    : 'Select one answer, then check it.'}
                 </ThemedText>
               </>
             )}
@@ -461,7 +533,7 @@ export default function ReviewScreen() {
               <Pressable
                 accessibilityRole="button"
                 style={styles.button}
-                onPress={next}
+                onPress={() => next(performance.now())}
               >
                 <ThemedText style={styles.buttonText}>
                   {conflict ? 'Next word' : 'Try again'}
