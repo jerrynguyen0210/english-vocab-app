@@ -30,6 +30,7 @@ export default function AddWordScreen() {
   const [duplicate, setDuplicate] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [focused, setFocused] = useState<Field | null>(null);
   const inputs = useRef<
     Partial<Record<Field, ComponentRef<typeof TextInput> | null>>
@@ -42,6 +43,7 @@ export default function AddWordScreen() {
     setErrors(nextErrors);
     setMessage('');
     setSaved(false);
+    setSaveFailed(false);
     const firstInvalid = fields.find((field) => nextErrors[field.key]);
     if (firstInvalid) {
       inputs.current[firstInvalid.key]?.focus();
@@ -61,11 +63,15 @@ export default function AddWordScreen() {
         return;
       }
       if (!response.ok) throw new Error('Save failed');
-      setValues(empty);
       setSaved(true);
-      setMessage('Word saved to your word bank.');
+      setMessage('Word saved to your word bank. You can add another word.');
+      setValues(empty);
+      setErrors({});
     } catch {
-      setMessage('Could not save your word. Please try again.');
+      setSaveFailed(true);
+      setMessage(
+        'Could not save your word. Your entries are still here. Please retry.',
+      );
     } finally {
       pending.current = false;
       setSaving(false);
@@ -129,6 +135,8 @@ export default function AddWordScreen() {
                       : undefined,
                   }));
                   setMessage('');
+                  setSaveFailed(false);
+                  setSaved(false);
                 }}
                 style={[
                   styles.input,
@@ -182,7 +190,7 @@ export default function AddWordScreen() {
             ]}
           >
             <ThemedText style={styles.buttonText}>
-              {saving ? 'Saving…' : 'Save word'}
+              {saving ? 'Saving…' : saveFailed ? 'Retry save' : 'Save word'}
             </ThemedText>
           </Pressable>
         </View>
