@@ -174,3 +174,44 @@ an add or answer, submit, verify the message and unchanged input, reconnect and
 retry. Repeat for sign-in and an unreachable server. Confirm a review retry
 records one attempt, and that validation/credential errors are not reported as
 offline. Also verify a timed-out request releases the busy state.
+
+## Client storage — R0 / P3
+
+Status: Accepted.
+
+Persist only what is required to restore authentication and explicitly justified
+minimal preferences. The current persistence inventory is:
+
+| Data | Native | Web |
+| --- | --- | --- |
+| Refresh credential | One SecureStore entry: `wordrecall.refresh` | API-managed HttpOnly, Secure, SameSite=Strict cookie, scoped to `/api/v1/auth` |
+| Access credential | Memory only | Memory only |
+| Preferences | None persisted; appearance follows the OS | None persisted; appearance follows the browser/OS |
+| Profile, words, review prompts/results, typed drafts/passwords | Memory only | Memory only |
+
+Use the existing platform-specific refresh-storage adapter for native token
+reads, rotation and deletion. Never fall back to plaintext if SecureStore fails.
+Successful sign-out/account deletion and rejected refresh credentials clear the
+native credential; transient connection failures retain it for retry. Web cookie
+creation/rotation/expiry is handled by the API, never JavaScript. Secure cookies
+are required for deployed HTTPS; the existing local HTTP exception is development
+only. Do not store tokens in localStorage, sessionStorage, IndexedDB, AsyncStorage,
+files, logs, URLs, or a vocabulary cache.
+
+Native writes use `WHEN_UNLOCKED_THIS_DEVICE_ONLY` so iOS credentials are available
+while unlocked and do not migrate to another device through backup restoration.
+Keep the existing key/service; existing sessions get the updated protection on
+their next successful token rotation. The Expo SecureStore plugin explicitly
+configures Android backup exclusions. A native build is needed to apply plugin
+configuration. iOS Keychain entries can survive uninstall/reinstall: do not treat
+uninstall as logout or promise it erases credentials. These platform behaviors
+follow the [Expo SDK 58 SecureStore documentation](https://docs.expo.dev/versions/v58.0.0/sdk/securestore/).
+
+No new preference store is needed for R0. If a future feature requires a persisted
+preference, document its key, type, default, purpose and cleanup behavior here
+before adding it. Store only the minimal non-sensitive value; do not serialize
+profiles or application state. Device/browser password managers are controlled
+by the user and remain supported through autofill, separate from app persistence.
+D6's pre-R1 cache/queue decision must explicitly revise this inventory before
+any vocabulary data or pending writes are stored locally. PostgreSQL remains
+the source of truth.

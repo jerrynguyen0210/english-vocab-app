@@ -261,7 +261,9 @@ auth POSTs require an allowed Origin. Browsers cannot select native token
 responses. `AUTH_COOKIE_SECURE` defaults to true; set false only for local HTTP
 development in your untracked backend environment. Unrelated web/API domains
 are not supported by this Strict-cookie setup. SecureStore is configured through
-the Expo plugin; device reinstall/backup behavior follows the platform store.
+the Expo plugin with Android backup exclusions and device-only, unlocked iOS
+keychain access. See the [client storage inventory](docs/decisions.md#client-storage--r0--p3)
+for permitted persistence and reinstall behavior.
 
 Auth POSTs share a database-backed fixed-window rate limit of 20 requests per
 peer IP per minute, including failures, across all workers. Only trust known

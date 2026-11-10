@@ -34,9 +34,10 @@ function harness({ native = true, saved = null, fetchImpl } = {}) {
   const writes = [];
   const calls = [];
   const secureStore = {
+    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'device-only-unlocked',
     getItemAsync: async (key) => values.get(key) ?? null,
-    setItemAsync: async (key, value) => {
-      writes.push({ key, value });
+    setItemAsync: async (key, value, options) => {
+      writes.push({ key, value, options });
       values.set(key, value);
     },
     deleteItemAsync: async (key) => {
@@ -113,8 +114,10 @@ for (const native of [true, false]) {
     );
     assert.ok(
       h.writes.every(
-        ({ key, value }) =>
-          key === 'wordrecall.refresh' && value === 'test-refresh',
+        ({ key, value, options }) =>
+          key === 'wordrecall.refresh' &&
+          value === 'test-refresh' &&
+          options.keychainAccessible === 'device-only-unlocked',
       ),
     );
   });
