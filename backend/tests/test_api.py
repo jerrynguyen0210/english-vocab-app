@@ -66,7 +66,13 @@ def test_create_queue_submit_and_schedule(api):
     assert create(client, other).status_code == 201
     queue = client.get("/api/v1/reviews/next?limit=10", headers=owner)
     assert queue.status_code == 200
-    assert queue.json() == [{"word_id": word_id, "english_explanation": "A greeting"}]
+    assert queue.json() == [
+        {
+            "word_id": word_id,
+            "english_explanation": "A greeting",
+            "example_sentence": None,
+        }
+    ]
     assert "hello" not in queue.text.lower()
     assert queue.headers["cache-control"] == "no-store"
     response = client.post(
@@ -173,7 +179,7 @@ def test_only_versioned_product_routes(api):
     for path in schema["paths"]:
         assert path == "/health" or path.startswith("/api/v1/")
     item = schema["components"]["schemas"]["ReviewItem"]["properties"]
-    assert set(item) == {"word_id", "english_explanation"}
+    assert set(item) == {"word_id", "english_explanation", "example_sentence"}
 
 
 @pytest.mark.parametrize(
@@ -273,7 +279,11 @@ def test_queue_and_submission_isolate_accounts(api):
     owner_id = create(client, owner, "OwnerWord").json()["id"]
     other_id = create(client, other, "OtherWord").json()["id"]
     assert client.get("/api/v1/reviews/next?limit=50", headers=owner).json() == [
-        {"word_id": owner_id, "english_explanation": "A greeting"}
+        {
+            "word_id": owner_id,
+            "english_explanation": "A greeting",
+            "example_sentence": None,
+        }
     ]
     state = db.get(ReviewState, uuid.UUID(other_id))
     original_due = state.due_at
@@ -424,3 +434,27 @@ def test_create_word_invalid_sentence(api, sentence):
         },
     )
     assert response.status_code == 422
+
+
+def test_review_hints_mask_answer_before_serialization(api):
+    client, _, owner, _, _ = api
+    created = client.post(
+        "/api/v1/words",
+        headers=owner,
+        json={
+            "word": "resilience",
+            "english_explanation": "Resilience means recovering after setbacks.",
+            "example_sentence": "Her RESILIENCE showed; resilience matters.",
+        },
+    )
+    assert created.status_code == 201
+    response = client.get("/api/v1/reviews/next", headers=owner)
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "word_id": created.json()["id"],
+            "english_explanation": "_____ means recovering after setbacks.",
+            "example_sentence": "Her _____ showed; _____ matters.",
+        }
+    ]
+    assert "resilience" not in response.text.lower()

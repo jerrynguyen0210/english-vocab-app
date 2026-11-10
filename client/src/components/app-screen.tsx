@@ -32,7 +32,7 @@ const navigation = [
 export function AppScreen({
   children,
   selected,
-}: PropsWithChildren<{ selected: 'Home' | 'Add' | 'Account' }>) {
+}: PropsWithChildren<{ selected: 'Home' | 'Add' | 'Review' | 'Account' }>) {
   return (
     <SafeAreaView style={styles.page} edges={['top', 'left', 'right']}>
       <View style={styles.header}>

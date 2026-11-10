@@ -13,6 +13,7 @@ from app.auth import COOKIE, DB, get_current_user
 from app.core.config import get_settings
 from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
 from app.models.word import normalise_word
+from app.services.review_prompt import mask_target
 
 router = APIRouter()
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -61,6 +62,7 @@ class WordCreated(BaseModel):
 class ReviewItem(BaseModel):
     word_id: uuid.UUID
     english_explanation: str
+    example_sentence: str | None = None
 
 
 class AnswerInput(BaseModel):
@@ -120,9 +122,9 @@ def next_reviews(
     user: CurrentUser,
     limit: Annotated[int, Query(ge=1, le=50)] = 1,
 ) -> list[ReviewItem]:
-    # Explicit projection: never serialize a Word or expose its normalized answer.
+    # Read the answer only to redact hints; never serialize it in the prompt.
     rows = db.execute(
-        select(Word.id, Word.english_explanation)
+        select(Word.id, Word.word, Word.english_explanation, Word.example_sentence)
         .join(ReviewState, ReviewState.word_id == Word.id)
         .where(Word.user_id == user.id, ReviewState.due_at <= datetime.now(UTC))
         .order_by(ReviewState.due_at, Word.id)
@@ -130,7 +132,15 @@ def next_reviews(
     )
     response.headers["Cache-Control"] = "no-store"
     return [
-        ReviewItem(word_id=row.id, english_explanation=row.english_explanation)
+        ReviewItem(
+            word_id=row.id,
+            english_explanation=mask_target(row.english_explanation, row.word),
+            example_sentence=(
+                mask_target(row.example_sentence, row.word)
+                if row.example_sentence
+                else None
+            ),
+        )
         for row in rows
     ]
 
