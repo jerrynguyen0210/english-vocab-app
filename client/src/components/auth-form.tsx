@@ -1,3 +1,4 @@
+import { connectionMessage } from '@/services/connectivity';
 import { Link } from 'expo-router';
 import { useEffect, useId, useRef, useState, type ComponentRef } from 'react';
 import {
@@ -126,9 +127,12 @@ export function AuthForm({
       else await session.signIn(submitted.email.trim(), submitted.password);
     } catch (cause) {
       setError(
-        authErrorMessage(
-          cause instanceof AuthError ? cause.status : undefined,
-          signUp,
+        connectionMessage(
+          cause,
+          authErrorMessage(
+            cause instanceof AuthError ? cause.status : undefined,
+            signUp,
+          ),
         ),
       );
     } finally {

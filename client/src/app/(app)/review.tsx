@@ -1,3 +1,4 @@
+import { connectionMessage } from '@/services/connectivity';
 import { Image } from 'expo-image';
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import {
@@ -58,9 +59,14 @@ export default function ReviewScreen() {
           started.current = performance.now();
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (mounted.current)
-          setError('Could not load your review. Please try again.');
+          setError(
+            connectionMessage(
+              error,
+              'Could not load your review. Please try again.',
+            ),
+          );
       })
       .finally(() => {
         busy.current = false;
@@ -172,7 +178,10 @@ export default function ReviewScreen() {
         setError(
           error instanceof AuthError && error.status === 401
             ? 'Sign in to continue. Your answer is still here.'
-            : 'Your answer is saved here. Check your connection and retry the submission.',
+            : connectionMessage(
+                error,
+                'Could not confirm your answer was submitted. Please retry.',
+              ) + ' Your answer is still here. Retry the same submission.',
         );
     } finally {
       busy.current = false;

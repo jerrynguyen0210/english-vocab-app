@@ -56,6 +56,7 @@ function harness(fetch) {
     'expo-image': { Image: 'Image' },
     '@/context/session': { useSession: () => ({ signedIn }) },
     '@/services/auth': { authenticatedFetch: fetch, AuthError },
+    '@/services/connectivity': { connectionMessage: (_, fallback) => fallback },
     '@/components/app-screen': { AppScreen: 'Screen' },
     '@/components/navigation-link': { NavigationLink: 'Link' },
     '@/components/themed-text': { ThemedText: 'Text' },
@@ -95,7 +96,9 @@ function harness(fetch) {
   function text(node = tree) {
     if (node == null || typeof node === 'boolean') return '';
     if (Array.isArray(node)) return node.map(text).join('');
-    return typeof node === 'object' ? text(node.props?.children ?? null) : String(node);
+    return typeof node === 'object'
+      ? text(node.props?.children ?? null)
+      : String(node);
   }
   render();
   return {

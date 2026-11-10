@@ -10,6 +10,8 @@ build/
 dist/
 
 # Local secrets
+*.dump
+*.dump.sha256
 .env
 .env.*
 !.env.example
@@ -37,3 +39,6 @@ GoogleService-Info.plist
 # Python analysis caches
 .mypy_cache/
 .ruff_cache/
+
+# Private admin data exports (use an external private directory regardless)
+user-data-*.json

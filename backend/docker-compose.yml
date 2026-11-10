@@ -21,11 +21,13 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-vocab}:${POSTGRES_PASSWORD:-vocab}@db:5432/${POSTGRES_DB:-vocab}
+      MIGRATION_BACKUP_DIR: /var/backups/english-vocab/migrations
     ports:
       - "0.0.0.0:${API_PORT:-8001}:8000"
     volumes:
       - ./app:/app/app
       - ./migrations:/app/migrations
+      - ${MIGRATION_BACKUP_HOST_DIR:-${HOME}/.local/state/english-vocab-app/migration-backups}:/var/backups/english-vocab/migrations
     depends_on:
       db:
         condition: service_healthy

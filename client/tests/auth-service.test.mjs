@@ -34,9 +34,10 @@ function harness({ native = true, saved = null, fetchImpl } = {}) {
   const writes = [];
   const calls = [];
   const secureStore = {
+    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'device-only-unlocked',
     getItemAsync: async (key) => values.get(key) ?? null,
-    setItemAsync: async (key, value) => {
-      writes.push({ key, value });
+    setItemAsync: async (key, value, options) => {
+      writes.push({ key, value, options });
       values.set(key, value);
     },
     deleteItemAsync: async (key) => {
@@ -60,6 +61,9 @@ function harness({ native = true, saved = null, fetchImpl } = {}) {
   const service = loadModule('../src/services/auth.ts', {
     '../constants/api': { getApiBaseUrl: () => 'https://api.example.com' },
     './refresh-storage': storage,
+    './connectivity': loadModule('../src/services/connectivity.ts', {
+      globals: { fetch, AbortController, setTimeout, clearTimeout },
+    }),
     globals: { fetch },
   });
   return { service, storage, values, writes, calls };
@@ -110,8 +114,10 @@ for (const native of [true, false]) {
     );
     assert.ok(
       h.writes.every(
-        ({ key, value }) =>
-          key === 'wordrecall.refresh' && value === 'test-refresh',
+        ({ key, value, options }) =>
+          key === 'wordrecall.refresh' &&
+          value === 'test-refresh' &&
+          options.keychainAccessible === 'device-only-unlocked',
       ),
     );
   });
@@ -157,9 +163,10 @@ test('invalid refresh clears SecureStore; temporary network failure retains the 
       saved: 'test-saved-refresh',
       fetchImpl: async () => new Response(null, { status }),
     });
-    await assert.rejects(
-      h.service.refreshSession(),
-      (error) => error.status === status,
+    await assert.rejects(h.service.refreshSession(), (error) =>
+      status === 503
+        ? /server is unreachable/.test(error.message)
+        : error.status === status,
     );
     assert.equal(h.values.has('wordrecall.refresh'), status !== 401);
   }
@@ -169,7 +176,7 @@ test('invalid refresh clears SecureStore; temporary network failure retains the 
       throw new TypeError('Test network failure');
     },
   });
-  await assert.rejects(h.service.refreshSession(), /Test network failure/);
+  await assert.rejects(h.service.refreshSession(), /server is unreachable/);
   assert.equal(h.values.get('wordrecall.refresh'), 'test-saved-refresh');
 });
 
@@ -199,9 +206,10 @@ test('already-expired logout clears SecureStore, while failed logout remains ret
     });
     if (status === 401) await h.service.signOut();
     else
-      await assert.rejects(
-        h.service.signOut(),
-        (error) => error.status === status,
+      await assert.rejects(h.service.signOut(), (error) =>
+        status === 503
+          ? /server is unreachable/.test(error.message)
+          : error.status === status,
       );
     assert.equal(h.values.has('wordrecall.refresh'), status !== 401);
   }
@@ -415,9 +423,8 @@ test('failed account deletion preserves credentials for a retry', async () => {
       url.endsWith('/account') ? new Response(null, { status }) : tokens(),
   });
   await h.service.signIn('learner@example.com', 'test-password-only');
-  await assert.rejects(
-    h.service.deleteAccount(),
-    (error) => error.status === 503,
+  await assert.rejects(h.service.deleteAccount(), (error) =>
+    /server is unreachable/.test(error.message),
   );
   assert.equal(h.values.get('wordrecall.refresh'), 'test-refresh');
   status = 204;

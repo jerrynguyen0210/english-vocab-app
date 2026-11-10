@@ -7,7 +7,7 @@
 | D3 | Hints and retries | No hints · first letter / word length · one retry before revealing | No hints, one attempt, then reveal the correct word | P6 |
 | D4 | Review scheduling (which words come back, and when) | Simple Leitner boxes · SM-2-style · FSRS | Leitner boxes driven by correct/incorrect (it fits pass/fail typed answers) | P6 |
 | D5 | Session rules | Fixed count per session · all due words · daily cap | Due words first with a daily cap | P6 |
-| D6 | Connectivity when offline | Online required · read-only cache · queue adds/answers locally and sync later | Online required for R0; revisit before R1 | P3/P7 |
+| D6 | Connectivity when offline | Online required · read-only cache · queue adds/answers locally and sync later | Online required for R0; explicit cache/queue decision before R1 | R0 implementation; before R1 scope |
 | D7 | Auth method | Email + password · email magic link · OAuth/social | Email + password or magic link through your own FastAPI auth | P3 |
 | D8 | Backend hosting | VPS/Docker host · managed container platform · BaaS for the database only | Docker on a host you're comfortable with; check pricing when you choose | P10 |
 | D9 | First platform you use daily | Android phone · iPhone · web | The phone you carry every day; web for desktop | P2 |
@@ -132,3 +132,104 @@ Nothing due is a distinct empty state. Authentication expiry preserves the
 in-memory draft behind the existing sign-in overlay; signing into another account
 clears it. Network retries preserve the exact answer, elapsed duration and attempt
 ID, including when the first response was lost after the server committed.
+
+## D6 — R0 connectivity and the pre-R1 decision
+
+Status: R0 accepted; cache/queue decision required before R1 scope is finalized.
+
+R0 requires an online server. Failed connections, 15-second request timeouts,
+and unavailable gateways show “You're offline or the server is unreachable.
+Check your connection and try again.” This deliberately does not claim to know
+whether the device, network, or server is at fault. Validation errors and expired
+sessions retain their separate handling. Retry is explicit; writes are not
+queued or automatically replayed after connectivity failures.
+
+Keep typed sign-in/sign-up fields, new-word fields, and review answers in memory
+on failure. Clear new-word fields only after confirmed success. Review retries
+reuse the original attempt ID, answer and elapsed duration, so a response lost
+after commit does not record a second attempt. A failed add may already have
+committed; a retry can return the existing duplicate-word message. Do not claim
+that an unconfirmed write was saved. Session connectivity failures preserve
+credentials and the mounted account's drafts. Reloading, closing the app, or
+switching accounts may discard drafts; R0 does not persist them to disk.
+
+Before R1, review actual R0 usage and record an explicit accept/defer decision:
+
+| Option | Benefit | Additional work to justify |
+| --- | --- | --- |
+| Keep online-only | Smallest maintenance burden; server remains authoritative | Accept interruption during outages |
+| Read-only local cache | Browse previously loaded words offline | Account isolation, stale-data labels, expiry, logout/deletion cleanup, storage/privacy tests |
+| Durable write queue | Add words or answer without a connection | Idempotent adds, review eligibility and daily-cap conflicts, ordering, retries, account changes, sync status, failed-item recovery, schema upgrades |
+
+Default for R1 planning: keep online-only unless repeated real offline usage
+blocks learning. If the need is browsing, consider a read-only cache first.
+Approve a queue only if offline creation/review is a demonstrated requirement
+and its conflict/recovery behavior can be specified and tested. PostgreSQL
+remains the source of truth for all options. The R1 planning checkpoint must
+record observed outage frequency, affected workflows, chosen option, and why
+its user benefit warrants the maintenance cost; no queue is approved by R0.
+
+Manual acceptance checks on web and a device: disable connectivity while typing
+an add or answer, submit, verify the message and unchanged input, reconnect and
+retry. Repeat for sign-in and an unreachable server. Confirm a review retry
+records one attempt, and that validation/credential errors are not reported as
+offline. Also verify a timed-out request releases the busy state.
+
+## Client storage — R0 / P3
+
+Status: Accepted.
+
+Persist only what is required to restore authentication and explicitly justified
+minimal preferences. The current persistence inventory is:
+
+| Data | Native | Web |
+| --- | --- | --- |
+| Refresh credential | One SecureStore entry: `wordrecall.refresh` | API-managed HttpOnly, Secure, SameSite=Strict cookie, scoped to `/api/v1/auth` |
+| Access credential | Memory only | Memory only |
+| Preferences | None persisted; appearance follows the OS | None persisted; appearance follows the browser/OS |
+| Profile, words, review prompts/results, typed drafts/passwords | Memory only | Memory only |
+
+Use the existing platform-specific refresh-storage adapter for native token
+reads, rotation and deletion. Never fall back to plaintext if SecureStore fails.
+Successful sign-out/account deletion and rejected refresh credentials clear the
+native credential; transient connection failures retain it for retry. Web cookie
+creation/rotation/expiry is handled by the API, never JavaScript. Secure cookies
+are required for deployed HTTPS; the existing local HTTP exception is development
+only. Do not store tokens in localStorage, sessionStorage, IndexedDB, AsyncStorage,
+files, logs, URLs, or a vocabulary cache.
+
+Native writes use `WHEN_UNLOCKED_THIS_DEVICE_ONLY` so iOS credentials are available
+while unlocked and do not migrate to another device through backup restoration.
+Keep the existing key/service; existing sessions get the updated protection on
+their next successful token rotation. The Expo SecureStore plugin explicitly
+configures Android backup exclusions. A native build is needed to apply plugin
+configuration. iOS Keychain entries can survive uninstall/reinstall: do not treat
+uninstall as logout or promise it erases credentials. These platform behaviors
+follow the [Expo SDK 58 SecureStore documentation](https://docs.expo.dev/versions/v58.0.0/sdk/securestore/).
+
+No new preference store is needed for R0. If a future feature requires a persisted
+preference, document its key, type, default, purpose and cleanup behavior here
+before adding it. Store only the minimal non-sensitive value; do not serialize
+profiles or application state. Device/browser password managers are controlled
+by the user and remain supported through autofill, separate from app persistence.
+D6's pre-R1 cache/queue decision must explicitly revise this inventory before
+any vocabulary data or pending writes are stored locally. PostgreSQL remains
+the source of truth.
+
+## Data portability — backend admin task
+
+Status: Accepted for R0.
+
+Produce a user's retained application data on a verified request using
+`python -m app.export_user --user-id UUID --output PATH`. Follow the
+[admin procedure and data inventory](data-portability.md). This supports request
+fulfilment without adding a product feature or publicly accessible export route.
+
+Do not add an in-app export unless an applicable store or privacy requirement
+makes that delivery mechanism necessary. At store submission, or when applicable
+privacy requirements change, review the actual requirement. Record its source,
+applicability, review date and whether backend fulfilment is sufficient. If it
+requires an in-app flow, supersede this decision and specify authentication,
+account scoping, delivery and temporary-file cleanup before implementing it.
+No such requirement has been established in this task; this decision makes no
+claim that backend export alone guarantees compliance in every jurisdiction.

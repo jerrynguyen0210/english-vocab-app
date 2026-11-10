@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Install the current checkout's backup job, preserving unrelated cron entries."""
+import os
+from pathlib import Path
+import shlex
+import subprocess
+
+root = Path(__file__).resolve().parent.parent
+directory = Path.home() / '.local/state/english-vocab-app/backups'
+directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+directory.chmod(0o700)
+previous = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+if previous.returncode and 'no crontab for' not in previous.stderr:
+    raise SystemExit(previous.stderr)
+marker = '# english-vocab-app-database-backup'
+lines = [line for line in previous.stdout.splitlines() if not line.endswith(marker)]
+command = (
+    f'{shlex.quote(str(root / "ops/database-backup"))} backup '
+    f'> {shlex.quote(str(directory / "latest-backup.log"))} 2>&1 '
+    '|| /usr/bin/logger -p user.err -t english-vocab-backup "Database backup failed; inspect latest-backup.log"'
+)
+# Cron interprets percent even inside shell quotes.
+lines.append('15 3 * * * ' + command.replace('%', r'\%') + ' ' + marker)
+os.umask(0o077)
+subprocess.run(['crontab', '-'], input='\n'.join(lines) + '\n', text=True, check=True)
+print('Installed daily backup at 03:15 host local time; existing cron entries preserved.')

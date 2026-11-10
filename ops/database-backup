@@ -1,0 +1,63 @@
+#!/bin/bash
+# Host-side backup and isolated restore drill for backend/docker-compose.yml.
+set -Eeuo pipefail
+umask 077
+export PATH=/usr/local/bin:/usr/bin:/bin
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+BACKUP_DIR=${BACKUP_DIR:-$HOME/.local/state/english-vocab-app/backups}
+mkdir -p -- "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
+exec 9>"$BACKUP_DIR/.lock"
+flock -n 9 || { echo 'Another backup/restore is running' >&2; exit 1; }
+compose=(docker compose --project-directory "$ROOT/backend" -f "$ROOT/backend/docker-compose.yml")
+db() { "${compose[@]}" exec -T db "$@"; }
+mode=${1:-backup}
+case "$mode" in
+backup)
+    stamp=$(date -u +%Y%m%dT%H%M%S%NZ)
+    archive="$BACKUP_DIR/vocab-$stamp.dump"
+    temp=$(mktemp "$BACKUP_DIR/.dump.XXXXXXXX")
+    trap 'rm -f -- "$temp"' EXIT
+    db sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --no-acl' > "$temp"
+    # Reject empty or unreadable archives before publication or retention cleanup.
+    test -s "$temp"
+    db pg_restore --list < "$temp" > /dev/null
+    mv -- "$temp" "$archive"
+    (cd "$BACKUP_DIR" && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
+    # 30 elapsed days, evaluated only after a successful backup. Never remove newest.
+    find "$BACKUP_DIR" -maxdepth 1 -type f -name 'vocab-*.dump' ! -path "$archive" -mmin +43200 -print0 |
+        while IFS= read -r -d '' old; do rm -- "$old"; rm -f -- "$old.sha256"; done
+    echo "$(date -u +%FT%TZ) Backup successful: $archive"
+    ;;
+restore-drill)
+    archive=${2:?Usage: database-backup restore-drill /absolute/path/to/vocab-TIMESTAMP.dump}
+    archive=$(realpath -- "$archive")
+    (cd "$(dirname "$archive")" && sha256sum --check "$(basename "$archive").sha256")
+    target="vocab_restore_$(date -u +%Y%m%d_%H%M%S)_$$"
+    # createdb fails if a database already exists; never replace an existing database.
+    db sh -ec 'createdb -U "$POSTGRES_USER" --template=template0 "$1"' sh "$target"
+    cleanup() { db sh -ec 'dropdb -U "$POSTGRES_USER" "$1"' sh "$target"; }
+    trap cleanup EXIT
+    db sh -ec 'pg_restore -U "$POSTGRES_USER" -d "$1" --exit-on-error --single-transaction --no-owner --no-acl' sh "$target" < "$archive"
+    db sh -ec 'psql -X -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1' sh "$target" <<'SQL'
+SELECT current_database() AS restored_database;
+SELECT version_num AS restored_migration FROM public.alembic_version;
+-- Read every application table, including tables containing authentication data,
+-- but report counts only, never records or credentials.
+SELECT format('SELECT %L AS table_name, count(*) AS rows FROM %I.%I;',
+              tablename, schemaname, tablename)
+FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
+\gexec
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE connamespace = 'public'::regnamespace
+             AND NOT convalidated) THEN
+    RAISE EXCEPTION 'Restored database contains unvalidated constraints';
+  END IF;
+END $$;
+SQL
+    cleanup
+    trap - EXIT
+    echo "$(date -u +%FT%TZ) Restore drill successful; fresh database $target removed"
+    ;;
+*) echo 'Usage: database-backup [backup | restore-drill ARCHIVE]' >&2; exit 2 ;;
+esac

@@ -32,7 +32,11 @@ const navigation = [
 export function AppScreen({
   children,
   selected,
-}: PropsWithChildren<{ selected: 'Home' | 'Add' | 'Review' | 'Account' }>) {
+  toast,
+}: PropsWithChildren<{
+  selected: 'Home' | 'Add' | 'Review' | 'Account';
+  toast?: string;
+}>) {
   return (
     <SafeAreaView style={styles.page} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -67,6 +71,13 @@ export function AppScreen({
       >
         {children}
       </ScrollView>
+      {!!toast && (
+        <View pointerEvents="none" style={styles.toast}>
+          <ThemedText accessibilityLiveRegion="polite" style={styles.toastText}>
+            {toast}
+          </ThemedText>
+        </View>
+      )}
       <SafeAreaView edges={['bottom']} style={styles.footer}>
         <View style={styles.navigation}>
           {navigation.map(({ label, href, icon }) => (
@@ -167,6 +178,19 @@ const styles = StyleSheet.create({
   },
   icon: { width: 24, height: 24 },
   scroll: { flex: 1 },
+  toast: {
+    backgroundColor: colors.successBackground,
+    borderColor: colors.success,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+    marginHorizontal: 22,
+    marginVertical: 8,
+    maxWidth: 556,
+    width: '90%',
+    alignSelf: 'center',
+  },
+  toastText: { color: colors.success, fontSize: 14, lineHeight: 20 },
   scrollContent: { flexGrow: 1 },
   footer: {
     backgroundColor: colors.surface,

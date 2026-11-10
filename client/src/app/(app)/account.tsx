@@ -1,3 +1,4 @@
+import { connectionMessage } from '@/services/connectivity';
 import { useId, useRef, useState, type ComponentRef } from 'react';
 import {
   ActivityIndicator,
@@ -48,11 +49,14 @@ export default function AccountScreen() {
       await (action === 'delete' ? deleteAccount() : signOut());
     } catch (cause) {
       setError(
-        cause instanceof AuthError && cause.status === 401
-          ? 'Your session expired. Sign in and try again.'
-          : action === 'delete'
-            ? 'Unable to delete your account. Check your connection and try again.'
-            : 'Unable to sign out. Check your connection and try again.',
+        connectionMessage(
+          cause,
+          cause instanceof AuthError && cause.status === 401
+            ? 'Your session expired. Sign in and try again.'
+            : action === 'delete'
+              ? 'Unable to delete your account. Check your connection and try again.'
+              : 'Unable to sign out. Check your connection and try again.',
+        ),
       );
     } finally {
       busy.current = false;
