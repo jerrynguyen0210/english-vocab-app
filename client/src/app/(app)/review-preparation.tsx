@@ -1,3 +1,4 @@
+import { ReviewEmptyState } from '@/components/review-empty-state';
 import { useFocusEffect } from 'expo-router';
 import { authenticatedFetch } from '@/services/auth';
 import { connectionMessage } from '@/services/connectivity';
@@ -9,6 +10,8 @@ import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 import {
   reviewQuery,
+  reviewEmptyKind,
+  type ReviewSummary,
   type ReviewPeriod,
   type ReviewSource,
 } from '@/services/review';
@@ -46,6 +49,7 @@ export default function ReviewPreparationScreen() {
     query: string;
     count: number;
     matching: number;
+    summary: ReviewSummary | null;
   } | null>(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
@@ -59,7 +63,7 @@ export default function ReviewPreparationScreen() {
       setError('');
       const timer = setTimeout(() => {
         if (source === 'topic') {
-          setReady({ query, count: 0, matching: 0 });
+          setReady({ query, count: 0, matching: 0, summary: null });
           return;
         }
         void authenticatedFetch(`/reviews/preparation?${query}`)
@@ -71,6 +75,7 @@ export default function ReviewPreparationScreen() {
                 query,
                 count: result.count,
                 matching: result.matching_count,
+                summary: result,
               });
           })
           .catch((failure) => {
@@ -218,6 +223,11 @@ export default function ReviewPreparationScreen() {
               <ThemedText style={styles.periodText}>Try again</ThemedText>
             </Pressable>
           </View>
+        )}
+        {source !== 'topic' && count === 0 && !error && ready?.summary && (
+          <ReviewEmptyState
+            kind={reviewEmptyKind(ready.summary, ready.matching)}
+          />
         )}
         {count !== null && ready && ready.matching > count && (
           <ThemedText style={styles.detail}>

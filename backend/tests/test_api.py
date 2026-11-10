@@ -699,7 +699,13 @@ def test_preparation_windows_and_overdue_are_user_local(api, monkeypatch):
             "/api/v1/reviews/preparation", params=params, headers=owner
         )
         assert response.status_code == 200, response.text
-        assert response.json() == {"count": expected, "matching_count": expected}
+        assert response.json() == {
+            "count": expected,
+            "matching_count": expected,
+            "saved_count": 8,
+            "due_count": 6,
+            "daily_remaining": get_settings().review_daily_cap,
+        }
         assert (
             len(
                 client.get(
@@ -737,7 +743,13 @@ def test_time_session_authorizes_not_due_answers(api):
     db.commit()
     query = "?source=time&period=Weekly&answer_mode=choice"
     response = client.get("/api/v1/reviews/preparation" + query, headers=owner)
-    assert response.json() == {"count": 2, "matching_count": 2}
+    assert response.json() == {
+        "count": 2,
+        "matching_count": 2,
+        "saved_count": 2,
+        "due_count": 0,
+        "daily_remaining": get_settings().review_daily_cap,
+    }
     assert response.headers["cache-control"] == "no-store"
     items = client.get("/api/v1/reviews/session" + query, headers=owner).json()
     assert len(items) == 2
@@ -796,7 +808,13 @@ def test_preparation_daily_allowance_and_four_options_for_small_bank(api, monkey
     create(client, owner, "bye")
     assert client.get(
         "/api/v1/reviews/preparation?source=recall", headers=owner
-    ).json() == {"count": 1, "matching_count": 2}
+    ).json() == {
+        "count": 1,
+        "matching_count": 2,
+        "saved_count": 2,
+        "due_count": 2,
+        "daily_remaining": 1,
+    }
     result = client.post(
         f"/api/v1/reviews/{item['word_id']}/answer",
         headers=owner,
@@ -959,3 +977,44 @@ def test_typing_is_default_and_choice_requires_explicit_authorized_request(api):
         json={**body, "typed_answer": "Hello", "time_taken_ms": 1},
     )
     assert client.post(path, headers=owner, json=body).status_code == 409
+
+
+def test_review_summary_distinguishes_empty_bank_nothing_due_and_cap(api, monkeypatch):
+    client, db, owner, other, _ = api
+    monkeypatch.setattr(get_settings(), "review_daily_cap", 1)
+    response = client.get("/api/v1/reviews/summary", headers=owner)
+    assert response.status_code == 200
+    assert response.json() == {"saved_count": 0, "due_count": 0, "daily_remaining": 1}
+    assert response.headers["cache-control"] == "no-store"
+    word_id = create(client, owner).json()["id"]
+    assert client.get("/api/v1/reviews/summary", headers=owner).json() == {
+        "saved_count": 1,
+        "due_count": 1,
+        "daily_remaining": 1,
+    }
+    assert (
+        client.get("/api/v1/reviews/summary", headers=other).json()["saved_count"] == 0
+    )
+    client.post(
+        f"/api/v1/reviews/{word_id}/answer",
+        headers=owner,
+        json={"typed_answer": "Hello", "time_taken_ms": 1},
+    )
+    assert client.get("/api/v1/reviews/summary", headers=owner).json() == {
+        "saved_count": 1,
+        "due_count": 0,
+        "daily_remaining": 0,
+    }
+    db.get(ReviewState, uuid.UUID(word_id)).due_at = datetime.now(UTC) - timedelta(
+        seconds=1
+    )
+    db.commit()
+    prep = client.get("/api/v1/reviews/preparation?source=recall", headers=owner).json()
+    assert prep == {
+        "saved_count": 1,
+        "due_count": 1,
+        "daily_remaining": 0,
+        "matching_count": 1,
+        "count": 0,
+    }
+    assert client.get("/api/v1/reviews/summary").status_code == 401

@@ -72,7 +72,7 @@ feedback and the draft before showing the next masked prompt.
 A persistent polite live region
 announces the outcome and correct word on web/Android (also the user’s answer
 when incorrect), and VoiceOver uses an explicit iOS announcement.
-Finished sessions announce and display the correct-answer count.
+Finished sessions announce and display the reviewed-word and correct-answer counts.
 
 The snapshot and every submission respect the daily cap across sessions/devices.
 Only a confirmed answer increments totals. Network retries resend the same attempt
@@ -84,3 +84,18 @@ HTTP serialization and unchanged stored examples. Screen-handler tests cover the
 masked question in both modes, Word 3 of 12 at 25%, progression, retained drafts,
 identical retry payloads, sign-in interruption, empty states and completion.
 These tests do not emulate native layout or screen-reader speech.
+
+
+## Session end
+
+After the final Next word exhausts the fixed snapshot, show **Review finished**
+and **You reviewed all N words**, with correct-answer totals and Back to Home.
+The count uses confirmed submissions, not the number of prompts shown. If a
+conflict skips a word or another device reaches the daily cap, show **You
+reviewed R of N words** instead of claiming all words were reviewed. Completion
+has an accessible announcement and does not fetch or silently append a new queue.
+
+A session empty at start is not a finished review. It loads the selected
+preparation totals to distinguish **Empty word bank**, **Nothing due**, an empty
+filter and a daily cap. Every empty state links to Add word; failure to load the
+totals shows a retryable error rather than a guessed empty state.

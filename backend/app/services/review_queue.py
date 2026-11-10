@@ -87,3 +87,20 @@ def schedule_review(state: ReviewState, correct: bool, now: datetime) -> None:
         state.interval_days = 0
         # Same-day relearning; subsequent success restarts the SM-2 sequence.
         state.due_at = now + timedelta(minutes=10)
+
+
+def review_totals(db: Session, user: User, now: datetime) -> dict[str, int]:
+    """Non-sensitive totals distinguish an empty bank, nothing due and a cap."""
+    return {
+        "saved_count": db.scalar(
+            select(func.count()).select_from(Word).where(Word.user_id == user.id)
+        )
+        or 0,
+        "due_count": db.scalar(
+            select(func.count()).select_from(
+                due_today(user, now).order_by(None).subquery()
+            )
+        )
+        or 0,
+        "daily_remaining": remaining_daily_reviews(db, user, now),
+    }

@@ -31,6 +31,8 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
   let focusCalls = 0;
   let previousInputRef;
   let signedIn = true;
+  let focusCallback;
+  let focusCleanup;
   class AuthError extends Error {
     constructor(status) {
       super();
@@ -70,12 +72,19 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
       }
     },
   };
-  const jsx = (type, props) => ({ type, props });
+  const jsx = (type, props) =>
+    typeof type === 'function' ? type(props) : { type, props };
   const dependencies = {
     react,
     'expo-router': {
       useLocalSearchParams: () => params,
-      useFocusEffect: (callback) => react.useEffect(callback, [callback]),
+      useFocusEffect: (callback) => {
+        focusCallback = callback;
+        react.useEffect(() => {
+          focusCleanup = callback();
+          return () => focusCleanup?.();
+        }, [callback]);
+      },
     },
     '@/services/review': reviewModule,
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
@@ -85,7 +94,10 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
       TextInput: 'Input',
       View: 'View',
       Switch: 'Switch',
-      Platform: { OS: platform },
+      Platform: {
+        OS: platform,
+        select: (values) => values[platform] ?? values.default,
+      },
       StyleSheet: { create: (s) => s },
       AccessibilityInfo: {
         announceForAccessibility: (message) => announcements.push(message),
@@ -100,6 +112,27 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
     '@/components/themed-text': { ThemedText: 'Text' },
     '@/constants/wordwell-theme': { WordwellColors: {} },
   };
+  const emptyModule = {};
+  runInNewContext(
+    ts.transpileModule(
+      readFileSync(
+        new URL('../src/components/review-empty-state.tsx', import.meta.url),
+        'utf8',
+      ),
+      {
+        compilerOptions: {
+          module: ts.ModuleKind.CommonJS,
+          jsx: ts.JsxEmit.ReactJSX,
+          target: ts.ScriptTarget.ES2022,
+        },
+      },
+    ).outputText,
+    {
+      exports: emptyModule,
+      require: (id) => (id.endsWith('.svg') ? id : dependencies[id]),
+    },
+  );
+  dependencies['@/components/review-empty-state'] = emptyModule;
   const { outputText } = ts.transpileModule(
     readFileSync(
       new URL(`../src/app/(app)/${screen}.tsx`, import.meta.url),
@@ -168,6 +201,11 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
     feedbackText: () =>
       text(nodes().find((node) => node.props?.testID === 'review-feedback')),
     focusCalls: () => focusCalls,
+    refocus() {
+      focusCleanup?.();
+      focusCleanup = focusCallback?.();
+      render();
+    },
     async flush() {
       await new Promise((resolve) => setImmediate(resolve));
       render();
@@ -179,6 +217,10 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
       await new Promise((resolve) => setImmediate(resolve));
       render();
     },
+    navigation: (label) =>
+      nodes().find(
+        (node) => node.type === 'Link' && node.props.label === label,
+      ),
     link: () =>
       nodes().find(
         (n) => n.type === 'Link' && n.props.label.startsWith('Start review'),
@@ -273,7 +315,19 @@ test('expiry retains answer and allows retry after same-account sign-in', async 
 });
 
 test('empty session shows nothing due without an answer field', async () => {
-  const h = harness(async () => Response.json([]));
+  const h = harness(async (path) =>
+    Response.json(
+      path.startsWith('/reviews/preparation')
+        ? {
+            saved_count: 1,
+            due_count: 0,
+            daily_remaining: 20,
+            count: 0,
+            matching_count: 0,
+          }
+        : [],
+    ),
+  );
   await h.flush();
   assert.match(h.text(), /Nothing due/);
   assert.equal(h.input(), undefined);
@@ -712,3 +766,187 @@ for (const platform of ['web', 'android', 'ios']) {
     }
   }
 }
+
+for (const screen of ['index', 'review-preparation']) {
+  for (const state of [
+    {
+      name: 'empty bank',
+      saved_count: 0,
+      due_count: 0,
+      daily_remaining: 20,
+      matching_count: 0,
+      count: 0,
+      title: 'Empty word bank',
+      action: 'Add your first word',
+    },
+    {
+      name: 'nothing due',
+      saved_count: 3,
+      due_count: 0,
+      daily_remaining: 20,
+      matching_count: 0,
+      count: 0,
+      title: "You're all caught up",
+      action: 'Add word',
+    },
+    {
+      name: 'daily cap',
+      saved_count: 3,
+      due_count: 2,
+      daily_remaining: 0,
+      matching_count: 2,
+      count: 0,
+      title: 'Daily review limit reached',
+      action: 'Add word',
+    },
+  ]) {
+    test(`${screen} distinguishes ${state.name} and links to Add word`, async () => {
+      const h = harness(async () => Response.json(state), {}, screen);
+      assert.doesNotMatch(
+        h.text(),
+        /Empty word bank|You're all caught up|Daily review limit reached/,
+      );
+      if (screen === 'index') await h.flush();
+      else await h.advance();
+      assert.ok(h.text().includes(state.title));
+      assert.equal(h.navigation(state.action).props.href, '/add-word');
+      if (state.name === 'daily cap')
+        assert.doesNotMatch(h.text(), /You're all caught up/);
+      assert.doesNotMatch(h.text(), /Sample data/);
+    });
+  }
+}
+
+test('preparation distinguishes a filter with no matches from being caught up', async () => {
+  const h = harness(
+    async () =>
+      Response.json({
+        count: 0,
+        matching_count: 0,
+        saved_count: 3,
+        due_count: 2,
+        daily_remaining: 20,
+      }),
+    {},
+    'review-preparation',
+  );
+  await h.advance();
+  assert.match(h.text(), /No words match this review/);
+  assert.doesNotMatch(h.text(), /You're all caught up/);
+  assert.equal(h.navigation('Add word').props.href, '/add-word');
+  assert.equal(h.link(), undefined);
+});
+
+for (const screen of ['index', 'review-preparation']) {
+  test(`${screen} refreshes after returning from Add word`, async () => {
+    let saved = 0;
+    const h = harness(
+      async () =>
+        Response.json({
+          saved_count: saved,
+          due_count: saved,
+          daily_remaining: 20,
+          count: saved,
+          matching_count: saved,
+        }),
+      {},
+      screen,
+    );
+    if (screen === 'index') await h.flush();
+    else await h.advance();
+    assert.match(h.text(), /Empty word bank/);
+    saved = 1;
+    h.refocus();
+    if (screen === 'index') await h.flush();
+    else await h.advance();
+    assert.doesNotMatch(h.text(), /Empty word bank/);
+    if (screen === 'index') assert.match(h.text(), /1 saved words/);
+    else assert.match(h.text(), /1 words ready/);
+  });
+}
+
+test('Home retries a network failure without displaying a false empty state', async () => {
+  let fail = true;
+  const h = harness(
+    async () => {
+      if (fail) throw new Error('offline');
+      return Response.json({
+        saved_count: 0,
+        due_count: 0,
+        daily_remaining: 20,
+      });
+    },
+    {},
+    'index',
+  );
+  await h.flush();
+  assert.match(h.text(), /Could not load your progress/);
+  assert.doesNotMatch(h.text(), /Empty word bank|You're all caught up/);
+  fail = false;
+  h.button('Try again').props.onPress();
+  await h.flush();
+  await h.flush();
+  assert.match(h.text(), /Empty word bank/);
+});
+
+test('the final Next word finishes all twelve words with a count and Home link', async () => {
+  let loads = 0;
+  const h = harness(async (_, init) => {
+    if (!init) {
+      loads++;
+      return Response.json(
+        Array.from({ length: 12 }, (_, index) => ({
+          ...prompts[0],
+          word_id: String(index),
+          attempt_id: `attempt-${index}`,
+        })),
+      );
+    }
+    return Response.json({ result: 'correct', correct_word: 'Hello' });
+  });
+  await h.flush();
+  for (let index = 0; index < 12; index++) {
+    h.input().props.onChangeText('Hello');
+    await h.flush();
+    h.button('Check answer').props.onPress();
+    await h.flush();
+    h.button('Next word').props.onPress();
+    await h.flush();
+  }
+  assert.match(h.text(), /Review finished/);
+  assert.match(h.text(), /You reviewed all 12 words/);
+  assert.match(h.text(), /12 of 12 answers correct/);
+  assert.match(h.liveRegion().props.children, /You reviewed all 12 words/);
+  assert.equal(h.navigation('Back to Home').props.href, '/');
+  assert.equal(h.input(), undefined);
+  assert.equal(h.button('Next word'), undefined);
+  assert.equal(loads, 1);
+});
+
+test('daily cap interruption does not claim every snapshot word was reviewed', async () => {
+  let submissions = 0;
+  const h = harness(async (_, init) => {
+    if (!init)
+      return Response.json([
+        prompts[0],
+        { ...prompts[0], word_id: 'two', attempt_id: 'two' },
+      ]);
+    submissions++;
+    return submissions === 1
+      ? Response.json({ result: 'correct', correct_word: 'Hello' })
+      : Response.json({ detail: 'Daily review cap reached' }, { status: 409 });
+  });
+  await h.flush();
+  h.input().props.onChangeText('Hello');
+  await h.flush();
+  h.button('Check answer').props.onPress();
+  await h.flush();
+  h.button('Next word').props.onPress();
+  await h.flush();
+  h.input().props.onChangeText('Hello');
+  await h.flush();
+  h.button('Check answer').props.onPress();
+  await h.flush();
+  assert.match(h.text(), /You reviewed 1 of 2 words/);
+  assert.doesNotMatch(h.text(), /You reviewed all 2/);
+});

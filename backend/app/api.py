@@ -26,6 +26,7 @@ from app.services.review_prompt import mask_target, prompt_sentence
 from app.services.review_queue import (
     answer_matches,
     remaining_daily_reviews,
+    review_totals,
     schedule_review,
 )
 from app.services.review_ticket import issue_ticket, valid_ticket
@@ -245,6 +246,12 @@ def next_reviews(
     ]
 
 
+@router.get("/reviews/summary")
+def review_summary(response: Response, db: DB, user: CurrentUser) -> dict[str, int]:
+    response.headers["Cache-Control"] = "no-store"
+    return review_totals(db, user, datetime.now(UTC))
+
+
 @router.get("/reviews/preparation")
 def review_preparation(
     response: Response,
@@ -262,8 +269,10 @@ def review_preparation(
         )
         or 0
     )
+    totals = review_totals(db, user, now)
     return {
-        "count": min(matching, remaining_daily_reviews(db, user, now), 50),
+        **totals,
+        "count": min(matching, totals["daily_remaining"], 50),
         "matching_count": matching,
     }
 

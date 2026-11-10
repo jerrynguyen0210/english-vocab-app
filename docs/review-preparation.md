@@ -18,7 +18,9 @@ ending at the server's current instant. Recall includes all scheduled timestamps
 before next local midnight; disabling overdue also requires a timestamp at or
 after today's local midnight. Future times within today are eligible.
 
-The response is `{count, matching_count}`. Count is the number ready for this
+The response includes `count`, `matching_count`, `saved_count`, `due_count` and
+`daily_remaining`. Saved and due totals are scoped to the current user; due
+includes today and overdue words regardless of the selected filter. Count is the number ready for this
 session, capped at 50 and at the user's remaining daily attempt allowance.
 The client disables Start until the current count loads, while empty or after a
 failure, and offers retry. Changing filters discards obsolete responses. Counts
@@ -63,3 +65,26 @@ Migration `0010` introduced SM-2 state and topic-tag storage. Migration `0011`
 removes the topic-tag table; existing SM-2 state, due dates and review history
 remain unchanged. Apply migrations through the normal forward-only deployment
 process.
+
+
+## Empty states and Home
+
+Home reads authenticated `GET /reviews/summary` for `saved_count`, `due_count`
+and `daily_remaining`, replacing design sample values. It refreshes on focus,
+including when returning after adding a word or finishing a review. Preparation
+receives the same totals alongside its selection count and also refreshes on
+focus. Loading and failed requests never appear as a successful empty result;
+failures offer retry.
+
+With no saved words, Home and preparation show **Empty word bank** with
+**Add your first word** linking to Add word. With a saved bank and no due words,
+they show **Nothing due** and **You're all caught up**, with an **Add word** link.
+A daily cap with matching words is **Daily review limit reached**. A selection
+with no matches while other words are due says **No words match this review**,
+so changing a filter does not falsely imply that all reviews are done. These
+states retain an Add word action. By topic remains deferred and does not display
+an empty-data result.
+
+Direct empty review sessions use preparation totals to show the same state and
+Add word action, with a Back to Home link. No answer options or word contents
+are included in the summary/count responses.

@@ -1,5 +1,10 @@
 import { useLocalSearchParams } from 'expo-router';
-import { reviewQuery } from '@/services/review';
+import {
+  reviewQuery,
+  reviewEmptyKind,
+  type ReviewSummary,
+} from '@/services/review';
+import { ReviewEmptyState } from '@/components/review-empty-state';
 import { connectionMessage } from '@/services/connectivity';
 import { Image } from 'expo-image';
 import {
@@ -69,6 +74,9 @@ export default function ReviewScreen() {
   const [error, setError] = useState('');
   const [reviewed, setReviewed] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
+  const [emptySummary, setEmptySummary] = useState<
+    (ReviewSummary & { matching_count: number }) | null
+  >(null);
   const answerInput = useRef<ComponentRef<typeof TextInput>>(null);
   const busy = useRef(false);
   const started = useRef(0);
@@ -83,7 +91,17 @@ export default function ReviewScreen() {
       .then(async (response) => {
         if (!response.ok) throw new Error();
         const items: Prompt[] = await response.json();
+        let emptyData: (ReviewSummary & { matching_count: number }) | null =
+          null;
+        if (items.length === 0) {
+          const status = await authenticatedFetch(
+            `/reviews/preparation?${query}`,
+          );
+          if (!status.ok) throw new Error();
+          emptyData = await status.json();
+        }
         if (mounted.current && version === loadVersion.current) {
+          setEmptySummary(emptyData);
           setReviewed(0);
           setCorrectCount(0);
           setResult(null);
@@ -229,14 +247,27 @@ export default function ReviewScreen() {
   const progressPercent =
     total > 0 ? Math.min(100, Math.round((position / total) * 100)) : 0;
   const progressLabel = `Word ${position} of ${total}, ${progressPercent}% complete`;
+  const completionText =
+    reviewed === total
+      ? `You reviewed all ${reviewed} ${reviewed === 1 ? 'word' : 'words'}.`
+      : `You reviewed ${reviewed} of ${total} words.`;
+  const emptyKind = emptySummary
+    ? reviewEmptyKind(emptySummary, emptySummary.matching_count)
+    : 'nothing_due';
   const announcement = result
     ? result.result === 'correct'
       ? `Correct answer! The word is ${result.correct_word}.`
       : `Incorrect answer. Your answer: ${answer || 'No answer'}. Correct word: ${result.correct_word}.`
     : finished
       ? total
-        ? `Review finished. ${correctCount} of ${reviewed} answers correct.`
-        : 'No reviews available right now.'
+        ? `Review finished. ${completionText} ${correctCount} of ${reviewed} answers correct.`
+        : emptyKind === 'empty_bank'
+          ? 'Empty word bank. Add your first word.'
+          : emptyKind === 'nothing_due'
+            ? "Nothing due. You're all caught up."
+            : emptyKind === 'daily_limit'
+              ? 'Daily review limit reached.'
+              : 'No words match this review.'
       : '';
 
   useEffect(() => {
@@ -325,14 +356,22 @@ export default function ReviewScreen() {
           {finished
             ? total
               ? 'Review finished'
-              : 'All caught up'
+              : emptyKind === 'empty_bank'
+                ? 'Empty word bank'
+                : emptyKind === 'nothing_due'
+                  ? 'Nothing due'
+                  : emptyKind === 'daily_limit'
+                    ? 'Daily review limit reached'
+                    : 'No matching words'
             : 'Review your words'}
         </ThemedText>
         <ThemedText style={styles.subtitle}>
           {finished
             ? total
-              ? 'You have completed this review.'
-              : 'No reviews available right now.'
+              ? reviewed === total
+                ? 'You have completed this review.'
+                : 'This review session has ended.'
+              : 'Add a word or choose another review.'
             : 'Fill the blank with the missing word.'}
         </ThemedText>
         <ThemedText
@@ -555,28 +594,32 @@ export default function ReviewScreen() {
             )}
           </View>
         )}
-        {!loading && !error && !item && (
+        {finished && total === 0 && (
+          <>
+            <ReviewEmptyState kind={emptyKind} />
+            <NavigationLink href="/" label="Back to Home" style={styles.button}>
+              <ThemedText style={styles.buttonText}>Back to Home</ThemedText>
+            </NavigationLink>
+          </>
+        )}
+        {finished && total > 0 && (
           <View style={[styles.card, styles.finishedCard]}>
             <Image
-              source={
-                total
-                  ? require('@/assets/images/wordwell/review-finished.svg')
-                  : require('@/assets/images/wordwell/review-empty.svg')
-              }
-              style={{
-                width: total ? 90 : 78,
-                height: total ? 90 : 78,
-                alignSelf: 'center',
-              }}
+              source={require('@/assets/images/wordwell/review-finished.svg')}
+              style={{ width: 90, height: 90, alignSelf: 'center' }}
               accessible={false}
             />
-            <ThemedText style={[styles.title, styles.finishedTitle]}>
-              {total ? 'Review finished!' : 'Nothing due'}
+            <ThemedText
+              accessibilityRole="header"
+              style={[styles.title, styles.finishedTitle]}
+            >
+              Review finished
             </ThemedText>
             <ThemedText style={styles.finishedText}>
-              {total
-                ? `${correctCount} of ${reviewed} answers correct.`
-                : 'You’re all caught up or have reached your daily limit. Add another word or come back later.'}
+              {completionText}
+            </ThemedText>
+            <ThemedText style={styles.finishedText}>
+              {correctCount} of {reviewed} answers correct.
             </ThemedText>
             <NavigationLink href="/" label="Back to Home" style={styles.button}>
               <ThemedText style={styles.buttonText}>Back to Home</ThemedText>
