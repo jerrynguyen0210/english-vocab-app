@@ -13,6 +13,12 @@ from app.auth import COOKIE, DB, get_current_user
 from app.core.config import get_settings
 from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
 from app.models.word import normalise_word
+from app.services.dictionary import (
+    DictionaryEntry,
+    PartOfSpeech,
+    VerbForm,
+    search_dictionary,
+)
 from app.services.review_prompt import mask_target
 from app.services.review_queue import (
     answer_matches,
@@ -86,6 +92,29 @@ class AnswerResult(BaseModel):
     result: Literal["correct", "incorrect"]
     correct_word: str
     next_due_at: datetime
+
+
+@router.get("/words/search", response_model=list[DictionaryEntry])
+def find_words(
+    user: CurrentUser,
+    response: Response,
+    q: Annotated[str, Query(min_length=1, max_length=200)],
+    include_family: bool = True,
+    parts: Annotated[list[PartOfSpeech] | None, Query()] = None,
+    forms: Annotated[list[VerbForm] | None, Query()] = None,
+) -> list[DictionaryEntry]:
+    query = normalise_word(q)
+    if not query:
+        raise HTTPException(422, "Enter a word to search.")
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return search_dictionary(
+            query, include_family,
+            parts if parts is not None else ["noun", "verb", "adjective", "adverb"],
+            forms if forms is not None else ["V1", "V2", "V3"],
+        )
+    except LookupError:
+        raise HTTPException(503, "Dictionary is unavailable. Please try again later.") from None
 
 
 @router.post("/words", status_code=201, response_model=WordCreated)

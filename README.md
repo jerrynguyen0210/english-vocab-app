@@ -133,6 +133,7 @@ For backend checks or running the API outside Docker, from `backend/`:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
+python -m nltk.downloader wordnet
 python -m ruff check .
 python -m mypy
 python -m pytest
@@ -316,3 +317,27 @@ with `python -m app.export_user --user-id UUID --output PATH` from `backend/`.
 See the [admin procedure](docs/data-portability.md) for scope, delivery and cleanup.
 R0 has no in-app export; add one only if an applicable store/privacy requirement
 requires it, and update the recorded decision.
+
+### Add-word dictionary search
+
+The Add screen searches the backend’s local Princeton WordNet dictionary through
+`GET /api/v1/words/search?q=create&include_family=true&parts=verb&forms=V1`.
+Repeat `parts` (noun, verb, adjective, adverb, other) and `forms` (V1, V2, V3)
+parameters to select multiple filters. Searches require authentication. Results
+can be saved with the existing `POST /api/v1/words` endpoint; duplicate spellings
+remain one word-bank entry.
+
+WordNet supplies definitions, examples and lexical derivation relationships;
+LemmInflect supplies base, past and past-participle spellings, including irregular
+verbs. Family expansion follows up to two lexical relationships, and results
+show one definition per spelling and part of speech, capped at 60 entries.
+Coverage is dictionary-dependent: WordNet covers nouns, verbs, adjectives and
+adverbs, so the Other filter currently returns no entries. This is not a complete
+list of every possible derivative or meaning.
+
+Docker builds and CI install the WordNet corpus. For a local backend, run the
+download command above once (or set `NLTK_DATA` to an existing corpus directory).
+There are no runtime dictionary network calls or API keys. A missing corpus
+returns a retryable 503 response. Rebuild the backend image after this change.
+WordNet data retains its bundled Princeton license in the installed corpus; see
+[WordNet’s license](https://wordnet.princeton.edu/license-and-commercial-use).
