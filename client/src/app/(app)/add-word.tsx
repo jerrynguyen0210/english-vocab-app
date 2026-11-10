@@ -75,6 +75,7 @@ export default function AddWordScreen() {
   const [selectedForms, setSelectedForms] = useState<string[]>([...forms]);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [retry, setRetry] = useState<'search' | Entry | null>(null);
   const [toast, setToast] = useState<{ text: string } | null>(null);
   const [focused, setFocused] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -96,11 +97,13 @@ export default function AddWordScreen() {
     generation.current += 1;
     setResults(null);
     setMessage('');
+    setRetry(null);
   }
 
   async function search() {
     if (pending.current) return;
     setMessage('');
+    setRetry(null);
     const query = word.normalize('NFKC').trim();
     setWord(query);
     if (!query || Array.from(query).length > 200) {
@@ -134,7 +137,6 @@ export default function AddWordScreen() {
     } else selectedForms.forEach((form) => params.append('forms', form));
     pending.current = true;
     setSearching(true);
-    setResults(null);
     const requestGeneration = generation.current;
     try {
       const response = await authenticatedFetch(`/words/search?${params}`);
@@ -152,13 +154,15 @@ export default function AddWordScreen() {
         ]);
       }
     } catch (failure) {
-      if (requestGeneration === generation.current)
+      if (requestGeneration === generation.current) {
         setMessage(
           connectionMessage(
             failure,
             'Could not search the dictionary. Please try again.',
           ),
         );
+        setRetry('search');
+      }
     } finally {
       pending.current = false;
       setSearching(false);
@@ -174,6 +178,7 @@ export default function AddWordScreen() {
     pendingSaves.current.add(entry.word);
     setSaving([...pendingSaves.current]);
     setMessage('');
+    setRetry(null);
     const requestGeneration = generation.current;
     try {
       const response = await authenticatedFetch('/words', {
@@ -196,13 +201,15 @@ export default function AddWordScreen() {
               : `“${entry.word}” added to your word bank.`,
         });
     } catch (failure) {
-      if (requestGeneration === generation.current)
+      if (requestGeneration === generation.current) {
         setMessage(
           connectionMessage(
             failure,
             `Could not save “${entry.word}”. Please retry.`,
           ),
         );
+        setRetry(entry);
+      }
     } finally {
       pendingSaves.current.delete(entry.word);
       setSaving([...pendingSaves.current]);
@@ -327,6 +334,22 @@ export default function AddWordScreen() {
         {!!message && (
           <ThemedText accessibilityLiveRegion="polite" style={styles.message}>
             {message}
+          </ThemedText>
+        )}
+        {!!retry && (
+          <Pressable
+            accessibilityRole="button"
+            disabled={searching || saving.length > 0}
+            accessibilityState={{ disabled: searching || saving.length > 0 }}
+            onPress={() => (retry === 'search' ? search() : save(retry))}
+            style={styles.button}
+          >
+            <ThemedText style={styles.buttonText}>Try again</ThemedText>
+          </Pressable>
+        )}
+        {searching && results !== null && (
+          <ThemedText accessibilityLiveRegion="polite" style={styles.message}>
+            Fetching matching forms and definitions…
           </ThemedText>
         )}
         {results === null ? (
