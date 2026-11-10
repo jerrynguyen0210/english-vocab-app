@@ -56,7 +56,7 @@ export default function HomeScreen() {
             </ThemedText>
           </NavigationLink>
           <NavigationLink
-            href="/review"
+            href="/review-preparation"
             label="Start review"
             style={[styles.action, styles.secondaryAction]}
           >

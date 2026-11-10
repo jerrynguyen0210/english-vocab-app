@@ -25,7 +25,7 @@ const navigation = [
   },
   {
     label: 'Review',
-    href: '/review',
+    href: '/review-preparation',
     icon: require('@/assets/images/wordwell/review.svg'),
   },
   {

@@ -6,7 +6,24 @@ import ts from 'typescript';
 
 // Drive the production screen's handlers with a minimal hook host. Native layout
 // and screen readers still require device verification.
-function harness(fetch) {
+const previewModule = {};
+runInNewContext(
+  ts.transpileModule(
+    readFileSync(
+      new URL('../src/constants/review-preview.ts', import.meta.url),
+      'utf8',
+    ),
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+    },
+  ).outputText,
+  { exports: previewModule },
+);
+
+function harness(fetch, params = {}) {
   const slots = [];
   let cursor = 0;
   let effects = [];
@@ -19,6 +36,12 @@ function harness(fetch) {
     }
   }
   const react = {
+    useCallback(callback, deps) {
+      const i = cursor++;
+      if (!slots[i] || deps.some((value, j) => value !== slots[i].deps[j]))
+        slots[i] = { callback, deps };
+      return slots[i].callback;
+    },
     useState(initial) {
       const i = cursor++;
       if (!(i in slots)) slots[i] = initial;
@@ -43,6 +66,8 @@ function harness(fetch) {
   const jsx = (type, props) => ({ type, props });
   const dependencies = {
     react,
+    'expo-router': { useLocalSearchParams: () => params },
+    '@/constants/review-preview': previewModule,
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': {
       ActivityIndicator: 'Spinner',
@@ -182,4 +207,39 @@ test('empty session shows nothing due without an answer field', async () => {
   await h.flush();
   assert.match(h.text(), /Nothing due/);
   assert.equal(h.input(), undefined);
+});
+
+test('preview filters source data and never calls the server through completion', async () => {
+  const { selectPreviewWords } = previewModule;
+  assert.equal(selectPreviewWords('time', 'Yesterday', '', true).length, 4);
+  assert.equal(selectPreviewWords('time', 'Weekly', '', true).length, 10);
+  assert.equal(selectPreviewWords('recall', 'Weekly', '', false).length, 9);
+  assert.equal(
+    selectPreviewWords('topic', 'Weekly', 'unknown', true).length,
+    0,
+  );
+  const h = harness(
+    () => {
+      throw new Error('Preview must not call the server');
+    },
+    { preview: 'true', source: 'topic', topic: 'Travel' },
+  );
+  await h.flush();
+  assert.match(h.text(), /Sample data/);
+  h.button('A collaborate').props.onPress();
+  await h.flush();
+  await h.button('Check answer').props.onPress();
+  await h.flush();
+  assert.match(h.text(), /CORRECT WORDitinerary/);
+  h.button('Next word').props.onPress();
+  await h.flush();
+  h.button('Typing').props.onPress();
+  await h.flush();
+  h.input().props.onChangeText('destination');
+  await h.flush();
+  await h.button('Check answer').props.onPress();
+  await h.flush();
+  h.button('Next word').props.onPress();
+  await h.flush();
+  assert.match(h.text(), /1 of 2 answers correct/);
 });
