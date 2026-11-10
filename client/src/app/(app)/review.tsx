@@ -231,8 +231,8 @@ export default function ReviewScreen() {
   const progressLabel = `Word ${position} of ${total}, ${progressPercent}% complete`;
   const announcement = result
     ? result.result === 'correct'
-      ? 'Correct! Well done.'
-      : `Incorrect. You typed: ${answer || 'No answer'}. Correct word: ${result.correct_word}.`
+      ? `Correct answer! The word is ${result.correct_word}.`
+      : `Incorrect answer. Your answer: ${answer || 'No answer'}. Correct word: ${result.correct_word}.`
     : finished
       ? total
         ? `Review finished. ${correctCount} of ${reviewed} answers correct.`
@@ -417,6 +417,7 @@ export default function ReviewScreen() {
             {result ? (
               <>
                 <View
+                  testID="review-feedback"
                   style={[
                     styles.card,
                     {
@@ -427,15 +428,27 @@ export default function ReviewScreen() {
                     },
                   ]}
                 >
-                  <ThemedText style={styles.question}>
+                  <ThemedText
+                    accessibilityRole="header"
+                    style={styles.question}
+                  >
                     {result.result === 'correct'
-                      ? 'Correct! Well done.'
-                      : 'Incorrect — compare answers'}
+                      ? 'Correct answer!'
+                      : 'Incorrect answer'}
                   </ThemedText>
-                  {result.result === 'incorrect' && (
+                  {result.result === 'correct' ? (
+                    <View style={styles.comparisonColumn}>
+                      <ThemedText style={styles.label}>CORRECT WORD</ThemedText>
+                      <ThemedText style={styles.explanation}>
+                        {result.correct_word}
+                      </ThemedText>
+                    </View>
+                  ) : (
                     <View style={styles.comparison}>
                       <View style={styles.comparisonColumn}>
-                        <ThemedText style={styles.label}>YOU TYPED</ThemedText>
+                        <ThemedText style={styles.label}>
+                          YOUR ANSWER
+                        </ThemedText>
                         <ThemedText style={styles.explanation}>
                           {answer || 'No answer'}
                         </ThemedText>

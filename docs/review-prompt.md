@@ -63,9 +63,15 @@ among the four options without identifying which one is correct.
 ## Submission and verification
 
 Submission uses D2 (case and outer whitespace ignored; otherwise exact spelling)
-and records the original answer and elapsed time on the server. Incorrect feedback
-compares the entered answer with the correct word. A persistent polite live region
-announces feedback on web/Android, and VoiceOver uses an explicit iOS announcement.
+and records the original answer and elapsed time on the server. Correct feedback
+shows **Correct answer!**, a **Correct word** label and the server-returned word.
+Incorrect feedback shows **Incorrect answer**, with **Your answer** next to
+**Correct word**; the comparison wraps on narrow layouts. Both modes use these
+text labels in addition to colour. Each state offers **Next word**, which clears
+feedback and the draft before showing the next masked prompt.
+A persistent polite live region
+announces the outcome and correct word on web/Android (also the user’s answer
+when incorrect), and VoiceOver uses an explicit iOS announcement.
 Finished sessions announce and display the correct-answer count.
 
 The snapshot and every submission respect the daily cap across sessions/devices.
