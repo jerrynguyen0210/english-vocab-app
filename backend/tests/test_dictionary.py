@@ -1,8 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
 from app.auth import get_current_user
+from app.core.database import get_session
 from app.main import app
 from app.services.dictionary import search_dictionary
 
@@ -59,7 +62,8 @@ def test_concurrent_search_and_cached_results_are_not_mutated():
 def test_search_endpoint_validation_and_authentication(monkeypatch):
     with TestClient(app) as client:
         assert client.get("/api/v1/words/search?q=create").status_code == 401
-        app.dependency_overrides[get_current_user] = lambda: object()
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=None)
+        app.dependency_overrides[get_session] = lambda: Mock(scalars=lambda _: [])
         try:
             response = client.get(
                 "/api/v1/words/search",

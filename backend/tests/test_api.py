@@ -57,6 +57,26 @@ def create(client, headers, word="Hello"):
     )
 
 
+def test_search_marks_only_the_current_users_saved_forms(api):
+    client, db, owner, other, _ = api
+    assert create(client, owner, ' ＣREATE ').status_code == 201
+    assert create(client, other, 'created').status_code == 201
+    response = client.get('/api/v1/words/search?q=create', headers=owner)
+    assert response.status_code == 200
+    entries = {entry['word']: entry for entry in response.json()}
+    assert entries['create']['saved'] is True
+    assert entries['created']['saved'] is False
+    other_entries = {entry['word']: entry for entry in client.get(
+        '/api/v1/words/search?q=create', headers=other,
+    ).json()}
+    assert other_entries['create']['saved'] is False
+    assert other_entries['created']['saved'] is True
+    assert create(client, owner, 'create').status_code == 409
+    assert db.scalar(select(func.count()).select_from(Word).where(
+        Word.user_id == db.scalar(select(User.id).where(User.email == 'owner@example.com')),
+    )) == 1
+
+
 def test_create_queue_submit_and_schedule(api):
     client, db, owner, other, _ = api
     response = create(client, owner)

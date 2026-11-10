@@ -15,6 +15,7 @@ const formLabels = {
   V3: 'V3 · Past participle',
 };
 type Entry = {
+  saved?: boolean;
   word: string;
   part_of_speech: string;
   verb_forms: (typeof forms)[number][];
@@ -139,7 +140,17 @@ export default function AddWordScreen() {
       const response = await authenticatedFetch(`/words/search?${params}`);
       if (!response.ok) throw new Error('Search failed');
       const entries: Entry[] = await response.json();
-      if (requestGeneration === generation.current) setResults(entries);
+      if (requestGeneration === generation.current) {
+        setResults(entries);
+        setSaved((current) => [
+          ...new Set([
+            ...current,
+            ...entries
+              .filter((entry) => entry.saved)
+              .map((entry) => entry.word),
+          ]),
+        ]);
+      }
     } catch (failure) {
       if (requestGeneration === generation.current)
         setMessage(
@@ -155,8 +166,11 @@ export default function AddWordScreen() {
   }
 
   async function save(entry: Entry) {
-    if (pendingSaves.current.has(entry.word) || saved.includes(entry.word))
+    if (saved.includes(entry.word)) {
+      setToast({ text: `“${entry.word}” is already in your word bank.` });
       return;
+    }
+    if (pendingSaves.current.has(entry.word)) return;
     pendingSaves.current.add(entry.word);
     setSaving([...pendingSaves.current]);
     setMessage('');

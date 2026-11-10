@@ -179,6 +179,31 @@ test('required search and selected filters reach the API; results save and detec
   assert.equal(h.button('Saved').props.disabled, true);
 });
 
+test('search marks existing words Saved and repeat attempts explain the duplicate without posting', async () => {
+  let posts = 0;
+  const h = harness(async (_, init) => {
+    if (init) posts++;
+    return Response.json([
+      { ...entry, saved: true },
+      { ...entry, word: 'create', saved: false },
+    ]);
+  });
+  h.input().props.onChangeText('create');
+  await h.flush();
+  await h.button('Search').props.onPress();
+  await h.flush();
+  assert.equal(h.saveButton('created').props.disabled, true);
+  assert.equal(
+    h.saveButton('created').props.accessibilityLabel,
+    'Saved created',
+  );
+  assert.equal(h.saveButton('create').props.disabled, false);
+  await h.saveButton('created').props.onPress();
+  await h.flush();
+  assert.equal(posts, 0);
+  assert.equal(h.toast(), '“created” is already in your word bank.');
+});
+
 test('saving one result shows a temporary confirmation and leaves other results unsaved', async () => {
   const calls = [];
   const h = harness(async (path, init) => {
