@@ -1,17 +1,18 @@
 """Version-one vocabulary and typed-recall API."""
 
+import secrets
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.auth import COOKIE, DB, get_current_user
 from app.core.config import get_settings
-from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
+from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word, WordTopic
 from app.models.word import normalise_word
 from app.services.dictionary import (
     DictionaryEntry,
@@ -19,12 +20,14 @@ from app.services.dictionary import (
     VerbForm,
     search_dictionary,
 )
+from app.services.review_preparation import ReviewSelection, selected_words
 from app.services.review_prompt import mask_target
 from app.services.review_queue import (
     answer_matches,
     remaining_daily_reviews,
     schedule_review,
 )
+from app.services.review_ticket import issue_ticket, valid_ticket
 
 router = APIRouter()
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -47,6 +50,16 @@ class CreateWord(BaseModel):
     model_config = ConfigDict(extra="forbid")
     word: str = Field(min_length=1, max_length=200)
     english_explanation: str = Field(min_length=1, max_length=5000)
+
+    topics: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("topics")
+    @classmethod
+    def clean_topics(cls, values: list[str]) -> list[str]:
+        tags = sorted({normalise_word(value) for value in values})
+        if any(not tag or len(tag) > 100 for tag in tags):
+            raise ValueError("Topic tags must contain 1 to 100 characters")
+        return tags
 
     example_sentence: str | None = Field(default=None, max_length=5000)
 
@@ -78,11 +91,14 @@ class ReviewItem(BaseModel):
 
 class SessionItem(ReviewItem):
     attempt_id: uuid.UUID
+    review_token: str
+    choices: list[str]
 
 
 class AnswerInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     attempt_id: uuid.UUID | None = None
+    review_token: str | None = Field(default=None, max_length=4096)
     typed_answer: str = Field(max_length=200)
     time_taken_ms: int = Field(ge=0, le=2147483647, strict=True)
 
@@ -114,24 +130,32 @@ def find_words(
     response.headers["Cache-Control"] = "no-store"
     try:
         entries = search_dictionary(
-            query, include_family,
+            query,
+            include_family,
             parts if parts is not None else ["noun", "verb", "adjective", "adverb"],
             forms if forms is not None else ["V1", "V2", "V3"],
         )
     except LookupError:
-        raise HTTPException(503, "Dictionary is unavailable. Please try again later.") from None
+        raise HTTPException(
+            503, "Dictionary is unavailable. Please try again later."
+        ) from None
     normalized = {normalise_word(entry.word) for entry in entries}
-    saved = set(
-        db.scalars(
-            select(Word.normalised_word).where(
-                Word.user_id == user.id,
-                Word.normalised_word.in_(normalized),
+    saved = (
+        set(
+            db.scalars(
+                select(Word.normalised_word).where(
+                    Word.user_id == user.id,
+                    Word.normalised_word.in_(normalized),
+                )
             )
         )
-    ) if normalized else set()
+        if normalized
+        else set()
+    )
     return [
         WordSearchResult(
-            **entry.model_dump(), saved=normalise_word(entry.word) in saved,
+            **entry.model_dump(),
+            saved=normalise_word(entry.word) in saved,
         )
         for entry in entries
     ]
@@ -152,6 +176,7 @@ def create_word(
     try:
         db.flush()
         db.add(ReviewState(word_id=word.id, due_at=datetime.now(UTC)))
+        db.add_all(WordTopic(word_id=word.id, tag=tag) for tag in body.topics)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -209,13 +234,98 @@ def next_reviews(
     ]
 
 
+@router.get("/words/topics", response_model=list[str])
+def find_topics(
+    response: Response,
+    db: DB,
+    user: CurrentUser,
+    q: Annotated[str, Query(max_length=100)] = "",
+) -> list[str]:
+    response.headers["Cache-Control"] = "no-store"
+    return list(
+        db.scalars(
+            select(WordTopic.tag)
+            .join(Word, Word.id == WordTopic.word_id)
+            .where(
+                Word.user_id == user.id,
+                WordTopic.tag.contains(normalise_word(q), autoescape=True),
+            )
+            .distinct()
+            .order_by(WordTopic.tag)
+            .limit(20)
+        )
+    )
+
+
+@router.get("/reviews/preparation")
+def review_preparation(
+    response: Response,
+    db: DB,
+    user: CurrentUser,
+    selection: Annotated[ReviewSelection, Query()],
+) -> dict[str, int]:
+    response.headers["Cache-Control"] = "no-store"
+    now = datetime.now(UTC)
+    matching = (
+        db.scalar(
+            select(func.count()).select_from(
+                selected_words(user, now, selection).order_by(None).subquery()
+            )
+        )
+        or 0
+    )
+    return {
+        "count": min(matching, remaining_daily_reviews(db, user, now), 50),
+        "matching_count": matching,
+    }
+
+
 @router.get("/reviews/session", response_model=list[SessionItem])
-def review_session(response: Response, db: DB, user: CurrentUser) -> list[SessionItem]:
-    # A bounded snapshot; words created later belong to the next session.
-    return [
-        SessionItem(**item.model_dump(), attempt_id=uuid.uuid4())
-        for item in next_reviews(response, db, user, limit=50)
-    ]
+def review_session(
+    response: Response,
+    db: DB,
+    user: CurrentUser,
+    selection: Annotated[ReviewSelection, Query()],
+) -> list[SessionItem]:
+    response.headers["Cache-Control"] = "no-store"
+    now = datetime.now(UTC)
+    remaining = min(50, remaining_daily_reviews(db, user, now))
+    rows = db.execute(selected_words(user, now, selection).limit(remaining)).all()
+    # Distractors are owned saved words. Small banks use typing instead.
+    bank = list(
+        db.scalars(
+            select(Word.word)
+            .where(Word.user_id == user.id)
+            .order_by(Word.id)
+            .limit(200)
+        )
+    )
+    items = []
+    for word, state in rows:
+        attempt_id = uuid.uuid4()
+        distractors = [value for value in bank if not answer_matches(value, word.word)]
+        choices = (
+            [
+                word.word,
+                *secrets.SystemRandom().sample(distractors, min(3, len(distractors))),
+            ]
+            if distractors
+            else []
+        )
+        secrets.SystemRandom().shuffle(choices)
+        items.append(
+            SessionItem(
+                word_id=word.id,
+                attempt_id=attempt_id,
+                review_token=issue_ticket(user.id, state, attempt_id, now),
+                choices=choices,
+                english_explanation=mask_target(word.english_explanation, word.word),
+                example_sentence=mask_target(word.example_sentence, word.word)
+                if word.example_sentence
+                else None,
+            )
+        )
+    return items
 
 
 @router.post("/reviews/{word_id}/answer", response_model=AnswerResult)
@@ -250,7 +360,13 @@ def submit_answer(
                 next_due_at=state.due_at,
             )
     now = datetime.now(UTC)
-    if state.due_at > now:
+    if body.review_token is not None and not valid_ticket(
+        body.review_token, user.id, state, body.attempt_id, now
+    ):
+        raise HTTPException(
+            409, "Review session expired or changed. Start a new review."
+        )
+    if body.review_token is None and state.due_at > now:
         raise HTTPException(409, "Review item is not due")
     if remaining_daily_reviews(db, user, now) == 0:
         raise HTTPException(409, "Daily review cap reached")
@@ -287,6 +403,7 @@ def delete_account(response: Response, db: DB, user: CurrentUser) -> None:
     db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
     db.execute(delete(ReviewAttempt).where(ReviewAttempt.user_id == user.id))
     db.execute(delete(ReviewState).where(ReviewState.word_id.in_(word_ids)))
+    db.execute(delete(WordTopic).where(WordTopic.word_id.in_(word_ids)))
     db.execute(delete(Word).where(Word.user_id == user.id))
     db.delete(user)
     db.commit()

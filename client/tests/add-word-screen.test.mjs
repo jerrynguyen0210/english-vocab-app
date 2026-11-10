@@ -139,7 +139,18 @@ function harness(fetch) {
       render();
     },
     filter: (label) => nodes().find((n) => n.props?.label === label),
-    input: () => nodes().find((n) => n.type === 'Input'),
+    input: () =>
+      nodes().find(
+        (n) =>
+          n.type === 'Input' &&
+          n.props.accessibilityLabel === 'Word to search (required)',
+      ),
+    topicsInput: () =>
+      nodes().find(
+        (n) =>
+          n.type === 'Input' &&
+          n.props.accessibilityLabel === 'Topic tags (comma separated)',
+      ),
     text,
     enter: (overrides = {}) => {
       const form = nodes().find((n) => n.type === 'Form');
@@ -554,4 +565,21 @@ test('failed search can retry without losing query or filters', async () => {
   await h.button('Search').props.onPress();
   await h.flush();
   assert.match(h.text(), /No matching words/);
+});
+
+test('optional topic tags are saved with the selected word', async () => {
+  let body;
+  const h = harness(async (_, init) => {
+    if (!init) return Response.json([entry]);
+    body = JSON.parse(init.body);
+    return Response.json({}, { status: 201 });
+  });
+  h.topicsInput().props.onChangeText('Work, Travel, Work');
+  h.input().props.onChangeText('create');
+  await h.flush();
+  await h.button('Search').props.onPress();
+  await h.flush();
+  await h.button('Save').props.onPress();
+  await h.flush();
+  assert.deepEqual(body.topics, ['Work', 'Travel']);
 });

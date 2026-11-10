@@ -5,8 +5,8 @@
 | D1 | Fields captured when adding a word | Word + English explanation only · plus example sentence · plus where you met it | Word + English explanation (required); example sentence optional | P0 |
 | D2 | Answer checking rules | Exact match · ignore case and leading/trailing spaces · also ignore punctuation · allow small typos | Ignore case and leading/trailing spaces; otherwise exact spelling | P6 |
 | D3 | Hints and retries | No hints · first letter / word length · one retry before revealing | No hints, one attempt, then reveal the correct word | P6 |
-| D4 | Review scheduling (which words come back, and when) | Simple Leitner boxes · SM-2-style · FSRS | Leitner boxes driven by correct/incorrect (it fits pass/fail typed answers) | P6 |
-| D5 | Session rules | Fixed count per session · all due words · daily cap | Due words first with a daily cap | P6 |
+| D4 | Review scheduling (which words come back, and when) | Simple Leitner boxes · SM-2-style · FSRS | SM-2-style scheduling driven by correct/incorrect (supersedes Leitner) | P6 |
+| D5 | Session rules | Fixed count per session · all due words · daily cap | Selected source snapshot with a daily cap | P6 |
 | D6 | Connectivity when offline | Online required · read-only cache · queue adds/answers locally and sync later | Online required for R0; explicit cache/queue decision before R1 | R0 implementation; before R1 scope |
 | D7 | Auth method | Email + password · email magic link · OAuth/social | Email + password or magic link through your own FastAPI auth | P3 |
 | D8 | Backend hosting | VPS/Docker host · managed container platform · BaaS for the database only | Docker on a host you're comfortable with; check pricing when you choose | P10 |
@@ -120,13 +120,28 @@ Before the next UI changes, add backend unit coverage for these rules:
   punctuation, accents and compatibility characters. Empty input is incorrect.
 - D3: no hints, one recorded attempt per prompt. Retrying a submission after a
   lost response reuses its attempt ID and returns its recorded result.
-- D4: correct answers advance one level, capped at 7, with intervals of
-  1, 2, 4, 7, 14, 30 and 60 days. Incorrect answers reset to level 0 and are due
-  in 10 minutes. All intervals start at server submission time.
-- D5: snapshot currently due words at session start, oldest due first, up to the
-  remaining 20-attempt daily allowance. Newly added words wait for the next
-  session. Finish when that snapshot is exhausted, or the server reports that
-  the daily cap was reached elsewhere. No client clock determines eligibility.
+- D4: SM-2-style scheduling (selected with Review preparation) supersedes the
+  original Leitner intervals. Correct answers use grade 4; incorrect answers use
+  grade 1. Initial ease is 2.5, with a floor of 1.3. Success intervals are 1 day,
+  6 days, then the prior interval multiplied by prior ease and rounded up. Ease
+  adapts using the SM-2 formula. Incorrect answers reset repetitions and interval
+  and are due in 10 minutes for same-day relearning; the next success restarts at
+  1 day. Intervals are bounded at 36,500 days. All intervals start at server
+  submission time. The legacy level remains for compatibility and does not
+  determine scheduling. Migration 0010 preserves existing due dates and history,
+  initializing SM-2 state for subsequent answers.
+- D5: preparation and session creation use the same user-scoped selection:
+  Yesterday is the previous local calendar day (including DST); Weekly and
+  Monthly are rolling 7/30-day saved-date windows. Recall includes all words
+  scheduled today, optionally including earlier days. Topic searches normalized
+  saved tags by literal substring. Sessions are limited to 50 words and the
+  remaining daily allowance (20 attempts by default), including time/topic
+  practice. Newly added words wait for the next session. No client clock
+  determines eligibility. Answer mode is selected on the Review screen;
+  choice distractors come from the user's saved words, with typing used when
+  no distractor exists. Both answer modes use the same D2 checking and D4 updates.
+
+See [Review preparation](review-preparation.md) for API and session details.
 
 Nothing due is a distinct empty state. Authentication expiry preserves the
 in-memory draft behind the existing sign-in overlay; signing into another account

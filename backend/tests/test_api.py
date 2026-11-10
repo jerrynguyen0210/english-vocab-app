@@ -59,22 +59,34 @@ def create(client, headers, word="Hello"):
 
 def test_search_marks_only_the_current_users_saved_forms(api):
     client, db, owner, other, _ = api
-    assert create(client, owner, ' ＣREATE ').status_code == 201
-    assert create(client, other, 'created').status_code == 201
-    response = client.get('/api/v1/words/search?q=create', headers=owner)
+    assert create(client, owner, " ＣREATE ").status_code == 201
+    assert create(client, other, "created").status_code == 201
+    response = client.get("/api/v1/words/search?q=create", headers=owner)
     assert response.status_code == 200
-    entries = {entry['word']: entry for entry in response.json()}
-    assert entries['create']['saved'] is True
-    assert entries['created']['saved'] is False
-    other_entries = {entry['word']: entry for entry in client.get(
-        '/api/v1/words/search?q=create', headers=other,
-    ).json()}
-    assert other_entries['create']['saved'] is False
-    assert other_entries['created']['saved'] is True
-    assert create(client, owner, 'create').status_code == 409
-    assert db.scalar(select(func.count()).select_from(Word).where(
-        Word.user_id == db.scalar(select(User.id).where(User.email == 'owner@example.com')),
-    )) == 1
+    entries = {entry["word"]: entry for entry in response.json()}
+    assert entries["create"]["saved"] is True
+    assert entries["created"]["saved"] is False
+    other_entries = {
+        entry["word"]: entry
+        for entry in client.get(
+            "/api/v1/words/search?q=create",
+            headers=other,
+        ).json()
+    }
+    assert other_entries["create"]["saved"] is False
+    assert other_entries["created"]["saved"] is True
+    assert create(client, owner, "create").status_code == 409
+    assert (
+        db.scalar(
+            select(func.count())
+            .select_from(Word)
+            .where(
+                Word.user_id
+                == db.scalar(select(User.id).where(User.email == "owner@example.com")),
+            )
+        )
+        == 1
+    )
 
 
 def test_create_queue_submit_and_schedule(api):
@@ -626,3 +638,214 @@ def test_session_snapshot_excludes_later_additions(api):
         for p in client.get("/api/v1/reviews/session", headers=owner).json()
     } == {first, second}
     assert client.get("/api/v1/reviews/session").status_code == 401
+
+
+def test_preparation_windows_and_overdue_are_user_local(api, monkeypatch):
+    import app.api as api_module
+    from app.core.time import local_day_bounds
+
+    client, db, owner, other, _ = api
+    now = datetime(2026, 10, 5, 2, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(api_module, "datetime", Clock)
+    user = db.scalar(select(User).where(User.email == "owner@example.com"))
+    user.timezone = "Australia/Sydney"
+    start, end = local_day_bounds(now, user.timezone)
+    dates = [
+        datetime(2026, 10, 3, 13, 59, tzinfo=UTC),
+        datetime(2026, 10, 3, 14, tzinfo=UTC),
+        datetime(2026, 10, 4, 12, 59, tzinfo=UTC),
+        start,
+        now - timedelta(days=7),
+        now - timedelta(days=7, seconds=1),
+        now - timedelta(days=30),
+        now - timedelta(days=30, seconds=1),
+    ]
+    for index, saved_at in enumerate(dates):
+        word = Word(
+            user_id=user.id,
+            word=f"word{index}",
+            english_explanation="Meaning",
+            created_at=saved_at,
+        )
+        db.add(word)
+        db.flush()
+        db.add(
+            ReviewState(
+                word_id=word.id,
+                due_at=[
+                    start - timedelta(seconds=1),
+                    start,
+                    end - timedelta(seconds=1),
+                    end,
+                ][index % 4],
+            )
+        )
+    db.commit()
+    for params, expected in [
+        ({"source": "time", "period": "Yesterday"}, 2),
+        ({"source": "time", "period": "Weekly"}, 5),
+        ({"source": "time", "period": "Monthly"}, 7),
+        ({"source": "recall", "include_overdue": True}, 6),
+        ({"source": "recall", "include_overdue": False}, 4),
+    ]:
+        response = client.get(
+            "/api/v1/reviews/preparation", params=params, headers=owner
+        )
+        assert response.status_code == 200, response.text
+        assert response.json() == {"count": expected, "matching_count": expected}
+        assert (
+            len(
+                client.get(
+                    "/api/v1/reviews/session", params=params, headers=owner
+                ).json()
+            )
+            == expected
+        )
+        assert (
+            client.get(
+                "/api/v1/reviews/preparation", params=params, headers=other
+            ).json()["count"]
+            == 0
+        )
+    assert (
+        client.get(
+            "/api/v1/reviews/preparation?source=time&period=Tomorrow", headers=owner
+        ).status_code
+        == 422
+    )
+
+
+def test_saved_tags_select_live_session_and_authorize_not_due_answers(api):
+    client, db, owner, other, _ = api
+    for word, tags in [
+        ("hello", [" Workplace Communication ", "workplace communication"]),
+        ("concise", ["workplace communication", "work"]),
+        ("trip", ["travel"]),
+    ]:
+        response = client.post(
+            "/api/v1/words",
+            headers=owner,
+            json={
+                "word": word,
+                "english_explanation": f"{word} means something",
+                "topics": tags,
+            },
+        )
+        assert response.status_code == 201, response.text
+        db.get(ReviewState, uuid.UUID(response.json()["id"])).due_at = datetime.now(
+            UTC
+        ) + timedelta(days=20)
+    db.commit()
+    assert client.get("/api/v1/words/topics?q=WORK", headers=owner).json() == [
+        "work",
+        "workplace communication",
+    ]
+    assert client.get("/api/v1/words/topics?q=work", headers=other).json() == []
+    query = "?source=topic&topic=WORKPLACE"
+    response = client.get("/api/v1/reviews/preparation" + query, headers=owner)
+    assert response.json() == {"count": 2, "matching_count": 2}
+    assert response.headers["cache-control"] == "no-store"
+    assert (
+        client.get(
+            "/api/v1/reviews/preparation?source=topic&topic=%25", headers=owner
+        ).json()["count"]
+        == 0
+    )
+    assert (
+        client.get(
+            "/api/v1/reviews/preparation?source=topic", headers=owner
+        ).status_code
+        == 422
+    )
+    items = client.get("/api/v1/reviews/session" + query, headers=owner).json()
+    assert len(items) == 2
+    first = items[0]
+    word = db.get(Word, uuid.UUID(first["word_id"]))
+    assert word.word in first["choices"]
+    assert word.word not in first["english_explanation"]
+    body = {
+        "attempt_id": first["attempt_id"],
+        "review_token": first["review_token"],
+        "typed_answer": word.word,
+        "time_taken_ms": 123,
+    }
+    path = f"/api/v1/reviews/{first['word_id']}/answer"
+    assert client.post(path, headers=other, json=body).status_code == 404
+    assert (
+        client.post(
+            path,
+            headers=owner,
+            json={**body, "review_token": body["review_token"] + "x"},
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            path,
+            headers=owner,
+            json={key: value for key, value in body.items() if key != "review_token"},
+        ).status_code
+        == 409
+    )
+    result = client.post(path, headers=owner, json=body)
+    assert result.status_code == 200, result.text
+    assert client.post(path, headers=owner, json=body).status_code == 200
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 1
+    assert (
+        client.post(
+            path, headers=owner, json={**body, "attempt_id": str(uuid.uuid4())}
+        ).status_code
+        == 409
+    )
+    assert client.get("/api/v1/words/topics").status_code == 401
+    assert client.get("/api/v1/reviews/preparation").status_code == 401
+    assert client.delete("/api/v1/account", headers=owner).status_code == 204
+
+
+def test_preparation_daily_allowance_and_small_bank(api, monkeypatch):
+    client, _, owner, _, _ = api
+    monkeypatch.setattr(get_settings(), "review_daily_cap", 1)
+    create(client, owner)
+    item = client.get("/api/v1/reviews/session?source=recall", headers=owner).json()[0]
+    assert item["choices"] == []
+    create(client, owner, "bye")
+    assert client.get(
+        "/api/v1/reviews/preparation?source=recall", headers=owner
+    ).json() == {"count": 1, "matching_count": 2}
+    result = client.post(
+        f"/api/v1/reviews/{item['word_id']}/answer",
+        headers=owner,
+        json={
+            "attempt_id": item["attempt_id"],
+            "review_token": item["review_token"],
+            "typed_answer": "Hello",
+            "time_taken_ms": 1,
+        },
+    )
+    assert result.status_code == 200
+    assert (
+        client.get("/api/v1/reviews/preparation?source=time", headers=owner).json()[
+            "count"
+        ]
+        == 0
+    )
+    assert client.get("/api/v1/reviews/session?source=time", headers=owner).json() == []
+
+
+@pytest.mark.parametrize("tags", [[""], ["a" * 101], ["ok"] * 11])
+def test_topic_tag_validation(api, tags):
+    client, _, owner, _, _ = api
+    assert (
+        client.post(
+            "/api/v1/words",
+            headers=owner,
+            json={"word": "word", "english_explanation": "meaning", "topics": tags},
+        ).status_code
+        == 422
+    )

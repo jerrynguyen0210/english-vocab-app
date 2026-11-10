@@ -6,13 +6,10 @@ import ts from 'typescript';
 
 // Drive the production screen's handlers with a minimal hook host. Native layout
 // and screen readers still require device verification.
-const previewModule = {};
+const reviewModule = {};
 runInNewContext(
   ts.transpileModule(
-    readFileSync(
-      new URL('../src/constants/review-preview.ts', import.meta.url),
-      'utf8',
-    ),
+    readFileSync(new URL('../src/services/review.ts', import.meta.url), 'utf8'),
     {
       compilerOptions: {
         module: ts.ModuleKind.CommonJS,
@@ -20,10 +17,12 @@ runInNewContext(
       },
     },
   ).outputText,
-  { exports: previewModule },
+  { exports: reviewModule, URLSearchParams },
 );
 
-function harness(fetch, params = {}) {
+function harness(fetch, params = {}, screen = 'review') {
+  const timers = new Map();
+  let timerId = 0;
   const slots = [];
   let cursor = 0;
   let effects = [];
@@ -58,22 +57,31 @@ function harness(fetch, params = {}) {
     },
     useEffect(callback, deps) {
       const i = cursor++;
-      if (!slots[i] || deps.some((v, j) => v !== slots[i][j]))
-        effects.push(callback);
-      slots[i] = deps;
+      const previous = slots[i];
+      if (!previous || deps.some((value, j) => value !== previous.deps[j])) {
+        effects.push(() => {
+          previous?.cleanup?.();
+          slots[i].cleanup = callback();
+        });
+        slots[i] = { deps };
+      }
     },
   };
   const jsx = (type, props) => ({ type, props });
   const dependencies = {
     react,
-    'expo-router': { useLocalSearchParams: () => params },
-    '@/constants/review-preview': previewModule,
+    'expo-router': {
+      useLocalSearchParams: () => params,
+      useFocusEffect: (callback) => react.useEffect(callback, [callback]),
+    },
+    '@/services/review': reviewModule,
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': {
       ActivityIndicator: 'Spinner',
       Pressable: 'Button',
       TextInput: 'Input',
       View: 'View',
+      Switch: 'Switch',
       Platform: { OS: 'web' },
       StyleSheet: { create: (s) => s },
       AccessibilityInfo: {},
@@ -89,7 +97,7 @@ function harness(fetch, params = {}) {
   };
   const { outputText } = ts.transpileModule(
     readFileSync(
-      new URL('../src/app/(app)/review.tsx', import.meta.url),
+      new URL(`../src/app/(app)/${screen}.tsx`, import.meta.url),
       'utf8',
     ),
     {
@@ -104,6 +112,12 @@ function harness(fetch, params = {}) {
   runInNewContext(outputText, {
     exports,
     performance,
+    setTimeout: (callback) => {
+      const id = ++timerId;
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
     require: (id) => (id.endsWith('.svg') ? id : dependencies[id]),
   });
   function render() {
@@ -132,6 +146,25 @@ function harness(fetch, params = {}) {
       await new Promise((resolve) => setImmediate(resolve));
       render();
     },
+    async advance() {
+      const pending = [...timers.values()];
+      timers.clear();
+      pending.forEach((callback) => callback());
+      await new Promise((resolve) => setImmediate(resolve));
+      render();
+    },
+    link: () =>
+      nodes().find(
+        (n) => n.type === 'Link' && n.props.label.startsWith('Start review'),
+      ),
+    radio: (title) =>
+      nodes().find(
+        (n) =>
+          n.type === 'Button' &&
+          n.props.accessibilityRole === 'radio' &&
+          text(n).includes(title),
+      ),
+    toggle: () => nodes().find((n) => n.type === 'Switch'),
     input: () => nodes().find((n) => n.type === 'Input'),
     text,
     button: (label) =>
@@ -209,37 +242,122 @@ test('empty session shows nothing due without an answer field', async () => {
   assert.equal(h.input(), undefined);
 });
 
-test('preview filters source data and never calls the server through completion', async () => {
-  const { selectPreviewWords } = previewModule;
-  assert.equal(selectPreviewWords('time', 'Yesterday', '', true).length, 4);
-  assert.equal(selectPreviewWords('time', 'Weekly', '', true).length, 10);
-  assert.equal(selectPreviewWords('recall', 'Weekly', '', false).length, 9);
-  assert.equal(
-    selectPreviewWords('topic', 'Weekly', 'unknown', true).length,
-    0,
-  );
+test('selected source loads a live session; answer modes share the signed submission', async () => {
+  const requests = [];
   const h = harness(
-    () => {
-      throw new Error('Preview must not call the server');
+    async (path, init) => {
+      requests.push({ path, init });
+      if (!init)
+        return Response.json([
+          {
+            ...prompts[0],
+            review_token: 'signed-session',
+            choices: ['Hello', 'Goodbye'],
+          },
+        ]);
+      return Response.json({ result: 'correct', correct_word: 'Hello' });
     },
-    { preview: 'true', source: 'topic', topic: 'Travel' },
+    { source: 'topic', topic: 'Work & travel', includeOverdue: 'false' },
   );
   await h.flush();
-  assert.match(h.text(), /Sample data/);
-  h.button('A collaborate').props.onPress();
-  await h.flush();
-  await h.button('Check answer').props.onPress();
-  await h.flush();
-  assert.match(h.text(), /CORRECT WORDitinerary/);
-  h.button('Next word').props.onPress();
+  assert.match(requests[0].path, /source=topic/);
+  assert.equal(
+    new URLSearchParams(requests[0].path.split('?')[1]).get('topic'),
+    'Work & travel',
+  );
+  h.button('A Hello').props.onPress();
   await h.flush();
   h.button('Typing').props.onPress();
   await h.flush();
-  h.input().props.onChangeText('destination');
+  assert.equal(h.input().props.value, '');
+  h.input().props.onChangeText('Hello');
   await h.flush();
-  await h.button('Check answer').props.onPress();
+  await h.button('Submit answer').props.onPress();
   await h.flush();
+  assert.equal(
+    JSON.parse(requests[1].init.body).review_token,
+    'signed-session',
+  );
   h.button('Next word').props.onPress();
   await h.flush();
-  assert.match(h.text(), /1 of 2 answers correct/);
+  assert.match(h.text(), /1 of 1 answers correct/);
+});
+
+test('preparation loads live counts, rejects stale responses and passes selected filters', async () => {
+  let resolveOld;
+  const paths = [];
+  const h = harness(
+    async (path) => {
+      paths.push(path);
+      if (new URLSearchParams(path.split('?')[1]).get('period') === 'Weekly')
+        return new Promise((resolve) => {
+          resolveOld = resolve;
+        });
+      return Response.json({ count: 4, matching_count: 4 });
+    },
+    {},
+    'review-preparation',
+  );
+  assert.equal(h.link(), undefined);
+  await h.advance();
+  h.radio('Yesterday').props.onPress();
+  await h.flush();
+  await h.advance();
+  assert.match(h.text(), /4 words ready/);
+  assert.equal(h.link().props.href.params.period, 'Yesterday');
+  resolveOld(Response.json({ count: 99, matching_count: 99 }));
+  await h.flush();
+  assert.match(h.text(), /4 words ready/);
+  assert.doesNotMatch(h.text(), /99 words/);
+  h.radio('SM-2 recall').props.onPress();
+  await h.flush();
+  h.toggle().props.onValueChange(false);
+  await h.flush();
+  await h.advance();
+  assert.equal(h.link().props.href.params.includeOverdue, 'false');
+  assert.ok(paths.some((path) => path.includes('include_overdue=false')));
+});
+
+test('preparation retries failed counts, searches saved tags and disables empty results', async () => {
+  let fail = true;
+  const paths = [];
+  const h = harness(
+    async (path) => {
+      paths.push(path);
+      if (fail) throw new Error('offline');
+      if (path.startsWith('/words/topics')) return Response.json(['workplace']);
+      const params = new URLSearchParams(path.split('?')[1]);
+      return Response.json({
+        count: params.get('topic') === 'missing' ? 0 : 2,
+        matching_count: 2,
+      });
+    },
+    {},
+    'review-preparation',
+  );
+  await h.advance();
+  assert.match(h.text(), /Could not load ready words/);
+  assert.equal(h.link(), undefined);
+  fail = false;
+  h.button('Try again').props.onPress();
+  await h.flush();
+  await h.advance();
+  assert.match(h.text(), /2 words ready/);
+  h.radio('By topic').props.onPress();
+  await h.flush();
+  await h.advance();
+  assert.equal(h.link(), undefined);
+  h.input().props.onChangeText('work');
+  await h.flush();
+  await h.advance();
+  h.button('workplace').props.onPress();
+  await h.flush();
+  await h.advance();
+  assert.equal(h.link().props.href.params.topic, 'workplace');
+  h.input().props.onChangeText('missing');
+  await h.flush();
+  await h.advance();
+  assert.equal(h.link(), undefined);
+  assert.match(h.text(), /No words to review/);
+  assert.ok(paths.some((path) => path === '/words/topics?q=work'));
 });

@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { authenticatedFetch } from '@/services/auth';
+import { connectionMessage } from '@/services/connectivity';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/app-screen';
 import { NavigationLink } from '@/components/navigation-link';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 import {
-  selectPreviewWords,
+  reviewQuery,
   type ReviewPeriod,
   type ReviewSource,
-} from '@/constants/review-preview';
+} from '@/services/review';
 
 const sources = [
   {
@@ -35,8 +38,79 @@ export default function ReviewPreparationScreen() {
   const [period, setPeriod] = useState<ReviewPeriod>('Weekly');
   const [topic, setTopic] = useState('');
   const [includeOverdue, setIncludeOverdue] = useState(true);
-  const words = selectPreviewWords(source, period, topic, includeOverdue);
-  const count = words.length;
+  const query = reviewQuery({
+    source,
+    period,
+    topic,
+    includeOverdue: String(includeOverdue),
+  });
+  const [ready, setReady] = useState<{
+    query: string;
+    count: number;
+    matching: number;
+  } | null>(null);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [topics, setTopics] = useState<string[]>([]);
+  const count = ready?.query === query ? ready.count : null;
+  useFocusEffect(
+    useCallback(() => {
+      // Changing retry explicitly reloads the current selection.
+      void retry;
+      let active = true;
+      setReady(null);
+      setError('');
+      const timer = setTimeout(() => {
+        if (source === 'topic' && !topic.trim()) {
+          setReady({ query, count: 0, matching: 0 });
+          return;
+        }
+        void authenticatedFetch(`/reviews/preparation?${query}`)
+          .then(async (response) => {
+            if (!response.ok) throw new Error();
+            const result = await response.json();
+            if (active)
+              setReady({
+                query,
+                count: result.count,
+                matching: result.matching_count,
+              });
+          })
+          .catch((failure) => {
+            if (active)
+              setError(
+                connectionMessage(
+                  failure,
+                  'Could not load ready words. Please try again.',
+                ),
+              );
+          });
+      }, 250);
+      return () => {
+        active = false;
+        clearTimeout(timer);
+      };
+    }, [query, retry, source, topic]),
+  );
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      if (source !== 'topic') return;
+      void authenticatedFetch(`/words/topics?q=${encodeURIComponent(topic)}`)
+        .then(async (response) => {
+          if (!response.ok) throw new Error();
+          const tags: string[] = await response.json();
+          if (active) setTopics(tags);
+        })
+        .catch(() => {
+          if (active) setTopics([]);
+        });
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [source, topic]);
   const startLabel = `Start review · ${count} words`;
   return (
     <AppScreen selected="Review">
@@ -46,9 +120,6 @@ export default function ReviewPreparationScreen() {
         </ThemedText>
         <ThemedText style={styles.detail}>
           Choose which words to practise.
-        </ThemedText>
-        <ThemedText style={styles.preview}>
-          Sample data · practice only; progress is not saved.
         </ThemedText>
         <ThemedText style={styles.label}>REVIEW SOURCE</ThemedText>
         <View style={styles.sources}>
@@ -100,7 +171,7 @@ export default function ReviewPreparationScreen() {
                 ))}
               </View>
               <ThemedText style={styles.summary}>
-                {count} words saved{' '}
+                {count === null ? '…' : ready?.matching} words saved{' '}
                 {period === 'Yesterday'
                   ? 'yesterday'
                   : `in the last ${period === 'Weekly' ? 7 : 30} days`}
@@ -132,7 +203,7 @@ export default function ReviewPreparationScreen() {
                 />
               </View>
               <ThemedText style={styles.badge}>
-                {count} words due now
+                {count === null ? '…' : ready?.matching} words due today
               </ThemedText>
             </>
           ) : (
@@ -148,26 +219,59 @@ export default function ReviewPreparationScreen() {
                 autoCorrect={false}
               />
               <ThemedText style={styles.badge}>
-                {count} matching words
+                {count === null ? '…' : ready?.matching} matching words
               </ThemedText>
+              <View style={styles.periods}>
+                {topics.map((tag) => (
+                  <Pressable
+                    key={tag}
+                    accessibilityRole="button"
+                    onPress={() => setTopic(tag)}
+                    style={styles.period}
+                  >
+                    <ThemedText style={styles.periodText}>{tag}</ThemedText>
+                  </Pressable>
+                ))}
+              </View>
               <ThemedText style={styles.detail}>
-                Try Workplace communication, Travel or Wellbeing.
+                Matches saved topic tags.
               </ThemedText>
             </>
           )}
         </View>
         <View style={styles.row}>
           <ThemedText accessibilityLiveRegion="polite" style={styles.summary}>
-            {count} words ready
+            {count === null
+              ? error
+                ? 'Count unavailable'
+                : 'Loading ready words…'
+              : `${count} words ready`}
           </ThemedText>
           <ThemedText style={styles.next}>Answer mode next →</ThemedText>
         </View>
-        {count ? (
+        {!!error && (
+          <View accessibilityLiveRegion="polite">
+            <ThemedText style={styles.detail}>{error}</ThemedText>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setRetry((value) => value + 1)}
+              style={styles.period}
+            >
+              <ThemedText style={styles.periodText}>Try again</ThemedText>
+            </Pressable>
+          </View>
+        )}
+        {count !== null && ready && ready.matching > count && (
+          <ThemedText style={styles.detail}>
+            {ready.matching} matching words · this session is limited by your
+            remaining daily allowance.
+          </ThemedText>
+        )}
+        {count !== null && count > 0 && !error ? (
           <NavigationLink
             href={{
               pathname: '/review',
               params: {
-                preview: 'true',
                 source,
                 period,
                 topic,
@@ -186,7 +290,13 @@ export default function ReviewPreparationScreen() {
             accessibilityState={{ disabled: true }}
             style={[styles.button, styles.disabled]}
           >
-            <ThemedText style={styles.white}>No words to review</ThemedText>
+            <ThemedText style={styles.white}>
+              {error
+                ? 'Count unavailable'
+                : count === null
+                  ? 'Loading…'
+                  : 'No words to review'}
+            </ThemedText>
           </Pressable>
         )}
       </View>
@@ -210,7 +320,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   detail: { color: colors.secondary, fontSize: 12, lineHeight: 19 },
-  preview: { color: colors.secondary, fontSize: 11, lineHeight: 17 },
   label: {
     color: colors.secondary,
     fontSize: 11,
