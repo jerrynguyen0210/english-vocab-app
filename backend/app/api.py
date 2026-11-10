@@ -231,7 +231,6 @@ def next_reviews(
         .order_by(ReviewState.due_at, Word.id)
         .limit(min(limit, remaining))
     )
-    response.headers["Cache-Control"] = "no-store"
     return [
         ReviewItem(
             word_id=row.id,

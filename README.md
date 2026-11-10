@@ -124,8 +124,7 @@ npx expo install --check
 ```
 
 Screens live in `client/src/app/` with file-based routing. Use Expo's installer
-for compatible dependencies (`--dev` for development tools). The starter reset
-utility, `npm run reset-project`, can move or delete starter files; it is optional.
+for compatible dependencies (`--dev` for development tools).
 
 For backend checks or running the API outside Docker, from `backend/`:
 
@@ -138,6 +137,12 @@ python -m ruff check .
 python -m mypy
 python -m pytest
 ```
+
+The default tests use temporary SQLite databases and ignore local `.env` settings.
+To repeat the API tests against PostgreSQL, set `TEST_POSTGRES_URL` to a local
+test database URL and run `python -m pytest tests/test_api.py`. Each test creates
+and removes its own randomly named schema; existing application tables are untouched.
+The database role needs permission to create schemas. CI runs both database paths.
 
 To run the API in this environment, start the database with `docker compose up -d db`,
 apply migrations with `python -m app.migrate`, then run

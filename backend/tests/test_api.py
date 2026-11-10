@@ -8,7 +8,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -19,16 +19,18 @@ from app.models.word import normalise_word
 
 
 @pytest.fixture
-def api(tmp_path, monkeypatch):
-    url = f"sqlite:///{tmp_path}/api.db"
+def api(api_database_url, monkeypatch):
+    url = api_database_url
     monkeypatch.setenv("DATABASE_URL", url)
     get_settings.cache_clear()
     command.upgrade(Config("alembic.ini"), "head")
-    engine = create_engine(url, connect_args={"check_same_thread": False})
+    sqlite = url.startswith("sqlite:")
+    engine = create_engine(url, connect_args={"check_same_thread": False} if sqlite else {})
 
     @event.listens_for(engine, "connect")
     def foreign_keys(connection, _):
-        connection.execute("PRAGMA foreign_keys=ON")
+        if sqlite:
+            connection.execute("PRAGMA foreign_keys=ON")
 
     with Session(engine) as db:
         app.dependency_overrides[get_session] = lambda: db
@@ -183,7 +185,7 @@ def test_account_erases_owned_records_and_revokes_all_sessions(api):
         headers=owner,
         json={"typed_answer": "Hello", "time_taken_ms": 3},
     )
-    with pytest.raises(IntegrityError, match="append-only"):
+    with pytest.raises(DBAPIError, match="append-only"):
         db.execute(text("DELETE FROM review_attempts"))
     db.rollback()
     response = client.delete("/api/v1/account", headers=owner)
