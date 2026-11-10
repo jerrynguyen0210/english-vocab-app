@@ -12,7 +12,10 @@ export default function AppLayout() {
         name="add-word"
         options={{ title: 'Add word', headerShown: false }}
       />
-      <Stack.Screen name="review" options={{ title: 'Review' }} />
+      <Stack.Screen
+        name="review"
+        options={{ title: 'Review', headerShown: false }}
+      />
       <Stack.Screen
         name="account"
         options={{ title: 'Account', headerShown: false }}

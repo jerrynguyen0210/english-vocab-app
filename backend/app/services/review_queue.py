@@ -1,7 +1,7 @@
 """User-scoped review queue queries; timestamps are compared as UTC instants."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
@@ -51,4 +51,21 @@ def remaining_daily_reviews(db: Session, user: User, now: datetime) -> int:
 
 def answer_matches(typed_answer: str, saved_word: str) -> bool:
     """D2: ignore case and outer whitespace, otherwise require exact spelling."""
-    return typed_answer.strip().casefold() == saved_word.strip().casefold()
+    return normalise_answer(typed_answer) == normalise_answer(saved_word)
+
+
+def normalise_answer(value: str) -> str:
+    return value.strip().casefold()
+
+
+def schedule_review(state: ReviewState, correct: bool, now: datetime) -> None:
+    now = as_utc(now)
+    state.last_reviewed_at = now
+    if correct:
+        state.correct_count += 1
+        state.level = min(state.level + 1, 7)
+        state.due_at = now + timedelta(days=(1, 2, 4, 7, 14, 30, 60)[state.level - 1])
+    else:
+        state.incorrect_count += 1
+        state.level = 0
+        state.due_at = now + timedelta(minutes=10)

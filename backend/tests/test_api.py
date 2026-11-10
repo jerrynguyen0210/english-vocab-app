@@ -561,3 +561,48 @@ def test_daily_cap_uses_user_local_midnight(api):
     db.commit()
     assert remaining_daily_reviews(db, user, now) == 19
     assert remaining_daily_reviews(db, user, end) == 19
+
+
+def test_retry_after_lost_response_records_once(api):
+    client, db, owner, other, _ = api
+    word_id = create(client, owner).json()["id"]
+    prompt = client.get("/api/v1/reviews/session", headers=owner).json()[0]
+    body = {
+        "attempt_id": prompt["attempt_id"],
+        "typed_answer": "Hello",
+        "time_taken_ms": 12,
+    }
+    first = client.post(f"/api/v1/reviews/{word_id}/answer", headers=owner, json=body)
+    retry = client.post(f"/api/v1/reviews/{word_id}/answer", headers=owner, json=body)
+    assert first.status_code == retry.status_code == 200
+    assert first.json() == retry.json()
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 1
+    assert db.get(ReviewState, uuid.UUID(word_id)).correct_count == 1
+    assert (
+        client.post(
+            f"/api/v1/reviews/{word_id}/answer",
+            headers=owner,
+            json={**body, "typed_answer": "changed"},
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            f"/api/v1/reviews/{word_id}/answer", headers=other, json=body
+        ).status_code
+        == 404
+    )
+
+
+def test_session_snapshot_excludes_later_additions(api):
+    client, _, owner, _, _ = api
+    assert client.get("/api/v1/reviews/session", headers=owner).json() == []
+    first = create(client, owner).json()["id"]
+    snapshot = client.get("/api/v1/reviews/session", headers=owner).json()
+    second = create(client, owner, "Later").json()["id"]
+    assert [p["word_id"] for p in snapshot] == [first]
+    assert {
+        p["word_id"]
+        for p in client.get("/api/v1/reviews/session", headers=owner).json()
+    } == {first, second}
+    assert client.get("/api/v1/reviews/session").status_code == 401

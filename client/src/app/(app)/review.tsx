@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -12,16 +13,24 @@ import { AppScreen } from '@/components/app-screen';
 import { NavigationLink } from '@/components/navigation-link';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
-import { authenticatedFetch } from '@/services/auth';
+import { AuthError, authenticatedFetch } from '@/services/auth';
+import { useSession } from '@/context/session';
 
 type Prompt = {
   word_id: string;
+  attempt_id: string;
   english_explanation: string;
   example_sentence: string | null;
 };
 type Result = { result: 'correct' | 'incorrect'; correct_word: string };
 
 export default function ReviewScreen() {
+  const { signedIn } = useSession();
+  const queue = useRef<Prompt[]>([]);
+  const [total, setTotal] = useState(0);
+  const [position, setPosition] = useState(1);
+  const [pendingBody, setPendingBody] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [item, setItem] = useState<Prompt | null>(null);
   const [answer, setAnswer] = useState('');
   const [result, setResult] = useState<Result | null>(null);
@@ -37,13 +46,16 @@ export default function ReviewScreen() {
   function load() {
     if (busy.current) return;
     busy.current = true;
-    void authenticatedFetch('/reviews/next')
+    void authenticatedFetch('/reviews/session')
       .then(async (response) => {
         if (!response.ok) throw new Error();
         const items: Prompt[] = await response.json();
         if (mounted.current) {
+          queue.current = items.slice(1);
+          setTotal(items.length);
+          setPosition(1);
           setItem(items[0] ?? null);
-          started.current = Date.now();
+          started.current = performance.now();
         }
       })
       .catch(() => {
@@ -63,7 +75,16 @@ export default function ReviewScreen() {
     setItem(null);
     setResult(null);
     setAnswer('');
-    void load();
+    setPendingBody(null);
+    setConflict(false);
+    if (!item && total === 0) {
+      void load();
+      return;
+    }
+    setItem(queue.current.shift() ?? null);
+    setPosition((value) => value + 1);
+    started.current = performance.now();
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -76,10 +97,10 @@ export default function ReviewScreen() {
 
   useEffect(() => {
     // Wait until the loaded prompt is editable, including after a failed submit.
-    if (item && !loading && !result) {
+    if (signedIn && item && !loading && !result && !pendingBody) {
       answerInput.current?.focus();
     }
-  }, [item, loading, result]);
+  }, [signedIn, item, loading, result, pendingBody]);
 
   const finished = !loading && !error && !item;
   const announcement = result
@@ -87,7 +108,9 @@ export default function ReviewScreen() {
       ? 'Correct! Well done.'
       : `Incorrect. You typed: ${answer || 'No answer'}. Correct word: ${result.correct_word}.`
     : finished
-      ? `Review finished. ${correctCount} of ${reviewed} answers correct.`
+      ? total
+        ? `Review finished. ${correctCount} of ${reviewed} answers correct.`
+        : 'No reviews available right now.'
       : '';
 
   useEffect(() => {
@@ -98,28 +121,43 @@ export default function ReviewScreen() {
   }, [announcement]);
 
   async function submit() {
-    if (!item || result || busy.current) return;
+    if (!signedIn || !item || result || conflict || busy.current) return;
     busy.current = true;
     setLoading(true);
     setError('');
+    const body =
+      pendingBody ??
+      JSON.stringify({
+        attempt_id: item.attempt_id,
+        typed_answer: answer,
+        time_taken_ms: Math.min(
+          2147483647,
+          Math.max(0, Math.round(performance.now() - started.current)),
+        ),
+      });
+    setPendingBody(body);
     try {
       const response = await authenticatedFetch(
         `/reviews/${item.word_id}/answer`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            typed_answer: answer,
-            time_taken_ms: Math.min(
-              2147483647,
-              Math.max(0, Date.now() - started.current),
-            ),
-          }),
+          body: body,
         },
       );
-      if (response.status === 409) {
-        setItem(null);
-        throw new Error();
+      if (response.status === 409 || response.status === 404) {
+        const problem = await response.json();
+        if (!mounted.current) return;
+        if (problem.detail === 'Daily review cap reached') {
+          queue.current = [];
+          setItem(null);
+        } else {
+          setConflict(true);
+          setError(
+            'This word is no longer available to review. Continue to the next item.',
+          );
+        }
+        return;
       }
       if (!response.ok) throw new Error();
       const feedback: Result = await response.json();
@@ -129,10 +167,12 @@ export default function ReviewScreen() {
         if (feedback.result === 'correct')
           setCorrectCount((count) => count + 1);
       }
-    } catch {
+    } catch (error) {
       if (mounted.current)
         setError(
-          'Could not submit your answer. Try again or reload the review.',
+          error instanceof AuthError && error.status === 401
+            ? 'Sign in to continue. Your answer is still here.'
+            : 'Your answer is saved here. Check your connection and retry the submission.',
         );
     } finally {
       busy.current = false;
@@ -144,10 +184,18 @@ export default function ReviewScreen() {
     <AppScreen selected="Review">
       <View style={styles.content}>
         <ThemedText style={styles.title} accessibilityRole="header">
-          {finished ? 'Review finished' : 'Time to recall'}
+          {finished
+            ? total
+              ? 'Review finished'
+              : 'All caught up'
+            : 'Time to recall'}
         </ThemedText>
         <ThemedText style={styles.subtitle}>
-          Read the explanation. Type the word.
+          {finished
+            ? total
+              ? 'You have completed this review.'
+              : 'No reviews available right now.'
+            : 'Read the explanation. Type the word.'}
         </ThemedText>
         <ThemedText
           accessibilityLiveRegion="polite"
@@ -164,6 +212,9 @@ export default function ReviewScreen() {
         )}
         {item && (
           <>
+            <ThemedText style={styles.progress}>
+              WORD {position} OF {total}
+            </ThemedText>
             <ThemedText style={styles.question}>
               Which word matches this meaning?
             </ThemedText>
@@ -243,19 +294,21 @@ export default function ReviewScreen() {
                   autoCorrect={false}
                   spellCheck={false}
                   maxLength={200}
-                  editable={!loading}
+                  editable={!loading && !pendingBody && signedIn}
                   returnKeyType="done"
                   onSubmitEditing={() => void submit()}
                 />
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityState={{ disabled: loading }}
+                  accessibilityState={{
+                    disabled: loading || conflict || !signedIn,
+                  }}
                   style={[styles.button, loading && styles.disabled]}
-                  disabled={loading}
+                  disabled={loading || conflict || !signedIn}
                   onPress={() => void submit()}
                 >
                   <ThemedText style={styles.buttonText}>
-                    Submit answer
+                    {pendingBody ? 'Retry submission' : 'Submit answer'}
                   </ThemedText>
                 </Pressable>
                 <ThemedText style={styles.subtitle}>
@@ -268,21 +321,41 @@ export default function ReviewScreen() {
         {!!error && (
           <View accessibilityLiveRegion="polite">
             <ThemedText style={styles.error}>{error}</ThemedText>
-            {!item && (
+            {(!item || conflict) && (
               <Pressable
                 accessibilityRole="button"
                 style={styles.button}
                 onPress={next}
               >
-                <ThemedText style={styles.buttonText}>Try again</ThemedText>
+                <ThemedText style={styles.buttonText}>
+                  {conflict ? 'Next word' : 'Try again'}
+                </ThemedText>
               </Pressable>
             )}
           </View>
         )}
         {!loading && !error && !item && (
-          <View style={styles.card}>
-            <ThemedText style={styles.explanation}>
-              {correctCount} of {reviewed} answers correct.
+          <View style={[styles.card, styles.finishedCard]}>
+            <Image
+              source={
+                total
+                  ? require('@/assets/images/wordwell/review-finished.svg')
+                  : require('@/assets/images/wordwell/review-empty.svg')
+              }
+              style={{
+                width: total ? 90 : 78,
+                height: total ? 90 : 78,
+                alignSelf: 'center',
+              }}
+              accessible={false}
+            />
+            <ThemedText style={[styles.title, styles.finishedTitle]}>
+              {total ? 'Review finished!' : 'Nothing due'}
+            </ThemedText>
+            <ThemedText style={styles.finishedText}>
+              {total
+                ? `${correctCount} of ${reviewed} answers correct.`
+                : 'You’re all caught up or have reached your daily limit. Add another word or come back later.'}
             </ThemedText>
             <NavigationLink href="/" label="Back to Home" style={styles.button}>
               <ThemedText style={styles.buttonText}>Back to Home</ThemedText>
@@ -295,6 +368,31 @@ export default function ReviewScreen() {
 }
 
 const styles = StyleSheet.create({
+  progress: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primarySoft,
+    color: colors.primary,
+    borderRadius: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  finishedCard: {
+    marginTop: 24,
+    minHeight: 430,
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    padding: 25,
+    gap: 28,
+  },
+  finishedText: {
+    textAlign: 'center',
+    color: colors.secondary,
+    fontSize: 15,
+    lineHeight: 25,
+  },
+  finishedTitle: { textAlign: 'center', fontSize: 25 },
   announcement: {
     position: 'absolute',
     width: 1,

@@ -111,3 +111,24 @@ A session ends when the queue is empty or the daily cap is reached. Its finish
 screen displays the number of correct answers out of attempts completed in that
 screen session; reopening Review starts a new screen-session total while retaining
 the server's daily cap usage.
+
+## Review implementation log — 2026-11-10
+
+Before the next UI changes, add backend unit coverage for these rules:
+
+- D2: trim outer whitespace and case-fold; preserve internal whitespace,
+  punctuation, accents and compatibility characters. Empty input is incorrect.
+- D3: no hints, one recorded attempt per prompt. Retrying a submission after a
+  lost response reuses its attempt ID and returns its recorded result.
+- D4: correct answers advance one level, capped at 7, with intervals of
+  1, 2, 4, 7, 14, 30 and 60 days. Incorrect answers reset to level 0 and are due
+  in 10 minutes. All intervals start at server submission time.
+- D5: snapshot currently due words at session start, oldest due first, up to the
+  remaining 20-attempt daily allowance. Newly added words wait for the next
+  session. Finish when that snapshot is exhausted, or the server reports that
+  the daily cap was reached elsewhere. No client clock determines eligibility.
+
+Nothing due is a distinct empty state. Authentication expiry preserves the
+in-memory draft behind the existing sign-in overlay; signing into another account
+clears it. Network retries preserve the exact answer, elapsed duration and attempt
+ID, including when the first response was lost after the server committed.

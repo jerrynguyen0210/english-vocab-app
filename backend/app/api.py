@@ -1,7 +1,7 @@
 """Version-one vocabulary and typed-recall API."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -14,7 +14,11 @@ from app.core.config import get_settings
 from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
 from app.models.word import normalise_word
 from app.services.review_prompt import mask_target
-from app.services.review_queue import answer_matches, remaining_daily_reviews
+from app.services.review_queue import (
+    answer_matches,
+    remaining_daily_reviews,
+    schedule_review,
+)
 
 router = APIRouter()
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -66,8 +70,13 @@ class ReviewItem(BaseModel):
     example_sentence: str | None = None
 
 
+class SessionItem(ReviewItem):
+    attempt_id: uuid.UUID
+
+
 class AnswerInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    attempt_id: uuid.UUID | None = None
     typed_answer: str = Field(max_length=200)
     time_taken_ms: int = Field(ge=0, le=2147483647, strict=True)
 
@@ -151,6 +160,15 @@ def next_reviews(
     ]
 
 
+@router.get("/reviews/session", response_model=list[SessionItem])
+def review_session(response: Response, db: DB, user: CurrentUser) -> list[SessionItem]:
+    # A bounded snapshot; words created later belong to the next session.
+    return [
+        SessionItem(**item.model_dump(), attempt_id=uuid.uuid4())
+        for item in next_reviews(response, db, user, limit=50)
+    ]
+
+
 @router.post("/reviews/{word_id}/answer", response_model=AnswerResult)
 def submit_answer(
     word_id: uuid.UUID, body: AnswerInput, response: Response, db: DB, user: CurrentUser
@@ -165,6 +183,23 @@ def submit_answer(
     if pair is None:
         raise HTTPException(404, "Review item not found")
     word, state = pair
+    if body.attempt_id is not None:
+        previous = db.get(ReviewAttempt, body.attempt_id)
+        if previous is not None:
+            if previous.user_id != user.id or previous.word_id != word.id:
+                raise HTTPException(409, "Submission identifier unavailable")
+            if (
+                previous.typed_answer != body.typed_answer
+                or previous.time_taken_ms != body.time_taken_ms
+            ):
+                raise HTTPException(409, "Submission payload changed")
+            response.headers["Cache-Control"] = "no-store"
+            return AnswerResult(
+                attempt_id=previous.id,
+                result=previous.result,
+                correct_word=word.word,
+                next_due_at=state.due_at,
+            )
     now = datetime.now(UTC)
     if state.due_at > now:
         raise HTTPException(409, "Review item is not due")
@@ -173,6 +208,7 @@ def submit_answer(
     correct = answer_matches(body.typed_answer, word.word)
     result: Literal["correct", "incorrect"] = "correct" if correct else "incorrect"
     attempt = ReviewAttempt(
+        id=body.attempt_id or uuid.uuid4(),
         word_id=word.id,
         user_id=user.id,
         typed_answer=body.typed_answer,
@@ -181,15 +217,7 @@ def submit_answer(
         time_taken_ms=body.time_taken_ms,
     )
     db.add(attempt)
-    state.last_reviewed_at = now
-    if correct:
-        state.correct_count += 1
-        state.level = min(state.level + 1, 7)
-        state.due_at = now + timedelta(days=(1, 2, 4, 7, 14, 30, 60)[state.level - 1])
-    else:
-        state.incorrect_count += 1
-        state.level = 0
-        state.due_at = now + timedelta(minutes=10)
+    schedule_review(state, correct, now)
     db.commit()
     response.headers["Cache-Control"] = "no-store"
     return AnswerResult(
