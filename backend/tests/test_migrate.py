@@ -5,7 +5,7 @@ import subprocess
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 
 from app.core.config import get_settings
 from app.migrate import upgrade_database
@@ -35,7 +35,7 @@ def test_upgrade_and_repeated_run(tmp_path, monkeypatch):
         engine = create_engine(url)
         with engine.connect() as conn:
             assert (
-                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
+                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0011"
             )
             assert (
                 conn.scalar(
@@ -117,6 +117,6 @@ def test_preparation_migration_preserves_existing_schedule_and_history(
         ).one()
         assert tuple(state) == (4, "2026-12-10 12:00:00", 5, 2, 0, 0, 2.5)
         assert connection.scalar(text("SELECT count(*) FROM review_attempts")) == 1
-        assert connection.scalar(text("SELECT count(*) FROM word_topics")) == 0
+        assert "word_topics" not in inspect(connection).get_table_names()
     engine.dispose()
     get_settings.cache_clear()

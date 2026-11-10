@@ -257,13 +257,13 @@ test('selected source loads a live session; answer modes share the signed submis
         ]);
       return Response.json({ result: 'correct', correct_word: 'Hello' });
     },
-    { source: 'topic', topic: 'Work & travel', includeOverdue: 'false' },
+    { source: 'time', period: 'Monthly', includeOverdue: 'false' },
   );
   await h.flush();
-  assert.match(requests[0].path, /source=topic/);
+  assert.match(requests[0].path, /source=time/);
   assert.equal(
-    new URLSearchParams(requests[0].path.split('?')[1]).get('topic'),
-    'Work & travel',
+    new URLSearchParams(requests[0].path.split('?')[1]).get('period'),
+    'Monthly',
   );
   h.button('A Hello').props.onPress();
   await h.flush();
@@ -318,19 +318,14 @@ test('preparation loads live counts, rejects stale responses and passes selected
   assert.ok(paths.some((path) => path.includes('include_overdue=false')));
 });
 
-test('preparation retries failed counts, searches saved tags and disables empty results', async () => {
+test('preparation retries counts and topic remains unavailable without backend requests', async () => {
   let fail = true;
   const paths = [];
   const h = harness(
     async (path) => {
       paths.push(path);
       if (fail) throw new Error('offline');
-      if (path.startsWith('/words/topics')) return Response.json(['workplace']);
-      const params = new URLSearchParams(path.split('?')[1]);
-      return Response.json({
-        count: params.get('topic') === 'missing' ? 0 : 2,
-        matching_count: 2,
-      });
+      return Response.json({ count: 2, matching_count: 2 });
     },
     {},
     'review-preparation',
@@ -343,21 +338,12 @@ test('preparation retries failed counts, searches saved tags and disables empty 
   await h.flush();
   await h.advance();
   assert.match(h.text(), /2 words ready/);
+  const requestsBeforeTopic = paths.length;
   h.radio('By topic').props.onPress();
   await h.flush();
   await h.advance();
   assert.equal(h.link(), undefined);
-  h.input().props.onChangeText('work');
-  await h.flush();
-  await h.advance();
-  h.button('workplace').props.onPress();
-  await h.flush();
-  await h.advance();
-  assert.equal(h.link().props.href.params.topic, 'workplace');
-  h.input().props.onChangeText('missing');
-  await h.flush();
-  await h.advance();
-  assert.equal(h.link(), undefined);
-  assert.match(h.text(), /No words to review/);
-  assert.ok(paths.some((path) => path === '/words/topics?q=work'));
+  assert.equal(h.input(), undefined);
+  assert.match(h.text(), /Topic search is coming later/);
+  assert.equal(paths.length, requestsBeforeTopic);
 });

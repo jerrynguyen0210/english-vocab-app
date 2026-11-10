@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import Base
 from app.export_user import export_user
-from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word, WordTopic
+from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
 
 
 @pytest.fixture
@@ -36,7 +36,6 @@ def database():
             )
             db.add(word)
             db.flush()
-            db.add(WordTopic(word_id=word.id, tag=f"topic {i}"))
             db.add(
                 ReviewState(
                     word_id=word.id, level=1, correct_count=1, incorrect_count=0
@@ -78,9 +77,6 @@ def test_export_is_complete_isolated_and_contains_no_credentials(database, tmp_p
     assert data["account"]["timezone"] == "Australia/Adelaide"
     assert data["words"][0]["word"] == "café 0"
     assert data["words"][0]["example_sentence"] is None
-    assert data["word_topics"] == [
-        {"word_id": data["words"][0]["id"], "tag": "topic 0"}
-    ]
     assert data["review_states"][0]["ease_factor"] == 2.5
     for collection in ["words", "review_states", "review_attempts", "session_metadata"]:
         assert len(data[collection]) == 1

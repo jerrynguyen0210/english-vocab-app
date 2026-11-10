@@ -65,7 +65,6 @@ function CheckFilter({
 
 export default function AddWordScreen() {
   const [word, setWord] = useState('');
-  const [topicTags, setTopicTags] = useState('');
   const [includeFamily, setIncludeFamily] = useState(true);
   const [selectedParts, setSelectedParts] = useState<string[]>([
     'Noun',
@@ -175,21 +174,6 @@ export default function AddWordScreen() {
       setToast({ text: `“${entry.word}” is already in your word bank.` });
       return;
     }
-    const topics = [
-      ...new Set(
-        topicTags
-          .split(',')
-          .map((tag) => tag.normalize('NFKC').trim())
-          .filter(Boolean),
-      ),
-    ];
-    if (
-      topics.length > 10 ||
-      topics.some((tag) => Array.from(tag).length > 100)
-    ) {
-      setMessage('Use up to 10 topic tags, each 100 characters or fewer.');
-      return;
-    }
     if (pendingSaves.current.has(entry.word)) return;
     pendingSaves.current.add(entry.word);
     setSaving([...pendingSaves.current]);
@@ -201,7 +185,6 @@ export default function AddWordScreen() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(topics.length ? { topics } : {}),
           word: entry.word,
           english_explanation: entry.english_explanation,
           example_sentence: entry.example_sentence,
@@ -241,18 +224,6 @@ export default function AddWordScreen() {
         </ThemedText>
         <ThemedText style={styles.subtitle}>
           Find word forms and save the ones you need.
-        </ThemedText>
-        <ThemedText style={styles.label}>Topic tags (optional)</ThemedText>
-        <TextInput
-          accessibilityLabel="Topic tags (comma separated)"
-          value={topicTags}
-          onChangeText={setTopicTags}
-          placeholder="Work, travel"
-          placeholderTextColor={colors.placeholder}
-          style={styles.input}
-        />
-        <ThemedText style={styles.subtitle}>
-          Separate tags with commas. Tags apply to words you save below.
         </ThemedText>
         <WordForm onSubmit={search}>
           <View style={styles.card}>

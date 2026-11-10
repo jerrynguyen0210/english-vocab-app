@@ -39,7 +39,6 @@ export default function ReviewScreen() {
   const params = useLocalSearchParams<{
     source?: string;
     period?: string;
-    topic?: string;
     includeOverdue?: string;
   }>();
   const [mode, setMode] = useState<'choice' | 'typing'>('choice');

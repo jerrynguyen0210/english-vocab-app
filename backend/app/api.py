@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.auth import COOKIE, DB, get_current_user
 from app.core.config import get_settings
-from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word, WordTopic
+from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
 from app.models.word import normalise_word
 from app.services.dictionary import (
     DictionaryEntry,
@@ -50,16 +50,6 @@ class CreateWord(BaseModel):
     model_config = ConfigDict(extra="forbid")
     word: str = Field(min_length=1, max_length=200)
     english_explanation: str = Field(min_length=1, max_length=5000)
-
-    topics: list[str] = Field(default_factory=list, max_length=10)
-
-    @field_validator("topics")
-    @classmethod
-    def clean_topics(cls, values: list[str]) -> list[str]:
-        tags = sorted({normalise_word(value) for value in values})
-        if any(not tag or len(tag) > 100 for tag in tags):
-            raise ValueError("Topic tags must contain 1 to 100 characters")
-        return tags
 
     example_sentence: str | None = Field(default=None, max_length=5000)
 
@@ -176,7 +166,6 @@ def create_word(
     try:
         db.flush()
         db.add(ReviewState(word_id=word.id, due_at=datetime.now(UTC)))
-        db.add_all(WordTopic(word_id=word.id, tag=tag) for tag in body.topics)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -232,29 +221,6 @@ def next_reviews(
         )
         for row in rows
     ]
-
-
-@router.get("/words/topics", response_model=list[str])
-def find_topics(
-    response: Response,
-    db: DB,
-    user: CurrentUser,
-    q: Annotated[str, Query(max_length=100)] = "",
-) -> list[str]:
-    response.headers["Cache-Control"] = "no-store"
-    return list(
-        db.scalars(
-            select(WordTopic.tag)
-            .join(Word, Word.id == WordTopic.word_id)
-            .where(
-                Word.user_id == user.id,
-                WordTopic.tag.contains(normalise_word(q), autoescape=True),
-            )
-            .distinct()
-            .order_by(WordTopic.tag)
-            .limit(20)
-        )
-    )
 
 
 @router.get("/reviews/preparation")
@@ -403,7 +369,6 @@ def delete_account(response: Response, db: DB, user: CurrentUser) -> None:
     db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
     db.execute(delete(ReviewAttempt).where(ReviewAttempt.user_id == user.id))
     db.execute(delete(ReviewState).where(ReviewState.word_id.in_(word_ids)))
-    db.execute(delete(WordTopic).where(WordTopic.word_id.in_(word_ids)))
     db.execute(delete(Word).where(Word.user_id == user.id))
     db.delete(user)
     db.commit()

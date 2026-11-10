@@ -721,48 +721,23 @@ def test_preparation_windows_and_overdue_are_user_local(api, monkeypatch):
     )
 
 
-def test_saved_tags_select_live_session_and_authorize_not_due_answers(api):
+def test_time_session_authorizes_not_due_answers(api):
     client, db, owner, other, _ = api
-    for word, tags in [
-        ("hello", [" Workplace Communication ", "workplace communication"]),
-        ("concise", ["workplace communication", "work"]),
-        ("trip", ["travel"]),
-    ]:
+    for word in ["hello", "concise"]:
         response = client.post(
             "/api/v1/words",
             headers=owner,
-            json={
-                "word": word,
-                "english_explanation": f"{word} means something",
-                "topics": tags,
-            },
+            json={"word": word, "english_explanation": f"{word} means something"},
         )
-        assert response.status_code == 201, response.text
+        assert response.status_code == 201
         db.get(ReviewState, uuid.UUID(response.json()["id"])).due_at = datetime.now(
             UTC
         ) + timedelta(days=20)
     db.commit()
-    assert client.get("/api/v1/words/topics?q=WORK", headers=owner).json() == [
-        "work",
-        "workplace communication",
-    ]
-    assert client.get("/api/v1/words/topics?q=work", headers=other).json() == []
-    query = "?source=topic&topic=WORKPLACE"
+    query = "?source=time&period=Weekly"
     response = client.get("/api/v1/reviews/preparation" + query, headers=owner)
     assert response.json() == {"count": 2, "matching_count": 2}
     assert response.headers["cache-control"] == "no-store"
-    assert (
-        client.get(
-            "/api/v1/reviews/preparation?source=topic&topic=%25", headers=owner
-        ).json()["count"]
-        == 0
-    )
-    assert (
-        client.get(
-            "/api/v1/reviews/preparation?source=topic", headers=owner
-        ).status_code
-        == 422
-    )
     items = client.get("/api/v1/reviews/session" + query, headers=owner).json()
     assert len(items) == 2
     first = items[0]
@@ -803,7 +778,6 @@ def test_saved_tags_select_live_session_and_authorize_not_due_answers(api):
         ).status_code
         == 409
     )
-    assert client.get("/api/v1/words/topics").status_code == 401
     assert client.get("/api/v1/reviews/preparation").status_code == 401
     assert client.delete("/api/v1/account", headers=owner).status_code == 204
 
@@ -838,14 +812,21 @@ def test_preparation_daily_allowance_and_small_bank(api, monkeypatch):
     assert client.get("/api/v1/reviews/session?source=time", headers=owner).json() == []
 
 
-@pytest.mark.parametrize("tags", [[""], ["a" * 101], ["ok"] * 11])
-def test_topic_tag_validation(api, tags):
+def test_topic_search_is_deferred_and_tags_are_not_accepted(api):
     client, _, owner, _, _ = api
     assert (
         client.post(
             "/api/v1/words",
             headers=owner,
-            json={"word": "word", "english_explanation": "meaning", "topics": tags},
+            json={"word": "word", "english_explanation": "meaning", "topics": ["work"]},
         ).status_code
         == 422
     )
+    assert client.get("/api/v1/words/topics", headers=owner).status_code == 404
+    for endpoint in ["preparation", "session"]:
+        assert (
+            client.get(
+                f"/api/v1/reviews/{endpoint}?source=topic", headers=owner
+            ).status_code
+            == 422
+        )

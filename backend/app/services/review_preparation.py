@@ -4,19 +4,16 @@ from datetime import UTC, datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import Select, select
 
 from app.core.time import local_day_bounds
-from app.models import ReviewState, User, Word, WordTopic
-from app.models.word import normalise_word
+from app.models import ReviewState, User, Word
 
 
 class ReviewSelection(BaseModel):
-    source: Literal["time", "recall", "topic"] = "recall"
+    source: Literal["time", "recall"] = "recall"
     period: Literal["Yesterday", "Weekly", "Monthly"] = "Weekly"
-    topic: str = Field(default="", max_length=100)
     include_overdue: bool = True
 
 
@@ -47,16 +44,4 @@ def selected_words(
             lower = now - timedelta(days=7 if selection.period == "Weekly" else 30)
             upper = now
         query = query.where(Word.created_at >= lower, Word.created_at < upper)
-    else:
-        topic = normalise_word(selection.topic)
-        if not topic:
-            raise HTTPException(422, "Enter a saved topic tag")
-        query = query.where(
-            select(WordTopic.word_id)
-            .where(
-                WordTopic.word_id == Word.id,
-                WordTopic.tag.contains(topic, autoescape=True),
-            )
-            .exists()
-        )
     return query.order_by(Word.created_at.desc(), Word.id)

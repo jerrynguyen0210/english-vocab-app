@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
-from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word, WordTopic
+from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
 
 
 def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
@@ -94,15 +94,6 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
         "exported_at": datetime.now(UTC),
         "account": dict(account),
         "words": [dict(row) for row in words],
-        "word_topics": [
-            dict(row)
-            for row in db.execute(
-                select(WordTopic.word_id, WordTopic.tag)
-                .join(Word, Word.id == WordTopic.word_id)
-                .where(Word.user_id == user_id)
-                .order_by(WordTopic.word_id, WordTopic.tag)
-            ).mappings()
-        ],
         "review_states": [dict(row) for row in states],
         "review_attempts": [dict(row) for row in attempts],
         "session_metadata": [dict(row) for row in sessions],

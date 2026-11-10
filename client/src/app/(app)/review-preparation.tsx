@@ -1,8 +1,8 @@
 import { useFocusEffect } from 'expo-router';
 import { authenticatedFetch } from '@/services/auth';
 import { connectionMessage } from '@/services/connectivity';
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 import { AppScreen } from '@/components/app-screen';
 import { NavigationLink } from '@/components/navigation-link';
 import { ThemedText } from '@/components/themed-text';
@@ -29,19 +29,17 @@ const sources = [
   {
     key: 'topic',
     title: 'By topic',
-    detail: 'Search your saved word topics',
+    detail: 'Coming later',
     icon: '⌕',
   },
 ] as const;
 export default function ReviewPreparationScreen() {
   const [source, setSource] = useState<ReviewSource>('time');
   const [period, setPeriod] = useState<ReviewPeriod>('Weekly');
-  const [topic, setTopic] = useState('');
   const [includeOverdue, setIncludeOverdue] = useState(true);
   const query = reviewQuery({
     source,
     period,
-    topic,
     includeOverdue: String(includeOverdue),
   });
   const [ready, setReady] = useState<{
@@ -51,7 +49,6 @@ export default function ReviewPreparationScreen() {
   } | null>(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [topics, setTopics] = useState<string[]>([]);
   const count = ready?.query === query ? ready.count : null;
   useFocusEffect(
     useCallback(() => {
@@ -61,7 +58,7 @@ export default function ReviewPreparationScreen() {
       setReady(null);
       setError('');
       const timer = setTimeout(() => {
-        if (source === 'topic' && !topic.trim()) {
+        if (source === 'topic') {
           setReady({ query, count: 0, matching: 0 });
           return;
         }
@@ -90,27 +87,8 @@ export default function ReviewPreparationScreen() {
         active = false;
         clearTimeout(timer);
       };
-    }, [query, retry, source, topic]),
+    }, [query, retry, source]),
   );
-  useEffect(() => {
-    let active = true;
-    const timer = setTimeout(() => {
-      if (source !== 'topic') return;
-      void authenticatedFetch(`/words/topics?q=${encodeURIComponent(topic)}`)
-        .then(async (response) => {
-          if (!response.ok) throw new Error();
-          const tags: string[] = await response.json();
-          if (active) setTopics(tags);
-        })
-        .catch(() => {
-          if (active) setTopics([]);
-        });
-    }, 250);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [source, topic]);
   const startLabel = `Start review · ${count} words`;
   return (
     <AppScreen selected="Review">
@@ -208,44 +186,24 @@ export default function ReviewPreparationScreen() {
             </>
           ) : (
             <>
-              <ThemedText style={styles.label}>TYPE A TOPIC</ThemedText>
-              <TextInput
-                accessibilityLabel="Search saved word topics"
-                placeholder="Search topics"
-                placeholderTextColor={colors.placeholder}
-                value={topic}
-                onChangeText={setTopic}
-                style={styles.input}
-                autoCorrect={false}
-              />
-              <ThemedText style={styles.badge}>
-                {count === null ? '…' : ready?.matching} matching words
+              <ThemedText style={styles.summary}>
+                Topic search is coming later.
               </ThemedText>
-              <View style={styles.periods}>
-                {topics.map((tag) => (
-                  <Pressable
-                    key={tag}
-                    accessibilityRole="button"
-                    onPress={() => setTopic(tag)}
-                    style={styles.period}
-                  >
-                    <ThemedText style={styles.periodText}>{tag}</ThemedText>
-                  </Pressable>
-                ))}
-              </View>
               <ThemedText style={styles.detail}>
-                Matches saved topic tags.
+                Choose By time or SM-2 recall to start a review.
               </ThemedText>
             </>
           )}
         </View>
         <View style={styles.row}>
           <ThemedText accessibilityLiveRegion="polite" style={styles.summary}>
-            {count === null
-              ? error
-                ? 'Count unavailable'
-                : 'Loading ready words…'
-              : `${count} words ready`}
+            {source === 'topic'
+              ? 'Not available yet'
+              : count === null
+                ? error
+                  ? 'Count unavailable'
+                  : 'Loading ready words…'
+                : `${count} words ready`}
           </ThemedText>
           <ThemedText style={styles.next}>Answer mode next →</ThemedText>
         </View>
@@ -274,7 +232,6 @@ export default function ReviewPreparationScreen() {
               params: {
                 source,
                 period,
-                topic,
                 includeOverdue: String(includeOverdue),
               },
             }}
@@ -295,7 +252,9 @@ export default function ReviewPreparationScreen() {
                 ? 'Count unavailable'
                 : count === null
                   ? 'Loading…'
-                  : 'No words to review'}
+                  : source === 'topic'
+                    ? 'Coming later'
+                    : 'No words to review'}
             </ThemedText>
           </Pressable>
         )}
@@ -413,15 +372,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     fontSize: 11,
     fontWeight: '700',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 10,
-    minHeight: 47,
-    padding: 12,
-    color: colors.text,
-    fontSize: 14,
   },
   next: { color: colors.primary, fontSize: 11 },
   button: {
