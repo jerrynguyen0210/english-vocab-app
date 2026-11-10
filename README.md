@@ -211,6 +211,21 @@ requests use `X-Auth-Platform: native`. Browser refresh tokens use an HttpOnly,
 SameSite=Strict cookie scoped to `/api/v1/auth`. Access tokens stay in memory on both
 platforms. Credentials never use localStorage or AsyncStorage.
 
+Startup restores the saved refresh session before exposing authenticated screens.
+Temporary network failures keep credentials and the intended route and offer Retry.
+Returning from the background rechecks the session. Protected requests refresh
+and retry once after an expired access token; rejected refresh credentials notify
+the UI to request sign-in. Concurrent requests share refresh work, and late 401
+responses reuse a token already rotated by another request.
+
+Expired sessions show Sign in over the current screen, preserving its route,
+query parameters, and mounted form state. Signing back into the same account
+resumes that screen. A different account or explicit sign-out resets mounted
+screens. This preserves active drafts during reauthentication; it does not persist
+unsaved form data through process termination. Deep links retain their destination
+through startup restoration or reauthentication. Passwords are never persisted.
+
+
 Deploy web and API on the same site over HTTPS, such as app.example.com and
 api.example.com, and configure the exact web origin in `CORS_ORIGINS`. Cookie
 auth POSTs require an allowed Origin. Browsers cannot select native token

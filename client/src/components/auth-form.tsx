@@ -36,7 +36,13 @@ function FieldError({ message }: { message?: string }) {
   ) : null;
 }
 
-export function AuthForm({ signUp = false }: { signUp?: boolean }) {
+export function AuthForm({
+  signUp = false,
+  reauthenticate = false,
+}: {
+  signUp?: boolean;
+  reauthenticate?: boolean;
+}) {
   const session = useSession();
   const fieldId = useId();
   const nameInput = useRef<InputInstance>(null);
@@ -128,9 +134,11 @@ export function AuthForm({ signUp = false }: { signUp?: boolean }) {
                 {signUp ? 'Create your account' : 'Welcome back'}
               </ThemedText>
               <ThemedText style={styles.subtitle}>
-                {signUp
-                  ? 'Begin your English vocabulary journey.'
-                  : 'Sign in to continue learning.'}
+                {reauthenticate
+                  ? 'Sign in to continue where you left off.'
+                  : signUp
+                    ? 'Begin your English vocabulary journey.'
+                    : 'Sign in to continue learning.'}
               </ThemedText>
             </View>
             <View style={[styles.form, signUp && styles.signUpForm]}>
@@ -305,7 +313,7 @@ export function AuthForm({ signUp = false }: { signUp?: boolean }) {
                 </ThemedText>
               </Pressable>
               <View style={styles.linkSlot}>
-                {pending ? null : (
+                {pending || reauthenticate ? null : (
                   <Link
                     replace
                     href={signUp ? '/sign-in' : '/sign-up'}

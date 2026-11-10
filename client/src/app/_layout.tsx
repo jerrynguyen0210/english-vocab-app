@@ -1,11 +1,27 @@
-import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
-import { ActivityIndicator, useColorScheme } from 'react-native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+  Stack,
+  usePathname,
+} from 'expo-router';
+import {
+  ActivityIndicator,
+  Button,
+  Modal,
+  View,
+  useColorScheme,
+} from 'react-native';
 import { SessionProvider, useSession } from '@/context/session';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
+import { AuthForm } from '@/components/auth-form';
 
 function Navigation() {
-  const { loading, signedIn } = useSession();
+  const { loading, signedIn, needsSignIn, restoreError, retryRestore, appKey } =
+    useSession();
+  const pathname = usePathname();
+  const protectedLink = ['/add-word', '/review', '/account'].includes(pathname);
   if (loading)
     return (
       <Screen>
@@ -13,15 +29,43 @@ function Navigation() {
         <ThemedText>Restoring your session…</ThemedText>
       </Screen>
     );
+  if (restoreError && !signedIn && !needsSignIn)
+    return (
+      <Screen>
+        <ThemedText accessibilityRole="alert">
+          Unable to restore your session. Check your connection and try again.
+        </ThemedText>
+        <Button title="Retry" onPress={retryRestore} />
+      </Screen>
+    );
+  const keepApp = signedIn || needsSignIn || (protectedLink && appKey === 0);
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="(auth)" />
-      </Stack.Protected>
-      <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="(app)" />
-      </Stack.Protected>
-    </Stack>
+    <View style={{ flex: 1 }}>
+      {restoreError && signedIn ? (
+        <View accessibilityLiveRegion="polite">
+          <ThemedText>
+            Unable to check your session. Your work is still here.
+          </ThemedText>
+          <Button title="Retry connection" onPress={retryRestore} />
+        </View>
+      ) : null}
+      <Stack key={appKey} screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={!keepApp}>
+          <Stack.Screen name="(auth)" />
+        </Stack.Protected>
+        <Stack.Protected guard={keepApp}>
+          <Stack.Screen name="(app)" />
+        </Stack.Protected>
+      </Stack>
+      <Modal
+        visible={keepApp && !signedIn}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => {}}
+      >
+        <AuthForm reauthenticate />
+      </Modal>
+    </View>
   );
 }
 

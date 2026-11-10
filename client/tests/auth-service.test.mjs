@@ -249,3 +249,129 @@ test('authenticated requests reject absolute URLs before attaching credentials',
   }
   assert.equal(h.calls.length, 0);
 });
+
+test('expired refresh notifies navigation, temporary errors do not, and unsubscribe works', async () => {
+  for (const status of [401, 503]) {
+    const h = harness({
+      saved: 'test-saved-refresh',
+      fetchImpl: async () => new Response(null, { status }),
+    });
+    let expired = 0;
+    const unsubscribe = h.service.onSessionExpired(() => {
+      expired++;
+    });
+    await assert.rejects(h.service.refreshSession());
+    assert.equal(expired, status === 401 ? 1 : 0);
+    unsubscribe();
+    await assert.rejects(h.service.refreshSession());
+    assert.equal(expired, status === 401 ? 1 : 0);
+  }
+});
+
+test('a second unauthorized response expires the session instead of looping refreshes', async () => {
+  const h = harness({
+    fetchImpl: async (url) =>
+      url.endsWith('/auth/me') ? new Response(null, { status: 401 }) : tokens(),
+  });
+  let expired = 0;
+  h.service.onSessionExpired(() => {
+    expired++;
+  });
+  await h.service.signIn('learner@example.com', 'test-password-only');
+  await assert.rejects(
+    h.service.authenticatedFetch('/auth/me'),
+    (error) => error.status === 401,
+  );
+  assert.equal(
+    h.calls.filter((call) => call.url.endsWith('/refresh')).length,
+    1,
+  );
+  assert.equal(expired, 1);
+  assert.equal(h.values.size, 0);
+});
+
+test('a late unauthorized response reuses the token rotated by another request', async () => {
+  let release;
+  let firstProfile = true;
+  const h = harness({
+    saved: 'test-saved-refresh',
+    fetchImpl: async (url) => {
+      if (url.endsWith('/sign-in'))
+        return tokens('test-first-access', 'test-first-refresh');
+      if (url.endsWith('/refresh'))
+        return tokens('test-rotated-access', 'test-rotated-refresh');
+      if (url.endsWith('/auth/me') && firstProfile) {
+        firstProfile = false;
+        return new Promise((resolve) => {
+          release = () => resolve(new Response(null, { status: 401 }));
+        });
+      }
+      return Response.json({ name: 'Alex' });
+    },
+  });
+  await h.service.signIn('learner@example.com', 'test-password-only');
+  const request = h.service.authenticatedFetch('/auth/me');
+  await h.service.refreshSession();
+  release();
+  assert.equal((await request).status, 200);
+  assert.equal(
+    h.calls.filter((call) => call.url.endsWith('/refresh')).length,
+    1,
+  );
+  assert.equal(
+    h.calls.at(-1).headers.get('Authorization'),
+    'Bearer test-rotated-access',
+  );
+});
+
+test('an in-flight refresh cannot restore credentials after logout', async () => {
+  let release;
+  const h = harness({
+    saved: 'test-saved-refresh',
+    fetchImpl: async (url) => {
+      if (url.endsWith('/refresh'))
+        return new Promise((resolve) => {
+          release = () =>
+            resolve(tokens('test-stale-access', 'test-stale-refresh'));
+        });
+      return new Response(null, { status: 204 });
+    },
+  });
+  const pending = h.service.refreshSession();
+  const rejected = assert.rejects(pending, /Session changed/);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await h.service.signOut();
+  release();
+  await rejected;
+  assert.equal(h.values.size, 0);
+});
+
+test('native cold start without a saved credential returns signed out without a request', async () => {
+  const h = harness();
+  await assert.rejects(
+    h.service.refreshSession(),
+    (error) => error.status === 401,
+  );
+  assert.equal(h.calls.length, 0);
+});
+
+test('a late logout cannot clear a newer sign-in credential', async () => {
+  let release;
+  const h = harness({
+    saved: 'test-old-refresh',
+    fetchImpl: async (url) => {
+      if (url.endsWith('/logout'))
+        return new Promise((resolve) => {
+          release = () => resolve(new Response(null, { status: 204 }));
+        });
+      return tokens('test-new-access', 'test-new-refresh');
+    },
+  });
+  const pending = h.service.signOut();
+  const rejected = assert.rejects(pending, /Session changed/);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await h.service.signIn('learner@example.com', 'test-password-only');
+  release();
+  await rejected;
+  assert.equal(h.values.get('wordrecall.refresh'), 'test-new-refresh');
+});
