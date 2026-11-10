@@ -147,6 +147,7 @@ test('required search and selected filters reach the API; results save and detec
   await h.flush();
   const query = new URL(calls[0].path, 'https://example.test').searchParams;
   assert.equal(query.get('q'), 'create');
+  assert.equal(h.input().props.value, 'create');
   assert.equal(query.get('include_family'), 'false');
   assert.deepEqual(query.getAll('forms'), ['V2', 'V3']);
   assert.deepEqual(query.getAll('parts'), [
@@ -160,6 +161,42 @@ test('required search and selected filters reach the API; results save and detec
   assert.equal(JSON.parse(calls[1].init.body).word, 'created');
   assert.match(h.text(), /already in your word bank/);
   assert.equal(h.button('Saved').props.disabled, true);
+});
+
+test('blank searches show validation and preserve every selected filter', async () => {
+  const calls = [];
+  const h = harness(async (path) => {
+    calls.push(path);
+    return Response.json([]);
+  });
+  h.filter('Include word family').props.onPress();
+  h.filter('Noun').props.onPress();
+  h.filter('V1 · Base').props.onPress();
+  await h.flush();
+  const labels = [
+    'Include word family',
+    'Noun',
+    'Verb',
+    'Adjective',
+    'Adverb',
+    'Other',
+    'V1 · Base',
+    'V2 · Past',
+    'V3 · Past participle',
+  ];
+  const selected = () => labels.map((label) => h.filter(label).props.checked);
+  const before = selected();
+  for (const value of ['', ' \t\n ']) {
+    h.input().props.onChangeText(value);
+    await h.flush();
+    await h.button('Search').props.onPress();
+    await h.flush();
+    assert.match(h.text(), /Enter a word to search\./);
+    assert.equal(h.input().props['aria-invalid'], true);
+    assert.equal(h.input().props.value, '');
+    assert.deepEqual(selected(), before);
+    assert.equal(calls.length, 0);
+  }
 });
 
 test('stale search responses are discarded when the query changes', async () => {

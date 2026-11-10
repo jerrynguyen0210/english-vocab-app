@@ -94,6 +94,7 @@ export default function AddWordScreen() {
     if (pending.current) return;
     setMessage('');
     const query = word.normalize('NFKC').trim();
+    setWord(query);
     if (!query || Array.from(query).length > 200) {
       setError(
         query ? 'Use 200 characters or fewer.' : 'Enter a word to search.',
