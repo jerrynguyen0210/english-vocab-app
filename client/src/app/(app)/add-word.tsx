@@ -1,5 +1,6 @@
 import { useRef, useState, type ComponentRef } from 'react';
 import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { NavigationLink } from '@/components/navigation-link';
 import { AppScreen } from '@/components/app-screen';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
@@ -26,6 +27,7 @@ export default function AddWordScreen() {
   const [values, setValues] = useState(empty);
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
   const [message, setMessage] = useState('');
+  const [duplicate, setDuplicate] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [focused, setFocused] = useState<Field | null>(null);
@@ -35,7 +37,7 @@ export default function AddWordScreen() {
   const pending = useRef(false);
 
   async function save() {
-    if (pending.current) return;
+    if (pending.current || duplicate) return;
     const nextErrors = validateWord(values);
     setErrors(nextErrors);
     setMessage('');
@@ -54,7 +56,7 @@ export default function AddWordScreen() {
         body: JSON.stringify(wordPayload(values)),
       });
       if (response.status === 409) {
-        setErrors({ word: 'This word is already in your word bank.' });
+        setDuplicate(true);
         inputs.current.word?.focus();
         return;
       }
@@ -91,7 +93,9 @@ export default function AddWordScreen() {
                 }}
                 accessibilityLabel={field.label.replace(' *', ' (required)')}
                 accessibilityLabelledBy={`${field.key}-label`}
-                aria-invalid={!!errors[field.key]}
+                aria-invalid={
+                  !!errors[field.key] || (field.key === 'word' && duplicate)
+                }
                 value={values[field.key]}
                 editable={!saving}
                 placeholder={field.placeholder}
@@ -114,6 +118,7 @@ export default function AddWordScreen() {
                   }));
                 }}
                 onChangeText={(text) => {
+                  if (field.key === 'word') setDuplicate(false);
                   setValues((current) => ({ ...current, [field.key]: text }));
                   setErrors((current) => ({
                     ...current,
@@ -130,9 +135,27 @@ export default function AddWordScreen() {
                   field.key === 'english_explanation' && styles.explanation,
                   field.key === 'example_sentence' && styles.example,
                   focused === field.key && styles.focused,
-                  !!errors[field.key] && styles.invalid,
+                  (!!errors[field.key] ||
+                    (field.key === 'word' && duplicate)) &&
+                    styles.invalid,
                 ]}
               />
+              {field.key === 'word' && duplicate && (
+                <View>
+                  <ThemedText accessibilityRole="alert" style={styles.error}>
+                    You already saved this word. Enter a different word or
+                    cancel.
+                  </ThemedText>
+                  <NavigationLink
+                    href="/"
+                    replace
+                    label="Cancel adding word"
+                    style={styles.cancel}
+                  >
+                    <ThemedText style={styles.cancelText}>Cancel</ThemedText>
+                  </NavigationLink>
+                </View>
+              )}
               {!!errors[field.key] && (
                 <ThemedText accessibilityRole="alert" style={styles.error}>
                   {errors[field.key]}
@@ -150,12 +173,12 @@ export default function AddWordScreen() {
           )}
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ disabled: saving, busy: saving }}
-            disabled={saving}
+            accessibilityState={{ disabled: saving || duplicate, busy: saving }}
+            disabled={saving || duplicate}
             onPress={save}
             style={({ pressed }) => [
               styles.button,
-              (pressed || saving) && styles.pressed,
+              (pressed || saving || duplicate) && styles.pressed,
             ]}
           >
             <ThemedText style={styles.buttonText}>
@@ -249,6 +272,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 12,
+  },
+  cancel: {
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  cancelText: {
+    fontFamily,
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   pressed: { opacity: 0.75 },
   buttonText: {
