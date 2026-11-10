@@ -23,7 +23,7 @@
       "package": "com.jerrynguyen.wordrecall"
     },
     "web": {
-      "output": "server",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
