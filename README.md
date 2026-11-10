@@ -308,3 +308,11 @@ when its owner is marked for deletion; ordinary history updates and deletes rema
 blocked. Other accounts are untouched. Infrastructure logs/backups follow the
 deployment's retention policy. Web sessions from the earlier unversioned API must
 sign in again after this version change.
+
+### Data portability (admin)
+
+Operators can produce a private JSON export of a verified user's retained data
+with `python -m app.export_user --user-id UUID --output PATH` from `backend/`.
+See the [admin procedure](docs/data-portability.md) for scope, delivery and cleanup.
+R0 has no in-app export; add one only if an applicable store/privacy requirement
+requires it, and update the recorded decision.

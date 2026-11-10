@@ -215,3 +215,21 @@ by the user and remain supported through autofill, separate from app persistence
 D6's pre-R1 cache/queue decision must explicitly revise this inventory before
 any vocabulary data or pending writes are stored locally. PostgreSQL remains
 the source of truth.
+
+## Data portability — backend admin task
+
+Status: Accepted for R0.
+
+Produce a user's retained application data on a verified request using
+`python -m app.export_user --user-id UUID --output PATH`. Follow the
+[admin procedure and data inventory](data-portability.md). This supports request
+fulfilment without adding a product feature or publicly accessible export route.
+
+Do not add an in-app export unless an applicable store or privacy requirement
+makes that delivery mechanism necessary. At store submission, or when applicable
+privacy requirements change, review the actual requirement. Record its source,
+applicability, review date and whether backend fulfilment is sufficient. If it
+requires an in-app flow, supersede this decision and specify authentication,
+account scoping, delivery and temporary-file cleanup before implementing it.
+No such requirement has been established in this task; this decision makes no
+claim that backend export alone guarantees compliance in every jurisdiction.
