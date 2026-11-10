@@ -1,5 +1,11 @@
 import { Image } from 'expo-image';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { type PropsWithChildren } from 'react';
 import { NavigationLink } from '@/components/navigation-link';
@@ -38,83 +44,94 @@ export function AppScreen({
   toast?: string;
 }>) {
   return (
-    <SafeAreaView style={styles.page} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <View style={styles.brand} accessible accessibilityLabel="Wordwell">
-            <View style={styles.brandMark}>
-              <ThemedText style={styles.brandLetter}>W</ThemedText>
+    <KeyboardAvoidingView
+      style={styles.page}
+      behavior="padding"
+      enabled={Platform.OS === 'ios'}
+    >
+      <SafeAreaView style={styles.page} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.brand} accessible accessibilityLabel="Wordwell">
+              <View style={styles.brandMark}>
+                <ThemedText style={styles.brandLetter}>W</ThemedText>
+              </View>
+              <ThemedText style={styles.brandName}>Wordwell</ThemedText>
             </View>
-            <ThemedText style={styles.brandName}>Wordwell</ThemedText>
-          </View>
-          <NavigationLink
-            href="/account"
-            replace={selected === 'Account'}
-            label="Open account"
-            style={styles.accountButton}
-          >
-            <View style={styles.accountCircle}>
-              <Image
-                source={require('@/assets/images/wordwell/account-primary.svg')}
-                style={styles.icon}
-                accessible={false}
-              />
-            </View>
-          </NavigationLink>
-        </View>
-      </View>
-      <ScrollView
-        automaticallyAdjustKeyboardInsets
-        keyboardShouldPersistTaps="handled"
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {children}
-      </ScrollView>
-      {!!toast && (
-        <View pointerEvents="none" style={styles.toast}>
-          <ThemedText accessibilityLiveRegion="polite" style={styles.toastText}>
-            {toast}
-          </ThemedText>
-        </View>
-      )}
-      <SafeAreaView edges={['bottom']} style={styles.footer}>
-        <View style={styles.navigation}>
-          {navigation.map(({ label, href, icon }) => (
             <NavigationLink
-              key={label}
-              href={href}
-              replace={label === selected}
-              label={label}
-              selected={label === selected}
-              style={[styles.navItem, label === selected && styles.navSelected]}
+              href="/account"
+              replace={selected === 'Account'}
+              label="Open account"
+              style={styles.accountButton}
             >
-              <Image
-                source={
-                  label === 'Home' && selected !== 'Home'
-                    ? require('@/assets/images/wordwell/home-muted.svg')
-                    : label === 'Add' && selected === 'Add'
-                      ? require('@/assets/images/wordwell/add-active.svg')
-                      : label === 'Account' && selected === 'Account'
-                        ? require('@/assets/images/wordwell/account-active.svg')
-                        : icon
-                }
-                style={styles.icon}
-                accessible={false}
-              />
-              <ThemedText
+              <View style={styles.accountCircle}>
+                <Image
+                  source={require('@/assets/images/wordwell/account-primary.svg')}
+                  style={styles.icon}
+                  accessible={false}
+                />
+              </View>
+            </NavigationLink>
+          </View>
+        </View>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {children}
+        </ScrollView>
+        {!!toast && (
+          <View pointerEvents="none" style={styles.toast}>
+            <ThemedText
+              accessibilityLiveRegion="polite"
+              style={styles.toastText}
+            >
+              {toast}
+            </ThemedText>
+          </View>
+        )}
+        <SafeAreaView edges={['bottom']} style={styles.footer}>
+          <View style={styles.navigation}>
+            {navigation.map(({ label, href, icon }) => (
+              <NavigationLink
+                key={label}
+                href={href}
+                replace={label === selected}
+                label={label}
+                selected={label === selected}
                 style={[
-                  styles.navLabel,
-                  label === selected && styles.navLabelSelected,
+                  styles.navItem,
+                  label === selected && styles.navSelected,
                 ]}
               >
-                {label}
-              </ThemedText>
-            </NavigationLink>
-          ))}
-        </View>
+                <Image
+                  source={
+                    label === 'Home' && selected !== 'Home'
+                      ? require('@/assets/images/wordwell/home-muted.svg')
+                      : label === 'Add' && selected === 'Add'
+                        ? require('@/assets/images/wordwell/add-active.svg')
+                        : label === 'Account' && selected === 'Account'
+                          ? require('@/assets/images/wordwell/account-active.svg')
+                          : icon
+                  }
+                  style={styles.icon}
+                  accessible={false}
+                />
+                <ThemedText
+                  style={[
+                    styles.navLabel,
+                    label === selected && styles.navLabelSelected,
+                  ]}
+                >
+                  {label}
+                </ThemedText>
+              </NavigationLink>
+            ))}
+          </View>
+        </SafeAreaView>
       </SafeAreaView>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 const fontFamily = Platform.select({

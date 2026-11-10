@@ -13,6 +13,8 @@ function harness(fetch) {
   let tree;
   let signedIn = true;
   let dismissToast;
+  class HTMLInputElement {}
+  class HTMLTextAreaElement {}
   class AuthError extends Error {
     constructor(status) {
       super();
@@ -78,6 +80,27 @@ function harness(fetch) {
     },
   );
   const exports = {};
+  const formExports = {};
+  runInNewContext(
+    ts.transpileModule(
+      readFileSync(
+        new URL('../src/components/word-form.web.tsx', import.meta.url),
+        'utf8',
+      ),
+      {
+        compilerOptions: {
+          module: ts.ModuleKind.CommonJS,
+          jsx: ts.JsxEmit.ReactJSX,
+        },
+      },
+    ).outputText,
+    {
+      exports: formExports,
+      HTMLInputElement,
+      HTMLTextAreaElement,
+      require: (id) => dependencies[id],
+    },
+  );
   runInNewContext(outputText, {
     exports,
     performance,
@@ -118,6 +141,20 @@ function harness(fetch) {
     filter: (label) => nodes().find((n) => n.props?.label === label),
     input: () => nodes().find((n) => n.type === 'Input'),
     text,
+    enter: (overrides = {}) => {
+      const form = nodes().find((n) => n.type === 'Form');
+      const webForm = formExports.WordForm(form.props);
+      webForm.props.onKeyDownCapture({
+        target: new HTMLInputElement(),
+        key: 'Enter',
+        shiftKey: false,
+        repeat: false,
+        nativeEvent: {},
+        preventDefault() {},
+        stopPropagation() {},
+        ...overrides,
+      });
+    },
     toast: () => tree.props.toast,
     dismissToast: () => dismissToast(),
     saveButton: (word) =>
@@ -144,6 +181,29 @@ const entry = {
   english_explanation: 'Verb form of create: make something',
   example_sentence: null,
 };
+
+test('web Enter searches once and ignores composing or repeated key events', async () => {
+  const calls = [];
+  const h = harness(async (path) => {
+    calls.push(path);
+    return Response.json([]);
+  });
+  h.input().props.onChangeText(' create ');
+  await h.flush();
+  h.enter({ nativeEvent: { isComposing: true } });
+  h.enter({ nativeEvent: { keyCode: 229 } });
+  h.enter({ repeat: true });
+  h.enter({ shiftKey: true });
+  assert.equal(calls.length, 0);
+  h.enter();
+  await h.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(
+    new URL(calls[0], 'https://example.test').searchParams.get('q'),
+    'create',
+  );
+  assert.match(h.text(), /No matching words/);
+});
 
 test('required search and selected filters reach the API; results save and detect duplicates', async () => {
   const calls = [];
