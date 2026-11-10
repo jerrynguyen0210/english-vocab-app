@@ -4,20 +4,19 @@ import { AppScreen } from '@/components/app-screen';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 import { authenticatedFetch } from '@/services/auth';
+import { validateWord, wordPayload } from '@/utils/word-validation';
 
 const fields = [
-  { key: 'word', label: 'Word *', placeholder: 'e.g. resilience', limit: 200 },
+  { key: 'word', label: 'Word *', placeholder: 'e.g. resilience' },
   {
     key: 'english_explanation',
     label: 'English explanation *',
     placeholder: 'e.g. Able to recover from difficulty.',
-    limit: 5000,
   },
   {
     key: 'example_sentence',
     label: 'Example sentence (optional)',
     placeholder: 'e.g. She showed resilience.',
-    limit: 5000,
   },
 ] as const;
 type Field = (typeof fields)[number]['key'];
@@ -37,15 +36,7 @@ export default function AddWordScreen() {
 
   async function save() {
     if (pending.current) return;
-    const nextErrors: Partial<Record<Field, string>> = {};
-    if (!values.word.normalize('NFKC').trim())
-      nextErrors.word = 'Word is required';
-    if (!values.english_explanation.normalize('NFKC').trim())
-      nextErrors.english_explanation = 'Explanation is required';
-    for (const field of fields) {
-      if (Array.from(values[field.key]).length > field.limit)
-        nextErrors[field.key] = `Use ${field.limit} characters or fewer.`;
-    }
+    const nextErrors = validateWord(values);
     setErrors(nextErrors);
     setMessage('');
     setSaved(false);
@@ -60,11 +51,7 @@ export default function AddWordScreen() {
       const response = await authenticatedFetch('/words', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          word: values.word.trim(),
-          english_explanation: values.english_explanation.trim(),
-          example_sentence: values.example_sentence.trim() || null,
-        }),
+        body: JSON.stringify(wordPayload(values)),
       });
       if (response.status === 409) {
         setErrors({ word: 'This word is already in your word bank.' });
@@ -119,12 +106,22 @@ export default function AddWordScreen() {
                     : undefined
                 }
                 onFocus={() => setFocused(field.key)}
-                onBlur={() => setFocused(null)}
+                onBlur={() => {
+                  setFocused(null);
+                  setErrors((current) => ({
+                    ...current,
+                    [field.key]: validateWord(values)[field.key],
+                  }));
+                }}
                 onChangeText={(text) => {
                   setValues((current) => ({ ...current, [field.key]: text }));
                   setErrors((current) => ({
                     ...current,
-                    [field.key]: undefined,
+                    [field.key]: current[field.key]
+                      ? validateWord({ ...values, [field.key]: text })[
+                          field.key
+                        ]
+                      : undefined,
                   }));
                   setMessage('');
                 }}
