@@ -210,7 +210,7 @@ test('lost submit response retains draft and exact retry; snapshot finishes with
   await h.flush();
   h.input().props.onChangeText(' Hello ');
   await h.flush();
-  await h.button('Submit answer').props.onPress();
+  await h.button('Check answer').props.onPress();
   await h.flush();
   assert.equal(h.input().props.value, ' Hello ');
   assert.equal(h.input().props.editable, false);
@@ -234,7 +234,7 @@ test('expiry retains answer and allows retry after same-account sign-in', async 
   await h.flush();
   h.input().props.onChangeText('helo');
   await h.flush();
-  await h.button('Submit answer').props.onPress();
+  await h.button('Check answer').props.onPress();
   await h.flush();
   h.setSignedIn(false);
   assert.equal(h.input().props.value, 'helo');
@@ -263,7 +263,7 @@ test('selected source loads a live session; answer modes share the signed submis
           {
             ...prompts[0],
             review_token: 'signed-session',
-            choices: ['Hello', 'Goodbye'],
+            choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'],
           },
         ]);
       return Response.json({ result: 'correct', correct_word: 'Hello' });
@@ -283,7 +283,7 @@ test('selected source loads a live session; answer modes share the signed submis
   assert.equal(h.input().props.value, '');
   h.input().props.onChangeText('Hello');
   await h.flush();
-  await h.button('Submit answer').props.onPress();
+  await h.button('Check answer').props.onPress();
   await h.flush();
   assert.equal(
     JSON.parse(requests[1].init.body).review_token,
@@ -368,7 +368,7 @@ test('cloze prompt remains masked across modes and progress tracks the current w
           ...prompts[0],
           word_id: String(index),
           attempt_id: `attempt-${index}`,
-          choices: ['Hello', 'Goodbye'],
+          choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'],
         })),
       );
     submitted++;
@@ -387,7 +387,7 @@ test('cloze prompt remains masked across modes and progress tracks the current w
   for (let index = 0; index < 2; index++) {
     h.input().props.onChangeText('Hello');
     await h.flush();
-    await h.button('Submit answer').props.onPress();
+    await h.button('Check answer').props.onPress();
     await h.flush();
     assert.ok(h.sentence());
     h.button('Next word').props.onPress();
@@ -405,3 +405,44 @@ test('cloze prompt remains masked across modes and progress tracks the current w
   assert.ok(h.sentence());
   assert.ok(h.button('A Hello'));
 });
+
+test('multiple choice renders exactly the server options in order and submits the selection', async () => {
+  const choices = ['Farewell', 'Welcome', 'Hello', 'Goodbye'];
+  let submitted;
+  const h = harness(async (_, init) => {
+    if (!init) return Response.json([{ ...prompts[0], choices }]);
+    submitted = JSON.parse(init.body);
+    return Response.json({ result: 'correct', correct_word: 'Hello' });
+  });
+  await h.flush();
+  assert.equal(h.input(), undefined);
+  assert.equal(h.button('Check answer').props.disabled, true);
+  choices.forEach((value, index) =>
+    assert.ok(h.button(`${String.fromCharCode(65 + index)} ${value}`)),
+  );
+  h.button('C Hello').props.onPress();
+  await h.flush();
+  assert.equal(h.button('Check answer').props.disabled, false);
+  await h.button('Check answer').props.onPress();
+  await h.flush();
+  assert.equal(submitted.typed_answer, 'Hello');
+});
+
+for (const choices of [
+  [],
+  ['Hello'],
+  ['Hello', 'Goodbye'],
+  ['Hello', 'Goodbye', 'Welcome'],
+  ['Hello', 'Goodbye', 'Welcome', 'Farewell', 'Hi'],
+  ['Hello', 'Hello', 'Goodbye', 'Welcome'],
+  ['Hello', '', 'Goodbye', 'Welcome'],
+]) {
+  test(`invalid server option list uses typing without inventing answers: ${JSON.stringify(choices)}`, async () => {
+    const h = harness(async () => Response.json([{ ...prompts[0], choices }]));
+    await h.flush();
+    assert.ok(h.input());
+    assert.equal(h.button('Multiple choice').props.disabled, true);
+    assert.match(h.text(), /Four answer options are unavailable/);
+    assert.equal(h.button('A Hello'), undefined);
+  });
+}

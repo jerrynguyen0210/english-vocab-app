@@ -1,6 +1,5 @@
 """Version-one vocabulary and typed-recall API."""
 
-import secrets
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
@@ -18,8 +17,10 @@ from app.services.dictionary import (
     DictionaryEntry,
     PartOfSpeech,
     VerbForm,
+    review_parts,
     search_dictionary,
 )
+from app.services.review_choices import review_options
 from app.services.review_preparation import ReviewSelection, selected_words
 from app.services.review_prompt import mask_target, prompt_sentence
 from app.services.review_queue import (
@@ -83,7 +84,18 @@ class SessionItem(ReviewItem):
     prompt_sentence: str
     attempt_id: uuid.UUID
     review_token: str
-    choices: list[str]
+    choices: list[str] = Field(min_length=4, max_length=4)
+
+    @field_validator("choices")
+    @classmethod
+    def four_unique_choices(cls, values: list[str]) -> list[str]:
+        if (
+            len(values) != 4
+            or any(not normalise_word(value) for value in values)
+            or len({normalise_word(value) for value in values}) != 4
+        ):
+            raise ValueError("Multiple choice requires four distinct nonblank options")
+        return values
 
 
 class AnswerInput(BaseModel):
@@ -258,28 +270,17 @@ def review_session(
     now = datetime.now(UTC)
     remaining = min(50, remaining_daily_reviews(db, user, now))
     rows = db.execute(selected_words(user, now, selection).limit(remaining)).all()
-    # Distractors are owned saved words. Small banks use typing instead.
+    if not rows:
+        return []
+    # Infer POS once per saved word; all prompts share these cached profiles.
     bank = list(
-        db.scalars(
-            select(Word.word)
-            .where(Word.user_id == user.id)
-            .order_by(Word.id)
-            .limit(200)
-        )
+        db.scalars(select(Word.word).where(Word.user_id == user.id).order_by(Word.id))
     )
+    saved_parts = {word: review_parts(word) for word in bank}
     items = []
     for word, state in rows:
         attempt_id = uuid.uuid4()
-        distractors = [value for value in bank if not answer_matches(value, word.word)]
-        choices = (
-            [
-                word.word,
-                *secrets.SystemRandom().sample(distractors, min(3, len(distractors))),
-            ]
-            if distractors
-            else []
-        )
-        secrets.SystemRandom().shuffle(choices)
+        choices = review_options(word.word, saved_parts)
         items.append(
             SessionItem(
                 word_id=word.id,

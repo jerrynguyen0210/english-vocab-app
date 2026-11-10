@@ -14,6 +14,7 @@
 | D10 | iOS build path | Mac + Xcode locally · cloud builds (Expo Build) · skip iOS for now | Depends on Mac access and the Apple account (see Platform realities) | Before P8 iOS testing |
 | D11 | App name, bundle ID / package name | App name: **WordRecall**<br>iOS bundle ID: `com.jerrynguyen.wordrecall`<br>Android package name: `com.jerrynguyen.wordrecall` | Choose before the first native build | P2 |
 | D12 | How friends get the app | Web link · Android APK · Play internal/closed testing · TestFlight | Web link + Android internal first | P10 |
+| D16 | Multiple-choice distractors | Similar-POS saved words → word-family forms → other saved words → general dictionary vocabulary | Accepted: server selects three unique distractors and shuffles four options, including the target once | Review implementation |
 
 ## D11 — App identity
 
@@ -139,8 +140,8 @@ Before the next UI changes, add backend unit coverage for these rules:
   remaining daily allowance (20 attempts by default), including time-based
   practice. Newly added words wait for the next session. No client clock
   determines eligibility. Answer mode is selected on the Review screen;
-  choice distractors come from the user's saved words, with typing used when
-  no distractor exists. Both answer modes use the same D2 checking and D4 updates.
+  choice distractors follow D16 and always provide four unique server options.
+  Both answer modes use the same D2 checking and D4 updates.
 
 See [Review preparation](review-preparation.md) for API and session details.
 
@@ -249,3 +250,35 @@ requires an in-app flow, supersede this decision and specify authentication,
 account scoping, delivery and temporary-file cleanup before implementing it.
 No such requirement has been established in this task; this decision makes no
 claim that backend export alone guarantees compliance in every jurisdiction.
+
+
+## D16 — Multiple-choice options
+
+Status: Accepted.
+
+The server returns exactly four nonblank, unique options: the saved target once
+and three distractors, selected in this order:
+
+1. Other saved words sharing at least one dictionary-inferred part of speech.
+2. Other forms in the target's lexical family, using the existing WordNet and
+   LemmInflect family/inflection rules.
+3. Other words saved by the current user.
+4. General dictionary vocabulary as a final fallback, including for small banks
+   and custom words without a dictionary family. The server bundles a small
+   general vocabulary by part of speech so this fallback also works when the
+   local dictionary corpus is unavailable.
+
+POS is inferred at review time; word creation does not collect or persist it.
+Unknown POS skips the first tier. Prefer the target POS in the final vocabulary
+tier where available, then use its remaining vocabulary if needed. Deduplicate
+across all tiers using Unicode compatibility normalization, case folding and
+whitespace folding; exclude the target before selecting distractors. Shuffle
+within each tier, fill higher-priority tiers first, and shuffle the completed
+four options so the correct position varies. Only the user's saved words enter
+the saved-word tiers; another user's vocabulary is never used.
+
+The client preserves the returned order and labels the options A–D. It never
+creates, replaces, pads, sorts, or reshuffles them. Check answer requires a selected
+option and sends its exact text through the existing answer endpoint. Invalid
+option payloads disable multiple choice and allow Typing without synthesizing
+options. Network retries retain the exact original submission.

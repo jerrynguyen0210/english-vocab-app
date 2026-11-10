@@ -783,12 +783,14 @@ def test_time_session_authorizes_not_due_answers(api):
     assert client.delete("/api/v1/account", headers=owner).status_code == 204
 
 
-def test_preparation_daily_allowance_and_small_bank(api, monkeypatch):
+def test_preparation_daily_allowance_and_four_options_for_small_bank(api, monkeypatch):
     client, _, owner, _, _ = api
     monkeypatch.setattr(get_settings(), "review_daily_cap", 1)
     create(client, owner)
     item = client.get("/api/v1/reviews/session?source=recall", headers=owner).json()[0]
-    assert item["choices"] == []
+    assert len(item["choices"]) == 4
+    assert len({normalise_word(option) for option in item["choices"]}) == 4
+    assert sum(normalise_word(option) == "hello" for option in item["choices"]) == 1
     create(client, owner, "bye")
     assert client.get(
         "/api/v1/reviews/preparation?source=recall", headers=owner

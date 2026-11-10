@@ -132,11 +132,24 @@ export default function ReviewScreen() {
     };
   }, [load]);
 
+  const serverChoices = item?.choices;
+  const choiceAvailable =
+    Array.isArray(serverChoices) &&
+    serverChoices.length === 4 &&
+    serverChoices.every(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    ) &&
+    new Set(
+      serverChoices.map((value) =>
+        value.normalize('NFKC').trim().toLowerCase(),
+      ),
+    ).size === 4;
+
   useEffect(() => {
     // Wait until the loaded prompt is editable, including after a failed submit.
     if (
       signedIn &&
-      (mode === 'typing' || !item?.choices?.length) &&
+      (mode === 'typing' || !choiceAvailable) &&
       item &&
       !loading &&
       !result &&
@@ -144,7 +157,7 @@ export default function ReviewScreen() {
     ) {
       answerInput.current?.focus();
     }
-  }, [signedIn, mode, item, loading, result, pendingBody]);
+  }, [signedIn, mode, item, loading, result, pendingBody, choiceAvailable]);
 
   const finished = !loading && !error && !item;
   const progressPercent =
@@ -288,16 +301,15 @@ export default function ReviewScreen() {
                     disabled={
                       loading ||
                       !!pendingBody ||
-                      (value === 'choice' && !item.choices?.length)
+                      (value === 'choice' && !choiceAvailable)
                     }
                     accessibilityRole="radio"
                     accessibilityState={{
                       disabled:
                         loading ||
                         !!pendingBody ||
-                        (value === 'choice' && !item.choices?.length),
-                      checked:
-                        (item.choices?.length ? mode : 'typing') === value,
+                        (value === 'choice' && !choiceAvailable),
+                      checked: (choiceAvailable ? mode : 'typing') === value,
                     }}
                     onPress={() => {
                       setMode(value);
@@ -305,13 +317,13 @@ export default function ReviewScreen() {
                     }}
                     style={[
                       styles.modeButton,
-                      (item.choices?.length ? mode : 'typing') === value &&
+                      (choiceAvailable ? mode : 'typing') === value &&
                         styles.button,
                     ]}
                   >
                     <ThemedText
                       style={
-                        (item.choices?.length ? mode : 'typing') === value
+                        (choiceAvailable ? mode : 'typing') === value
                           ? styles.buttonText
                           : styles.subtitle
                       }
@@ -380,9 +392,9 @@ export default function ReviewScreen() {
             ) : (
               <>
                 <ThemedText style={styles.question}>Your answer</ThemedText>
-                {mode === 'choice' && !!item.choices?.length ? (
+                {mode === 'choice' && !!choiceAvailable ? (
                   <View style={styles.choices}>
-                    {item.choices.map((option, index) => (
+                    {serverChoices!.map((option, index) => (
                       <Pressable
                         key={option}
                         accessibilityRole="radio"
@@ -430,13 +442,13 @@ export default function ReviewScreen() {
                   onPress={() => void submit()}
                 >
                   <ThemedText style={styles.buttonText}>
-                    {pendingBody ? 'Retry submission' : 'Submit answer'}
+                    {pendingBody ? 'Retry submission' : 'Check answer'}
                   </ThemedText>
                 </Pressable>
                 <ThemedText style={styles.subtitle}>
-                  {item.choices?.length
+                  {choiceAvailable
                     ? 'Choose an answer or type the missing word.'
-                    : 'Type the word to practise with your current word bank.'}
+                    : 'Four answer options are unavailable for this word. Type your answer to continue.'}
                 </ThemedText>
               </>
             )}

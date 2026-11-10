@@ -38,9 +38,12 @@ saved-tag search endpoint or topic fields on word creation.
 `GET /api/v1/reviews/session` accepts the same selection and returns a bounded
 snapshot. Each prompt includes a masked fill-in-the-blank `prompt_sentence`,
 masked explanation/example, `word_id`,
-`attempt_id`, `review_token` and shuffled `choices`. Choices include the answer
-and up to three other owned saved words, without identifying the correct option.
-A one-word bank returns no choices, so typing remains available. The legacy
+`attempt_id`, `review_token` and shuffled `choices`. Choices contain exactly four
+unique options, including the target once, without
+identifying the correct option. D16 selects similar-POS saved words, then family
+forms, other saved words and finally general dictionary vocabulary. Small banks
+still receive four options. The client displays them unchanged as A–D with
+Check answer. The legacy
 `/reviews/next` endpoint remains typing-only and selects currently due instants.
 
 Answers submit the prompt's `attempt_id` and `review_token`, `typed_answer`
