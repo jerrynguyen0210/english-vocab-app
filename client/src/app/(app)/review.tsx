@@ -1,6 +1,8 @@
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   TextInput,
@@ -26,6 +28,7 @@ export default function ReviewScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reviewed, setReviewed] = useState(0);
+  const [correctCount, setCorrectCount] = useState(0);
   const answerInput = useRef<ComponentRef<typeof TextInput>>(null);
   const busy = useRef(false);
   const started = useRef(0);
@@ -78,8 +81,24 @@ export default function ReviewScreen() {
     }
   }, [item, loading, result]);
 
+  const finished = !loading && !error && !item;
+  const announcement = result
+    ? result.result === 'correct'
+      ? 'Correct! Well done.'
+      : `Incorrect. You typed: ${answer || 'No answer'}. Correct word: ${result.correct_word}.`
+    : finished
+      ? `Review finished. ${correctCount} of ${reviewed} answers correct.`
+      : '';
+
+  useEffect(() => {
+    // Android and web use the persistent live region below; VoiceOver needs this.
+    if (Platform.OS === 'ios' && announcement) {
+      AccessibilityInfo.announceForAccessibility(announcement);
+    }
+  }, [announcement]);
+
   async function submit() {
-    if (!item || !answer.trim() || result || busy.current) return;
+    if (!item || result || busy.current) return;
     busy.current = true;
     setLoading(true);
     setError('');
@@ -98,15 +117,23 @@ export default function ReviewScreen() {
           }),
         },
       );
+      if (response.status === 409) {
+        setItem(null);
+        throw new Error();
+      }
       if (!response.ok) throw new Error();
       const feedback: Result = await response.json();
       if (mounted.current) {
         setResult(feedback);
         setReviewed((count) => count + 1);
+        if (feedback.result === 'correct')
+          setCorrectCount((count) => count + 1);
       }
     } catch {
       if (mounted.current)
-        setError('Could not submit your answer. Please try again.');
+        setError(
+          'Could not submit your answer. Try again or reload the review.',
+        );
     } finally {
       busy.current = false;
       if (mounted.current) setLoading(false);
@@ -117,14 +144,17 @@ export default function ReviewScreen() {
     <AppScreen selected="Review">
       <View style={styles.content}>
         <ThemedText style={styles.title} accessibilityRole="header">
-          {!loading && !error && !item
-            ? reviewed
-              ? 'Review finished'
-              : 'Nothing due'
-            : 'Time to recall'}
+          {finished ? 'Review finished' : 'Time to recall'}
         </ThemedText>
         <ThemedText style={styles.subtitle}>
           Read the explanation. Type the word.
+        </ThemedText>
+        <ThemedText
+          accessibilityLiveRegion="polite"
+          accessibilityRole={Platform.OS === 'web' ? 'status' : undefined}
+          style={styles.announcement}
+        >
+          {announcement}
         </ThemedText>
         {loading && (
           <ActivityIndicator
@@ -163,19 +193,30 @@ export default function ReviewScreen() {
                           : colors.errorBackground,
                     },
                   ]}
-                  accessibilityLiveRegion="polite"
                 >
                   <ThemedText style={styles.question}>
                     {result.result === 'correct'
                       ? 'Correct! Well done.'
-                      : 'Not quite — compare answers'}
+                      : 'Incorrect — compare answers'}
                   </ThemedText>
-                  <ThemedText style={styles.subtitle}>
-                    You typed: {answer}
-                  </ThemedText>
-                  <ThemedText style={styles.explanation}>
-                    Correct word: {result.correct_word}
-                  </ThemedText>
+                  {result.result === 'incorrect' && (
+                    <View style={styles.comparison}>
+                      <View style={styles.comparisonColumn}>
+                        <ThemedText style={styles.label}>YOU TYPED</ThemedText>
+                        <ThemedText style={styles.explanation}>
+                          {answer || 'No answer'}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.comparisonColumn}>
+                        <ThemedText style={styles.label}>
+                          CORRECT WORD
+                        </ThemedText>
+                        <ThemedText style={styles.explanation}>
+                          {result.correct_word}
+                        </ThemedText>
+                      </View>
+                    </View>
+                  )}
                 </View>
                 <Pressable
                   accessibilityRole="button"
@@ -208,12 +249,9 @@ export default function ReviewScreen() {
                 />
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityState={{ disabled: loading || !answer.trim() }}
-                  style={[
-                    styles.button,
-                    (loading || !answer.trim()) && styles.disabled,
-                  ]}
-                  disabled={loading || !answer.trim()}
+                  accessibilityState={{ disabled: loading }}
+                  style={[styles.button, loading && styles.disabled]}
+                  disabled={loading}
                   onPress={() => void submit()}
                 >
                   <ThemedText style={styles.buttonText}>
@@ -244,9 +282,7 @@ export default function ReviewScreen() {
         {!loading && !error && !item && (
           <View style={styles.card}>
             <ThemedText style={styles.explanation}>
-              {reviewed
-                ? `You reviewed ${reviewed} ${reviewed === 1 ? 'word' : 'words'}. Great progress!`
-                : 'You’re all caught up. Come back when more words are due.'}
+              {correctCount} of {reviewed} answers correct.
             </ThemedText>
             <NavigationLink href="/" label="Back to Home" style={styles.button}>
               <ThemedText style={styles.buttonText}>Back to Home</ThemedText>
@@ -259,6 +295,14 @@ export default function ReviewScreen() {
 }
 
 const styles = StyleSheet.create({
+  announcement: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+  },
+  comparison: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  comparisonColumn: { flex: 1, minWidth: 120, gap: 8 },
   content: {
     width: '100%',
     maxWidth: 600,

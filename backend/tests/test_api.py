@@ -78,7 +78,7 @@ def test_create_queue_submit_and_schedule(api):
     response = client.post(
         f"/api/v1/reviews/{word_id}/answer",
         headers=owner,
-        json={"typed_answer": " ＨELLO ", "time_taken_ms": 400},
+        json={"typed_answer": " HELLO ", "time_taken_ms": 400},
     )
     assert response.status_code == 200
     assert response.json()["result"] == "correct"
@@ -458,3 +458,106 @@ def test_review_hints_mask_answer_before_serialization(api):
         }
     ]
     assert "resilience" not in response.text.lower()
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("  TAKE a break  ", "correct"),
+        ("take  a break", "incorrect"),
+        ("take a break!", "incorrect"),
+        ("take a brek", "incorrect"),
+        ("ＴＡＫＥ a break", "incorrect"),
+        ("", "incorrect"),
+    ],
+)
+def test_d2_result_is_recorded(api, answer, expected):
+    client, db, owner, _, _ = api
+    word_id = create(client, owner, "Take a break").json()["id"]
+    response = client.post(
+        f"/api/v1/reviews/{word_id}/answer",
+        headers=owner,
+        json={"typed_answer": answer, "time_taken_ms": 100},
+    )
+    assert response.status_code == 200
+    assert response.json()["result"] == expected
+    assert response.json()["correct_word"] == "Take a break"
+    attempt = db.scalar(select(ReviewAttempt))
+    assert attempt.typed_answer == answer
+    assert attempt.result == expected
+    assert attempt.time_taken_ms == 100
+
+
+def test_daily_cap_applies_across_sessions_and_isolates_users(api):
+    client, db, owner, other, _ = api
+    # Seed 19 persisted attempts; only one more is permitted today.
+    word_id = create(client, owner, "First").json()["id"]
+    word = db.get(Word, uuid.UUID(word_id))
+    for _ in range(19):
+        db.add(
+            ReviewAttempt(
+                word_id=word.id,
+                user_id=word.user_id,
+                typed_answer="First",
+                result="correct",
+                reviewed_at=datetime.now(UTC),
+                time_taken_ms=1,
+            )
+        )
+    db.commit()
+    second = create(client, owner, "Second").json()["id"]
+    assert len(client.get("/api/v1/reviews/next?limit=50", headers=owner).json()) == 1
+    assert (
+        client.post(
+            f"/api/v1/reviews/{word_id}/answer",
+            headers=owner,
+            json={"typed_answer": "wrong", "time_taken_ms": 10},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/v1/reviews/next", headers=owner).json() == []
+    blocked = client.post(
+        f"/api/v1/reviews/{second}/answer",
+        headers=owner,
+        json={"typed_answer": "Second", "time_taken_ms": 10},
+    )
+    assert blocked.status_code == 409
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 20
+    assert db.get(ReviewState, uuid.UUID(second)).correct_count == 0
+    other_word = create(client, other).json()["id"]
+    assert len(client.get("/api/v1/reviews/next", headers=other).json()) == 1
+    assert (
+        client.post(
+            f"/api/v1/reviews/{other_word}/answer",
+            headers=other,
+            json={"typed_answer": "Hello", "time_taken_ms": 10},
+        ).status_code
+        == 200
+    )
+
+
+def test_daily_cap_uses_user_local_midnight(api):
+    from app.core.time import local_day_bounds
+    from app.services.review_queue import remaining_daily_reviews
+
+    client, db, owner, _, _ = api
+    word_id = create(client, owner).json()["id"]
+    word = db.get(Word, uuid.UUID(word_id))
+    user = db.get(User, word.user_id)
+    user.timezone = "Australia/Adelaide"
+    now = datetime(2026, 11, 10, 14, 0, tzinfo=UTC)
+    start, end = local_day_bounds(now, user.timezone)
+    for moment in [start - timedelta(microseconds=1), start, end]:
+        db.add(
+            ReviewAttempt(
+                word_id=word.id,
+                user_id=user.id,
+                typed_answer="Hello",
+                result="correct",
+                reviewed_at=moment,
+                time_taken_ms=1,
+            )
+        )
+    db.commit()
+    assert remaining_daily_reviews(db, user, now) == 19
+    assert remaining_daily_reviews(db, user, end) == 19

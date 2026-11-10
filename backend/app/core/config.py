@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     auth_rate_limit: int = Field(default=20, ge=1)
     auth_rate_window_seconds: int = Field(default=60, ge=1)
     auth_cookie_secure: bool = True
+    review_daily_cap: int = Field(default=20, ge=1)
 
 
 @lru_cache

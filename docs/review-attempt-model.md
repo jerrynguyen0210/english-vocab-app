@@ -20,9 +20,9 @@ history. Indexes support history lookup by word or user and review time.
 
 ORM assignment to `typed_answer` computes `normalised_answer`. Direct SQL and
 bulk inserts must supply the canonical value themselves. Result is stored as a
-historical decision, not recalculated when a word is edited. Future review handling
-must derive result server-side and insert the attempt and update review state in
-one transaction. Authentication must derive user identity from the session.
+historical decision, not recalculated when a word is edited. The API derives the
+result server-side using D2 and inserts the attempt and updates review state in
+one transaction. The normalized history field does not determine correctness. Authentication must derive user identity from the session.
 
 ORM update/delete hooks reject history changes. Migration `0005` adds PostgreSQL
 and SQLite triggers to reject SQL updates and deletes; PostgreSQL also rejects

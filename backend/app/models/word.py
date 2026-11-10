@@ -1,4 +1,4 @@
-"""User-owned vocabulary and shared normalization for answer comparison."""
+"""User-owned vocabulary and shared normalization for duplicates and history."""
 
 import unicodedata
 import uuid

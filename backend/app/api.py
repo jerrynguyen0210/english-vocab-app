@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
 from app.models.word import normalise_word
 from app.services.review_prompt import mask_target
+from app.services.review_queue import answer_matches, remaining_daily_reviews
 
 router = APIRouter()
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -122,13 +123,18 @@ def next_reviews(
     user: CurrentUser,
     limit: Annotated[int, Query(ge=1, le=50)] = 1,
 ) -> list[ReviewItem]:
+    response.headers["Cache-Control"] = "no-store"
+    now = datetime.now(UTC)
+    remaining = remaining_daily_reviews(db, user, now)
+    if remaining == 0:
+        return []
     # Read the answer only to redact hints; never serialize it in the prompt.
     rows = db.execute(
         select(Word.id, Word.word, Word.english_explanation, Word.example_sentence)
         .join(ReviewState, ReviewState.word_id == Word.id)
-        .where(Word.user_id == user.id, ReviewState.due_at <= datetime.now(UTC))
+        .where(Word.user_id == user.id, ReviewState.due_at <= now)
         .order_by(ReviewState.due_at, Word.id)
-        .limit(limit)
+        .limit(min(limit, remaining))
     )
     response.headers["Cache-Control"] = "no-store"
     return [
@@ -162,7 +168,9 @@ def submit_answer(
     now = datetime.now(UTC)
     if state.due_at > now:
         raise HTTPException(409, "Review item is not due")
-    correct = normalise_word(body.typed_answer) == word.normalised_word
+    if remaining_daily_reviews(db, user, now) == 0:
+        raise HTTPException(409, "Daily review cap reached")
+    correct = answer_matches(body.typed_answer, word.word)
     result: Literal["correct", "incorrect"] = "correct" if correct else "incorrect"
     attempt = ReviewAttempt(
         word_id=word.id,

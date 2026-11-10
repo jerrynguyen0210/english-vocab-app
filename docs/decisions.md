@@ -86,3 +86,28 @@ Existing historical downgrade functions remain unchanged.
 Rolling releases require compatible schema changes: add first, transition app
 usage, then remove obsolete schema in a later revision. Production backup and
 retention policies remain the deployment operator's responsibility.
+
+## D2, D3 and D5 — Typed recall and session completion
+
+D2 compares the typed answer and saved word after trimming outer whitespace and
+Unicode case folding. Internal whitespace, punctuation, accents, spelling and
+Unicode compatibility characters remain significant. This is intentionally
+stricter than D14's duplicate-word normalization; normalized attempt text remains
+available for history, but does not determine correctness.
+
+D3 permits one recorded answer per presented prompt; blank input records an
+incorrect recall. The server records the original answer, result and elapsed time
+and updates the schedule in the same transaction. Feedback is shown before the
+user advances to the next prompt.
+
+D5 uses due-time order and a cap of **20 attempts per user-local day**, confirmed
+by the user. Both correct and incorrect attempts count across sessions/devices.
+The cap is enforced on queue reads and submissions; rejected submissions do not
+record an attempt or change the schedule. It resets at local midnight according
+to the account's saved IANA timezone (UTC by default). `REVIEW_DAILY_CAP` is a
+server configuration override, default 20. No schema migration is required.
+
+A session ends when the queue is empty or the daily cap is reached. Its finish
+screen displays the number of correct answers out of attempts completed in that
+screen session; reopening Review starts a new screen-session total while retaining
+the server's daily cap usage.
