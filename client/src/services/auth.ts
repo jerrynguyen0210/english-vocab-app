@@ -1,3 +1,4 @@
+import { reachableFetch } from './connectivity';
 import { getApiBaseUrl } from '../constants/api';
 import {
   clearRefreshToken,
@@ -46,15 +47,18 @@ export class AuthError extends Error {
 }
 
 async function authRequest(path: string, body: object) {
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/auth/${path}`, {
-    method: 'POST',
-    credentials: nativeAuth ? 'omit' : 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(nativeAuth ? { 'X-Auth-Platform': 'native' } : {}),
+  const response = await reachableFetch(
+    `${getApiBaseUrl()}/api/v1/auth/${path}`,
+    {
+      method: 'POST',
+      credentials: nativeAuth ? 'omit' : 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(nativeAuth ? { 'X-Auth-Platform': 'native' } : {}),
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+  );
   if (!response.ok) throw new AuthError(response.status);
   return response;
 }
@@ -149,7 +153,7 @@ export async function authenticatedFetch(path: string, init: RequestInit = {}) {
   const send = (token: string | null) => {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${token}`);
-    return fetch(`${getApiBaseUrl()}/api/v1${path}`, {
+    return reachableFetch(`${getApiBaseUrl()}/api/v1${path}`, {
       ...init,
       headers,
       credentials: nativeAuth ? 'omit' : (init.credentials ?? 'omit'),

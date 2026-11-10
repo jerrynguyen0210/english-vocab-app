@@ -1,3 +1,4 @@
+import { CONNECTIVITY_MESSAGE } from '@/services/connectivity';
 import {
   DarkTheme,
   DefaultTheme,
@@ -33,7 +34,7 @@ function Navigation() {
     return (
       <Screen>
         <ThemedText accessibilityRole="alert">
-          Unable to restore your session. Check your connection and try again.
+          {CONNECTIVITY_MESSAGE}
         </ThemedText>
         <Button title="Retry" onPress={retryRestore} />
       </Screen>
@@ -44,7 +45,7 @@ function Navigation() {
       {restoreError && signedIn ? (
         <View accessibilityLiveRegion="polite">
           <ThemedText>
-            Unable to check your session. Your work is still here.
+            {CONNECTIVITY_MESSAGE} Your work is still here.
           </ThemedText>
           <Button title="Retry connection" onPress={retryRestore} />
         </View>

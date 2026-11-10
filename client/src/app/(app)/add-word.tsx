@@ -1,3 +1,4 @@
+import { connectionMessage } from '@/services/connectivity';
 import { useRef, useState, type ComponentRef } from 'react';
 import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { NavigationLink } from '@/components/navigation-link';
@@ -68,10 +69,13 @@ export default function AddWordScreen() {
       setMessage('Word saved to your word bank. You can add another word.');
       setValues(empty);
       setErrors({});
-    } catch {
+    } catch (error) {
       setSaveFailed(true);
       setMessage(
-        'Could not save your word. Your entries are still here. Please retry.',
+        connectionMessage(
+          error,
+          'Could not confirm your word was saved. Please retry.',
+        ) + ' Your entries are still here.',
       );
     } finally {
       pending.current = false;
