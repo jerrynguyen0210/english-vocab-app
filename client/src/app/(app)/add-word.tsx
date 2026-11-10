@@ -309,11 +309,16 @@ export default function AddWordScreen() {
         )}
         {results === null ? (
           <View style={styles.emptyCard}>
-            <ThemedText style={styles.emptyTitle}>
+            <ThemedText
+              accessibilityLiveRegion="polite"
+              style={styles.emptyTitle}
+            >
               {searching ? 'Searching dictionary…' : 'No results yet'}
             </ThemedText>
             <ThemedText style={styles.emptyText}>
-              Enter a word and select Search{'\n'}to find related word forms.
+              {searching
+                ? 'Fetching matching forms and definitions…'
+                : 'Enter a word and select Search\nto find related word forms.'}
             </ThemedText>
           </View>
         ) : (
@@ -345,9 +350,10 @@ export default function AddWordScreen() {
                     {entry.word}
                   </ThemedText>
                   <ThemedText style={styles.resultType}>
-                    {entry.part_of_speech}
+                    {entry.part_of_speech.charAt(0).toUpperCase() +
+                      entry.part_of_speech.slice(1)}
                     {entry.verb_forms.length
-                      ? ` · ${entry.verb_forms.join(' / ')}`
+                      ? ` · ${entry.verb_forms.join('/')}`
                       : ''}
                   </ThemedText>
                   <ThemedText style={styles.definition}>

@@ -199,6 +199,51 @@ test('blank searches show validation and preserve every selected filter', async 
   }
 });
 
+test('search stays busy until matching forms and definitions arrive', async () => {
+  let resolve;
+  const h = harness(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  h.input().props.onChangeText('create');
+  await h.flush();
+  const pending = h.button('Search').props.onPress();
+  await h.flush();
+  assert.equal(h.button('Searching…').props.disabled, true);
+  assert.equal(h.button('Searching…').props.accessibilityState.busy, true);
+  assert.match(h.text(), /Fetching matching forms and definitions/);
+  assert.doesNotMatch(
+    h.text(),
+    /No results yet|Enter a word and select Search/,
+  );
+  const entries = [
+    { ...entry, word: 'create', verb_forms: ['V1'] },
+    entry,
+    { ...entry, word: 'creation', part_of_speech: 'noun', verb_forms: [] },
+    { ...entry, word: 'creative', part_of_speech: 'adjective', verb_forms: [] },
+    { ...entry, word: 'creatively', part_of_speech: 'adverb', verb_forms: [] },
+  ].map((item) => ({
+    ...item,
+    english_explanation: `Definition of ${item.word}.`,
+  }));
+  resolve(Response.json(entries));
+  await pending;
+  await h.flush();
+  assert.equal(h.button('Search').props.disabled, false);
+  assert.doesNotMatch(h.text(), /Fetching matching/);
+  for (const [word, label] of [
+    ['create', 'Verb · V1'],
+    ['created', 'Verb · V2/V3'],
+    ['creation', 'Noun'],
+    ['creative', 'Adjective'],
+    ['creatively', 'Adverb'],
+  ]) {
+    assert.ok(h.text().includes(`${word}${label}Definition of ${word}.`));
+  }
+});
+
 test('stale search responses are discarded when the query changes', async () => {
   let resolve;
   const h = harness(
