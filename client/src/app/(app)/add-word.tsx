@@ -1,6 +1,7 @@
 import { useRef, useState, type ComponentRef } from 'react';
 import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { NavigationLink } from '@/components/navigation-link';
+import { WordForm } from '@/components/word-form';
 import { AppScreen } from '@/components/app-screen';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
@@ -87,113 +88,129 @@ export default function AddWordScreen() {
         <ThemedText style={styles.subtitle}>
           Build your personal word bank.
         </ThemedText>
-        <View style={styles.card}>
-          {fields.map((field) => (
-            <View key={field.key} style={styles.field}>
-              <ThemedText nativeID={`${field.key}-label`} style={styles.label}>
-                {field.label}
-              </ThemedText>
-              <TextInput
-                ref={(input) => {
-                  inputs.current[field.key] = input;
-                }}
-                accessibilityLabel={field.label.replace(' *', ' (required)')}
-                accessibilityLabelledBy={`${field.key}-label`}
-                aria-invalid={
-                  !!errors[field.key] || (field.key === 'word' && duplicate)
-                }
-                value={values[field.key]}
-                editable={!saving}
-                placeholder={field.placeholder}
-                placeholderTextColor={colors.placeholder}
-                multiline={field.key !== 'word'}
-                autoCapitalize={field.key === 'word' ? 'none' : 'sentences'}
-                autoCorrect={field.key !== 'word'}
-                returnKeyType={field.key === 'word' ? 'next' : 'default'}
-                onSubmitEditing={
-                  field.key === 'word'
-                    ? () => inputs.current.english_explanation?.focus()
-                    : undefined
-                }
-                onFocus={() => setFocused(field.key)}
-                onBlur={() => {
-                  setFocused(null);
-                  setErrors((current) => ({
-                    ...current,
-                    [field.key]: validateWord(values)[field.key],
-                  }));
-                }}
-                onChangeText={(text) => {
-                  if (field.key === 'word') setDuplicate(false);
-                  setValues((current) => ({ ...current, [field.key]: text }));
-                  setErrors((current) => ({
-                    ...current,
-                    [field.key]: current[field.key]
-                      ? validateWord({ ...values, [field.key]: text })[
-                          field.key
-                        ]
-                      : undefined,
-                  }));
-                  setMessage('');
-                  setSaveFailed(false);
-                  setSaved(false);
-                }}
-                style={[
-                  styles.input,
-                  field.key === 'english_explanation' && styles.explanation,
-                  field.key === 'example_sentence' && styles.example,
-                  focused === field.key && styles.focused,
-                  (!!errors[field.key] ||
-                    (field.key === 'word' && duplicate)) &&
-                    styles.invalid,
-                ]}
-              />
-              {field.key === 'word' && duplicate && (
-                <View>
-                  <ThemedText accessibilityRole="alert" style={styles.error}>
-                    You already saved this word. Enter a different word or
-                    cancel.
-                  </ThemedText>
-                  <NavigationLink
-                    href="/"
-                    replace
-                    label="Cancel adding word"
-                    style={styles.cancel}
-                  >
-                    <ThemedText style={styles.cancelText}>Cancel</ThemedText>
-                  </NavigationLink>
-                </View>
-              )}
-              {!!errors[field.key] && (
-                <ThemedText accessibilityRole="alert" style={styles.error}>
-                  {errors[field.key]}
+        <WordForm onSubmit={save}>
+          <View style={styles.card}>
+            {fields.map((field) => (
+              <View key={field.key} style={styles.field}>
+                <ThemedText
+                  nativeID={`${field.key}-label`}
+                  style={styles.label}
+                >
+                  {field.label}
                 </ThemedText>
-              )}
-            </View>
-          ))}
-          {!!message && (
-            <ThemedText
-              accessibilityLiveRegion="polite"
-              style={[styles.message, saved ? styles.success : styles.error]}
+                <TextInput
+                  ref={(input) => {
+                    inputs.current[field.key] = input;
+                  }}
+                  accessibilityLabel={field.label.replace(' *', ' (required)')}
+                  accessibilityLabelledBy={`${field.key}-label`}
+                  aria-invalid={
+                    !!errors[field.key] || (field.key === 'word' && duplicate)
+                  }
+                  value={values[field.key]}
+                  editable={!saving}
+                  placeholder={field.placeholder}
+                  placeholderTextColor={colors.placeholder}
+                  multiline={field.key !== 'word'}
+                  autoCapitalize={field.key === 'word' ? 'none' : 'sentences'}
+                  autoCorrect={field.key !== 'word'}
+                  returnKeyType={
+                    Platform.OS === 'web' || field.key === 'example_sentence'
+                      ? 'done'
+                      : 'next'
+                  }
+                  submitBehavior={Platform.OS === 'web' ? undefined : 'submit'}
+                  onSubmitEditing={() => {
+                    if (Platform.OS === 'web') return;
+                    if (field.key === 'word')
+                      inputs.current.english_explanation?.focus();
+                    else if (field.key === 'english_explanation')
+                      inputs.current.example_sentence?.focus();
+                    else void save();
+                  }}
+                  onFocus={() => setFocused(field.key)}
+                  onBlur={() => {
+                    setFocused(null);
+                    setErrors((current) => ({
+                      ...current,
+                      [field.key]: validateWord(values)[field.key],
+                    }));
+                  }}
+                  onChangeText={(text) => {
+                    if (field.key === 'word') setDuplicate(false);
+                    setValues((current) => ({ ...current, [field.key]: text }));
+                    setErrors((current) => ({
+                      ...current,
+                      [field.key]: current[field.key]
+                        ? validateWord({ ...values, [field.key]: text })[
+                            field.key
+                          ]
+                        : undefined,
+                    }));
+                    setMessage('');
+                    setSaveFailed(false);
+                    setSaved(false);
+                  }}
+                  style={[
+                    styles.input,
+                    field.key === 'english_explanation' && styles.explanation,
+                    field.key === 'example_sentence' && styles.example,
+                    focused === field.key && styles.focused,
+                    (!!errors[field.key] ||
+                      (field.key === 'word' && duplicate)) &&
+                      styles.invalid,
+                  ]}
+                />
+                {field.key === 'word' && duplicate && (
+                  <View>
+                    <ThemedText accessibilityRole="alert" style={styles.error}>
+                      You already saved this word. Enter a different word or
+                      cancel.
+                    </ThemedText>
+                    <NavigationLink
+                      href="/"
+                      replace
+                      label="Cancel adding word"
+                      style={styles.cancel}
+                    >
+                      <ThemedText style={styles.cancelText}>Cancel</ThemedText>
+                    </NavigationLink>
+                  </View>
+                )}
+                {!!errors[field.key] && (
+                  <ThemedText accessibilityRole="alert" style={styles.error}>
+                    {errors[field.key]}
+                  </ThemedText>
+                )}
+              </View>
+            ))}
+            {!!message && (
+              <ThemedText
+                accessibilityLiveRegion="polite"
+                style={[styles.message, saved ? styles.success : styles.error]}
+              >
+                {message}
+              </ThemedText>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{
+                disabled: saving || duplicate,
+                busy: saving,
+              }}
+              disabled={saving || duplicate}
+              onPress={save}
+              style={({ pressed }) => [
+                styles.button,
+                (pressed || saving || duplicate) && styles.pressed,
+              ]}
             >
-              {message}
-            </ThemedText>
-          )}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: saving || duplicate, busy: saving }}
-            disabled={saving || duplicate}
-            onPress={save}
-            style={({ pressed }) => [
-              styles.button,
-              (pressed || saving || duplicate) && styles.pressed,
-            ]}
-          >
-            <ThemedText style={styles.buttonText}>
-              {saving ? 'Saving…' : saveFailed ? 'Retry save' : 'Save word'}
-            </ThemedText>
-          </Pressable>
-        </View>
+              <ThemedText style={styles.buttonText}>
+                {saving ? 'Saving…' : saveFailed ? 'Retry save' : 'Save word'}
+              </ThemedText>
+            </Pressable>
+          </View>
+        </WordForm>
       </View>
     </AppScreen>
   );

@@ -1,11 +1,5 @@
 import { Image } from 'expo-image';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { type PropsWithChildren } from 'react';
 import { NavigationLink } from '@/components/navigation-link';
@@ -65,18 +59,14 @@ export function AppScreen({
           </NavigationLink>
         </View>
       </View>
-      <KeyboardAvoidingView
+      <ScrollView
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
         style={styles.scroll}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        contentContainerStyle={styles.scrollContent}
       >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {children}
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {children}
+      </ScrollView>
       <SafeAreaView edges={['bottom']} style={styles.footer}>
         <View style={styles.navigation}>
           {navigation.map(({ label, href, icon }) => (
