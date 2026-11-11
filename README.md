@@ -111,6 +111,63 @@ env examples instead. Never put secrets in `EXPO_PUBLIC_*` variables.
 
 ## Development commands
 
+### Interactive deployment helpers
+
+Run either menu from any directory:
+
+```bash
+./devops/deploy_client.sh
+./devops/deploy_backend.sh
+```
+
+The client menu builds the web output in `client/dist`, rebuilds with fresh
+dependencies and a cleared bundler cache, starts Expo Go/web development, cleans
+generated output, edits configuration, and runs checks. The current web output
+uses server rendering; building does not publish it to a hosting provider or
+produce native app binaries. Development port/host options last for the menu
+session, or can be supplied as `CLIENT_PORT=8081 CLIENT_HOST=lan`.
+
+The backend menu builds/rebuilds the API image and manages the existing local
+Docker Compose stack, including status, logs and forward migrations. Start/update
+builds and recreates changed services; startup retains the guarded migration
+entrypoint. This uses the existing development Compose file with live reload,
+not a production hosting configuration. Clean asks for confirmation and retains
+database volumes and backups; client clean retains configuration and dependencies.
+
+Configure uses `$VISUAL`, `$EDITOR`, or `vi`. Missing environment files are created
+from the sanitized examples without overwriting existing files; a new backend
+environment receives a generated application secret. Configure the API URLs,
+CORS origins and database settings before starting. These private files remain
+ignored by Git. Rebuild the client or start/update the backend after edits.
+
+Both scripts also accept a single operation, such as
+`./devops/deploy_client.sh build` or `./devops/deploy_backend.sh status`.
+Use `--help` for all supported operations. They require Bash; client commands use
+Node/npm, backend commands use Docker Compose v2 with `--wait` support, and initial
+backend configuration uses Python 3. These helpers never downgrade or stamp the
+database.
+
+### Manual database management
+
+Run `./devops/manage_database.sh` to list databases, inspect their details and
+tables, create databases, rename them, change their owner, or clear table data. It
+connects to the existing backend Compose `db` service, which must already be
+running. Direct actions such as `./devops/manage_database.sh list` are also
+supported; use `--help` for options.
+
+Rename, owner changes and clearing data require typed confirmation. Clear asks for
+the database, schema and table, shows the current row count, then empties that
+table while retaining its structure and identity sequences. It never drops a
+database or table, and does not cascade to related tables. Foreign-key restrictions
+and append-only history protections can reject the operation; they are not bypassed.
+System databases/schemas and Alembic migration metadata are protected. Take a
+backup before clearing data. `./devops/manage_database.sh clear` opens this operation.
+Renaming requires updating dependent connection settings. New databases start
+without application tables. Manage application schema changes through new
+versioned migrations; this menu does not bypass the migration runner.
+
+### Client checks
+
 From `client/`:
 
 ```bash
@@ -124,8 +181,7 @@ npx expo install --check
 ```
 
 Screens live in `client/src/app/` with file-based routing. Use Expo's installer
-for compatible dependencies (`--dev` for development tools). The starter reset
-utility, `npm run reset-project`, can move or delete starter files; it is optional.
+for compatible dependencies (`--dev` for development tools).
 
 For backend checks or running the API outside Docker, from `backend/`:
 
@@ -138,6 +194,12 @@ python -m ruff check .
 python -m mypy
 python -m pytest
 ```
+
+The default tests use temporary SQLite databases and ignore local `.env` settings.
+To repeat the API tests against PostgreSQL, set `TEST_POSTGRES_URL` to a local
+test database URL and run `python -m pytest tests/test_api.py`. Each test creates
+and removes its own randomly named schema; existing application tables are untouched.
+The database role needs permission to create schemas. CI runs both database paths.
 
 To run the API in this environment, start the database with `docker compose up -d db`,
 apply migrations with `python -m app.migrate`, then run

@@ -53,6 +53,9 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
         select(
             ReviewState.word_id,
             ReviewState.level,
+            ReviewState.repetitions,
+            ReviewState.interval_days,
+            ReviewState.ease_factor,
             ReviewState.due_at,
             ReviewState.correct_count,
             ReviewState.incorrect_count,

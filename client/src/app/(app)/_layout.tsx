@@ -13,6 +13,10 @@ export default function AppLayout() {
         options={{ title: 'Add word', headerShown: false }}
       />
       <Stack.Screen
+        name="review-preparation"
+        options={{ title: 'Review preparation', headerShown: false }}
+      />
+      <Stack.Screen
         name="review"
         options={{ title: 'Review', headerShown: false }}
       />

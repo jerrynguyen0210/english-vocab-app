@@ -118,3 +118,29 @@ def search_dictionary(
             results,
             key=lambda item: (item.word != query, item.word, item.part_of_speech),
         )[:60]
+
+
+@lru_cache(maxsize=1024)
+def review_parts(word: str) -> frozenset[PartOfSpeech]:
+    """Infer saved-word POS without a new stored field or family expansion."""
+    from app.models.word import normalise_word
+
+    query = normalise_word(word)
+    try:
+        with _lock:
+            entries = _lookup(query, False)
+    except LookupError:
+        return frozenset()
+    exact = [entry for entry in entries if normalise_word(entry.word) == query]
+    return frozenset(entry.part_of_speech for entry in (exact or entries))
+
+
+def review_family(word: str) -> tuple[str, ...]:
+    """Use the same lexical-family/inflection rules as dictionary search."""
+    from app.models.word import normalise_word
+
+    try:
+        with _lock:
+            return tuple(entry.word for entry in _lookup(normalise_word(word), True))
+    except LookupError:
+        return ()

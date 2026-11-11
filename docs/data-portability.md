@@ -48,7 +48,7 @@ A failed export must be investigated before delivery; never send a partial file.
 ## Included and excluded data
 
 Included: account identity/name/email/provider identifier/timezone/lifecycle
-fields; saved words, explanations and examples; current review scheduling and
+fields; saved words, explanations and examples; current SM-2 scheduling state and
 counts; complete retained review attempt history including typed answers and
 elapsed time; session IDs, platform and expiry timestamps.
 

@@ -1,6 +1,19 @@
+import { useLocalSearchParams } from 'expo-router';
+import {
+  reviewQuery,
+  reviewEmptyKind,
+  type ReviewSummary,
+} from '@/services/review';
+import { ReviewEmptyState } from '@/components/review-empty-state';
 import { connectionMessage } from '@/services/connectivity';
 import { Image } from 'expo-image';
-import { type ComponentRef, useEffect, useRef, useState } from 'react';
+import {
+  type ComponentRef,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -22,10 +35,32 @@ type Prompt = {
   attempt_id: string;
   english_explanation: string;
   example_sentence: string | null;
+  prompt_sentence: string;
+  review_token?: string;
+  choices?: string[];
 };
 type Result = { result: 'correct' | 'incorrect'; correct_word: string };
+function hasFourChoices(choices: string[] | undefined): choices is string[] {
+  return (
+    Array.isArray(choices) &&
+    choices.length === 4 &&
+    choices.every(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    ) &&
+    new Set(
+      choices.map((value) => value.normalize('NFKC').trim().toLowerCase()),
+    ).size === 4
+  );
+}
 
 export default function ReviewScreen() {
+  const params = useLocalSearchParams<{
+    source?: string;
+    period?: string;
+    includeOverdue?: string;
+  }>();
+  const [mode, setMode] = useState<'choice' | 'typing'>('typing');
+  const query = reviewQuery(params);
   const { signedIn } = useSession();
   const queue = useRef<Prompt[]>([]);
   const [total, setTotal] = useState(0);
@@ -39,19 +74,41 @@ export default function ReviewScreen() {
   const [error, setError] = useState('');
   const [reviewed, setReviewed] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
+  const [emptySummary, setEmptySummary] = useState<
+    (ReviewSummary & { matching_count: number }) | null
+  >(null);
   const answerInput = useRef<ComponentRef<typeof TextInput>>(null);
   const busy = useRef(false);
   const started = useRef(0);
   const mounted = useRef(true);
+  const loadVersion = useRef(0);
 
-  function load() {
+  const load = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
-    void authenticatedFetch('/reviews/session')
+    const version = ++loadVersion.current;
+    void authenticatedFetch(`/reviews/session?${query}&answer_mode=typing`)
       .then(async (response) => {
         if (!response.ok) throw new Error();
         const items: Prompt[] = await response.json();
-        if (mounted.current) {
+        let emptyData: (ReviewSummary & { matching_count: number }) | null =
+          null;
+        if (items.length === 0) {
+          const status = await authenticatedFetch(
+            `/reviews/preparation?${query}`,
+          );
+          if (!status.ok) throw new Error();
+          emptyData = await status.json();
+        }
+        if (mounted.current && version === loadVersion.current) {
+          setEmptySummary(emptyData);
+          setReviewed(0);
+          setCorrectCount(0);
+          setResult(null);
+          setAnswer('');
+          setPendingBody(null);
+          setConflict(false);
+          setError('');
           queue.current = items.slice(1);
           setTotal(items.length);
           setPosition(1);
@@ -60,7 +117,7 @@ export default function ReviewScreen() {
         }
       })
       .catch((error) => {
-        if (mounted.current)
+        if (mounted.current && version === loadVersion.current)
           setError(
             connectionMessage(
               error,
@@ -69,12 +126,14 @@ export default function ReviewScreen() {
           );
       })
       .finally(() => {
-        busy.current = false;
-        if (mounted.current) setLoading(false);
+        if (version === loadVersion.current) {
+          busy.current = false;
+          if (mounted.current) setLoading(false);
+        }
       });
-  }
+  }, [query]);
 
-  function next() {
+  function next(startedAt: number) {
     if (busy.current) return;
     setLoading(true);
     setError('');
@@ -87,10 +146,12 @@ export default function ReviewScreen() {
       void load();
       return;
     }
-    setItem(queue.current.shift() ?? null);
+    const following = queue.current.shift() ?? null;
+    setItem(following);
     setPosition((value) => value + 1);
-    started.current = performance.now();
+    started.current = startedAt;
     setLoading(false);
+    if (following && mode === 'choice') void chooseMode('choice', following);
   }
 
   useEffect(() => {
@@ -98,25 +159,115 @@ export default function ReviewScreen() {
     void load();
     return () => {
       mounted.current = false;
+      loadVersion.current += 1;
+      busy.current = false;
     };
-  }, []);
+  }, [load]);
+
+  const serverChoices = item?.choices;
+  const choiceAvailable = hasFourChoices(serverChoices);
+  const canLoadChoices =
+    choiceAvailable || (!!item?.review_token && serverChoices === undefined);
+
+  async function chooseMode(value: 'typing' | 'choice', prompt = item) {
+    if (!prompt || busy.current || (prompt === item && (pendingBody || result)))
+      return;
+    setAnswer('');
+    setError('');
+    if (value === 'typing') {
+      setMode(value);
+      setItem({ ...prompt, choices: undefined });
+      return;
+    }
+    if (hasFourChoices(prompt.choices)) {
+      setMode(value);
+      return;
+    }
+    if (!prompt.review_token) return;
+    busy.current = true;
+    setLoading(true);
+    const version = loadVersion.current;
+    try {
+      const response = await authenticatedFetch(
+        `/reviews/${prompt.word_id}/choices`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            attempt_id: prompt.attempt_id,
+            review_token: prompt.review_token,
+          }),
+        },
+      );
+      if (!response.ok) throw new Error();
+      const loaded: Prompt = await response.json();
+      if (
+        !hasFourChoices(loaded.choices) ||
+        loaded.word_id !== prompt.word_id ||
+        loaded.attempt_id !== prompt.attempt_id
+      )
+        throw new Error();
+      if (mounted.current && version === loadVersion.current) {
+        setItem({ ...prompt, choices: loaded.choices });
+        setMode('choice');
+      }
+    } catch (failure) {
+      if (mounted.current && version === loadVersion.current) {
+        setMode('typing');
+        setError(
+          connectionMessage(
+            failure,
+            'Could not load answer options. Try Multiple choice again, or type your answer.',
+          ),
+        );
+      }
+    } finally {
+      if (version === loadVersion.current) {
+        busy.current = false;
+        if (mounted.current) setLoading(false);
+      }
+    }
+  }
 
   useEffect(() => {
     // Wait until the loaded prompt is editable, including after a failed submit.
-    if (signedIn && item && !loading && !result && !pendingBody) {
+    if (
+      signedIn &&
+      (mode === 'typing' || !choiceAvailable) &&
+      item &&
+      !loading &&
+      !result &&
+      !pendingBody
+    ) {
       answerInput.current?.focus();
     }
-  }, [signedIn, item, loading, result, pendingBody]);
+  }, [signedIn, mode, item, loading, result, pendingBody, choiceAvailable]);
 
   const finished = !loading && !error && !item;
+  const progressPercent =
+    total > 0 ? Math.min(100, Math.round((position / total) * 100)) : 0;
+  const progressLabel = `Word ${position} of ${total}, ${progressPercent}% complete`;
+  const completionText =
+    reviewed === total
+      ? `You reviewed all ${reviewed} ${reviewed === 1 ? 'word' : 'words'}.`
+      : `You reviewed ${reviewed} of ${total} words.`;
+  const emptyKind = emptySummary
+    ? reviewEmptyKind(emptySummary, emptySummary.matching_count)
+    : 'nothing_due';
   const announcement = result
     ? result.result === 'correct'
-      ? 'Correct! Well done.'
-      : `Incorrect. You typed: ${answer || 'No answer'}. Correct word: ${result.correct_word}.`
+      ? `Correct answer! The word is ${result.correct_word}.`
+      : `Incorrect answer. Your answer: ${answer || 'No answer'}. Correct word: ${result.correct_word}.`
     : finished
       ? total
-        ? `Review finished. ${correctCount} of ${reviewed} answers correct.`
-        : 'No reviews available right now.'
+        ? `Review finished. ${completionText} ${correctCount} of ${reviewed} answers correct.`
+        : emptyKind === 'empty_bank'
+          ? 'Empty word bank. Add your first word.'
+          : emptyKind === 'nothing_due'
+            ? "Nothing due. You're all caught up."
+            : emptyKind === 'daily_limit'
+              ? 'Daily review limit reached.'
+              : 'No words match this review.'
       : '';
 
   useEffect(() => {
@@ -127,7 +278,15 @@ export default function ReviewScreen() {
   }, [announcement]);
 
   async function submit() {
-    if (!signedIn || !item || result || conflict || busy.current) return;
+    if (
+      !signedIn ||
+      !item ||
+      result ||
+      conflict ||
+      busy.current ||
+      (!pendingBody && !answer.trim())
+    )
+      return;
     busy.current = true;
     setLoading(true);
     setError('');
@@ -135,6 +294,7 @@ export default function ReviewScreen() {
       pendingBody ??
       JSON.stringify({
         attempt_id: item.attempt_id,
+        ...(item.review_token ? { review_token: item.review_token } : {}),
         typed_answer: answer,
         time_taken_ms: Math.min(
           2147483647,
@@ -160,7 +320,7 @@ export default function ReviewScreen() {
         } else {
           setConflict(true);
           setError(
-            'This word is no longer available to review. Continue to the next item.',
+            'This review item has expired or changed. Continue to the next item.',
           );
         }
         return;
@@ -196,15 +356,23 @@ export default function ReviewScreen() {
           {finished
             ? total
               ? 'Review finished'
-              : 'All caught up'
-            : 'Time to recall'}
+              : emptyKind === 'empty_bank'
+                ? 'Empty word bank'
+                : emptyKind === 'nothing_due'
+                  ? 'Nothing due'
+                  : emptyKind === 'daily_limit'
+                    ? 'Daily review limit reached'
+                    : 'No matching words'
+            : 'Review your words'}
         </ThemedText>
         <ThemedText style={styles.subtitle}>
           {finished
             ? total
-              ? 'You have completed this review.'
-              : 'No reviews available right now.'
-            : 'Read the explanation. Type the word.'}
+              ? reviewed === total
+                ? 'You have completed this review.'
+                : 'This review session has ended.'
+              : 'Add a word or choose another review.'
+            : 'Fill the blank with the missing word.'}
         </ThemedText>
         <ThemedText
           accessibilityLiveRegion="polite"
@@ -221,29 +389,74 @@ export default function ReviewScreen() {
         )}
         {item && (
           <>
-            <ThemedText style={styles.progress}>
-              WORD {position} OF {total}
-            </ThemedText>
+            <View
+              accessible
+              accessibilityLabel={progressLabel}
+              style={styles.progressRow}
+            >
+              <ThemedText style={styles.progress}>
+                Word {position} of {total}
+              </ThemedText>
+              <ThemedText style={styles.subtitle}>
+                {progressPercent}% complete
+              </ThemedText>
+            </View>
+            <View accessible={false} style={styles.progressTrack}>
+              <View
+                style={[styles.progressFill, { width: `${progressPercent}%` }]}
+              />
+            </View>
+            {!result && (
+              <View style={styles.modeRow}>
+                {(['choice', 'typing'] as const).map((value) => (
+                  <Pressable
+                    key={value}
+                    disabled={
+                      loading ||
+                      !!pendingBody ||
+                      (value === 'choice' && !canLoadChoices)
+                    }
+                    accessibilityRole="radio"
+                    accessibilityState={{
+                      disabled:
+                        loading ||
+                        !!pendingBody ||
+                        (value === 'choice' && !canLoadChoices),
+                      checked: (choiceAvailable ? mode : 'typing') === value,
+                    }}
+                    onPress={() => void chooseMode(value)}
+                    style={[
+                      styles.modeButton,
+                      (choiceAvailable ? mode : 'typing') === value &&
+                        styles.button,
+                    ]}
+                  >
+                    <ThemedText
+                      style={
+                        (choiceAvailable ? mode : 'typing') === value
+                          ? styles.buttonText
+                          : styles.subtitle
+                      }
+                    >
+                      {value === 'choice' ? 'Multiple choice' : 'Typing'}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+            )}
             <ThemedText style={styles.question}>
-              Which word matches this meaning?
+              Complete the sentence
             </ThemedText>
             <View style={styles.card}>
-              <ThemedText style={styles.label}>ENGLISH EXPLANATION</ThemedText>
-              <ThemedText style={styles.explanation}>
-                {item.english_explanation}
+              <ThemedText style={styles.label}>FILL IN THE BLANK</ThemedText>
+              <ThemedText style={styles.sentence}>
+                {item.prompt_sentence}
               </ThemedText>
-              {!!item.example_sentence && (
-                <>
-                  <ThemedText style={styles.label}>EXAMPLE SENTENCE</ThemedText>
-                  <ThemedText style={styles.example}>
-                    {item.example_sentence}
-                  </ThemedText>
-                </>
-              )}
             </View>
             {result ? (
               <>
                 <View
+                  testID="review-feedback"
                   style={[
                     styles.card,
                     {
@@ -254,15 +467,27 @@ export default function ReviewScreen() {
                     },
                   ]}
                 >
-                  <ThemedText style={styles.question}>
+                  <ThemedText
+                    accessibilityRole="header"
+                    style={styles.question}
+                  >
                     {result.result === 'correct'
-                      ? 'Correct! Well done.'
-                      : 'Incorrect — compare answers'}
+                      ? 'Correct answer!'
+                      : 'Incorrect answer'}
                   </ThemedText>
-                  {result.result === 'incorrect' && (
+                  {result.result === 'correct' ? (
+                    <View style={styles.comparisonColumn}>
+                      <ThemedText style={styles.label}>CORRECT WORD</ThemedText>
+                      <ThemedText style={styles.explanation}>
+                        {result.correct_word}
+                      </ThemedText>
+                    </View>
+                  ) : (
                     <View style={styles.comparison}>
                       <View style={styles.comparisonColumn}>
-                        <ThemedText style={styles.label}>YOU TYPED</ThemedText>
+                        <ThemedText style={styles.label}>
+                          YOUR ANSWER
+                        </ThemedText>
                         <ThemedText style={styles.explanation}>
                           {answer || 'No answer'}
                         </ThemedText>
@@ -281,7 +506,7 @@ export default function ReviewScreen() {
                 <Pressable
                   accessibilityRole="button"
                   style={styles.button}
-                  onPress={next}
+                  onPress={() => next(performance.now())}
                   disabled={loading}
                 >
                   <ThemedText style={styles.buttonText}>Next word</ThemedText>
@@ -290,38 +515,64 @@ export default function ReviewScreen() {
             ) : (
               <>
                 <ThemedText style={styles.question}>Your answer</ThemedText>
-                <TextInput
-                  ref={answerInput}
-                  multiline={false}
-                  accessibilityLabel="Your answer"
-                  style={styles.input}
-                  value={answer}
-                  onChangeText={setAnswer}
-                  placeholder="Type the word here"
-                  placeholderTextColor={colors.placeholder}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  spellCheck={false}
-                  maxLength={200}
-                  editable={!loading && !pendingBody && signedIn}
-                  returnKeyType="done"
-                  onSubmitEditing={() => void submit()}
-                />
+                {mode === 'choice' && !!choiceAvailable ? (
+                  <View style={styles.choices}>
+                    {serverChoices!.map((option, index) => (
+                      <Pressable
+                        key={option}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: answer === option }}
+                        disabled={loading || !!pendingBody || !signedIn}
+                        onPress={() => setAnswer(option)}
+                        style={[
+                          styles.choice,
+                          answer === option && styles.choiceSelected,
+                        ]}
+                      >
+                        <ThemedText style={styles.explanation}>
+                          {String.fromCharCode(65 + index)} {option}
+                        </ThemedText>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : (
+                  <TextInput
+                    ref={answerInput}
+                    multiline={false}
+                    accessibilityLabel="Your answer"
+                    style={styles.input}
+                    value={answer}
+                    onChangeText={setAnswer}
+                    placeholder="Type the word here"
+                    placeholderTextColor={colors.placeholder}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="off"
+                    spellCheck={false}
+                    maxLength={200}
+                    editable={!loading && !pendingBody && signedIn}
+                    returnKeyType="done"
+                    onSubmitEditing={() => void submit()}
+                  />
+                )}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{
-                    disabled: loading || conflict || !signedIn,
+                    disabled:
+                      loading || conflict || !signedIn || !answer.trim(),
                   }}
                   style={[styles.button, loading && styles.disabled]}
-                  disabled={loading || conflict || !signedIn}
+                  disabled={loading || conflict || !signedIn || !answer.trim()}
                   onPress={() => void submit()}
                 >
                   <ThemedText style={styles.buttonText}>
-                    {pendingBody ? 'Retry submission' : 'Submit answer'}
+                    {pendingBody ? 'Retry submission' : 'Check answer'}
                   </ThemedText>
                 </Pressable>
                 <ThemedText style={styles.subtitle}>
-                  The word is hidden until you submit.
+                  {mode === 'typing' || !choiceAvailable
+                    ? 'Spelling matters · Enter to submit'
+                    : 'Select one answer, then check it.'}
                 </ThemedText>
               </>
             )}
@@ -334,7 +585,7 @@ export default function ReviewScreen() {
               <Pressable
                 accessibilityRole="button"
                 style={styles.button}
-                onPress={next}
+                onPress={() => next(performance.now())}
               >
                 <ThemedText style={styles.buttonText}>
                   {conflict ? 'Next word' : 'Try again'}
@@ -343,28 +594,32 @@ export default function ReviewScreen() {
             )}
           </View>
         )}
-        {!loading && !error && !item && (
+        {finished && total === 0 && (
+          <>
+            <ReviewEmptyState kind={emptyKind} />
+            <NavigationLink href="/" label="Back to Home" style={styles.button}>
+              <ThemedText style={styles.buttonText}>Back to Home</ThemedText>
+            </NavigationLink>
+          </>
+        )}
+        {finished && total > 0 && (
           <View style={[styles.card, styles.finishedCard]}>
             <Image
-              source={
-                total
-                  ? require('@/assets/images/wordwell/review-finished.svg')
-                  : require('@/assets/images/wordwell/review-empty.svg')
-              }
-              style={{
-                width: total ? 90 : 78,
-                height: total ? 90 : 78,
-                alignSelf: 'center',
-              }}
+              source={require('@/assets/images/wordwell/review-finished.svg')}
+              style={{ width: 90, height: 90, alignSelf: 'center' }}
               accessible={false}
             />
-            <ThemedText style={[styles.title, styles.finishedTitle]}>
-              {total ? 'Review finished!' : 'Nothing due'}
+            <ThemedText
+              accessibilityRole="header"
+              style={[styles.title, styles.finishedTitle]}
+            >
+              Review finished
             </ThemedText>
             <ThemedText style={styles.finishedText}>
-              {total
-                ? `${correctCount} of ${reviewed} answers correct.`
-                : 'You’re all caught up or have reached your daily limit. Add another word or come back later.'}
+              {completionText}
+            </ThemedText>
+            <ThemedText style={styles.finishedText}>
+              {correctCount} of {reviewed} answers correct.
             </ThemedText>
             <NavigationLink href="/" label="Back to Home" style={styles.button}>
               <ThemedText style={styles.buttonText}>Back to Home</ThemedText>
@@ -377,6 +632,62 @@ export default function ReviewScreen() {
 }
 
 const styles = StyleSheet.create({
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 3,
+  },
+  sentence: {
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 29,
+    fontWeight: '600',
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 6,
+    padding: 4,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modeButton: {
+    flex: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  choice: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    minHeight: 57,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 12,
+    borderRadius: 11,
+    justifyContent: 'center',
+  },
+  choiceSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
   progress: {
     alignSelf: 'flex-start',
     backgroundColor: colors.primarySoft,
@@ -453,7 +764,6 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     fontWeight: '600',
   },
-  example: { color: colors.secondary, fontSize: 16, lineHeight: 25 },
   input: {
     backgroundColor: colors.surface,
     color: colors.text,

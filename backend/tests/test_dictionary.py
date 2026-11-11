@@ -89,3 +89,27 @@ def test_search_endpoint_validation_and_authentication(monkeypatch):
             assert client.get("/api/v1/words/search?q=create").status_code == 503
         finally:
             app.dependency_overrides.clear()
+
+
+def test_review_parts_and_family_use_dictionary_inflections():
+    from app.services.dictionary import review_family, review_parts
+
+    assert "verb" in review_parts("create")
+    assert "verb" in review_parts("written")
+    assert review_parts("zzxxyyqq") == frozenset()
+    assert {"create", "created", "creative", "creation"} <= set(review_family("create"))
+
+
+def test_review_lexicon_failure_preserves_general_fallback(monkeypatch):
+    from app.services import dictionary
+
+    def unavailable(*_):
+        raise LookupError("missing corpus")
+
+    dictionary.review_parts.cache_clear()
+    monkeypatch.setattr(dictionary, "_lookup", unavailable)
+    try:
+        assert dictionary.review_parts("custom-test-word") == frozenset()
+        assert dictionary.review_family("custom-test-word") == ()
+    finally:
+        dictionary.review_parts.cache_clear()

@@ -1,14 +1,51 @@
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { authenticatedFetch } from '@/services/auth';
+import { connectionMessage } from '@/services/connectivity';
+import { reviewEmptyKind, type ReviewSummary } from '@/services/review';
+import { ReviewEmptyState } from '@/components/review-empty-state';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { AppScreen } from '@/components/app-screen';
 import { NavigationLink } from '@/components/navigation-link';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 
-// Preview values from the supplied Home design, pending progress integration.
-const preview = { due: 12, saved: 48 };
-
 export default function HomeScreen() {
+  const [summary, setSummary] = useState<ReviewSummary | null>(null);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      void retry;
+      let active = true;
+      setSummary(null);
+      setError('');
+      void authenticatedFetch('/reviews/summary')
+        .then(async (response) => {
+          if (!response.ok) throw new Error();
+          const result: ReviewSummary = await response.json();
+          if (active) setSummary(result);
+        })
+        .catch((failure) => {
+          if (active)
+            setError(
+              connectionMessage(
+                failure,
+                'Could not load your progress. Please try again.',
+              ),
+            );
+        });
+      return () => {
+        active = false;
+      };
+    }, [retry]),
+  );
+  const empty =
+    summary &&
+    (summary.saved_count === 0 ||
+      summary.due_count === 0 ||
+      summary.daily_remaining === 0);
   return (
     <AppScreen selected="Home">
       <View style={styles.content}>
@@ -18,65 +55,97 @@ export default function HomeScreen() {
         <ThemedText style={styles.subtitle}>
           Make today a word better.
         </ThemedText>
-        <View style={styles.dueCard}>
-          <ThemedText style={styles.eyebrow}>WORDS DUE TODAY</ThemedText>
-          <ThemedText
-            style={styles.dueCount}
-            accessibilityLabel={`${preview.due} words due today, sample data`}
-          >
-            {preview.due}
-          </ThemedText>
-          <ThemedText style={styles.duePrompt}>
-            Ready for a quick review?
-          </ThemedText>
-          <View style={styles.sparkle}>
-            <Image
-              source={require('@/assets/images/wordwell/sparkle.svg')}
-              style={styles.sparkleIcon}
-              accessible={false}
-            />
+        {!!error && (
+          <View accessibilityLiveRegion="polite">
+            <ThemedText style={styles.subtitle}>{error}</ThemedText>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setRetry((value) => value + 1)}
+              style={[styles.action, styles.secondaryAction]}
+            >
+              <ThemedText style={styles.actionText}>Try again</ThemedText>
+            </Pressable>
           </View>
-        </View>
-        <ThemedText style={styles.sectionTitle} accessibilityRole="header">
-          What would you like to do?
-        </ThemedText>
-        <View style={styles.actions}>
-          <NavigationLink
-            href="/add-word"
-            label="Add word"
-            style={[styles.action, styles.primaryAction]}
-          >
-            <Image
-              source={require('@/assets/images/wordwell/add-white.svg')}
-              style={styles.icon}
-              accessible={false}
-            />
-            <ThemedText style={[styles.actionText, styles.primaryText]}>
-              Add word
+        )}
+        {empty ? (
+          <ReviewEmptyState
+            kind={reviewEmptyKind(summary)}
+            showAction={summary.saved_count === 0}
+          />
+        ) : (
+          <View style={styles.dueCard}>
+            <ThemedText style={styles.eyebrow}>WORDS DUE TODAY</ThemedText>
+            <ThemedText
+              style={styles.dueCount}
+              accessibilityLabel={
+                summary
+                  ? `${summary.due_count} words due today`
+                  : 'Loading words due today'
+              }
+            >
+              {summary ? summary.due_count : '…'}
             </ThemedText>
-          </NavigationLink>
-          <NavigationLink
-            href="/review"
-            label="Start review"
-            style={[styles.action, styles.secondaryAction]}
-          >
-            <Image
-              source={require('@/assets/images/wordwell/review-dark.svg')}
-              style={styles.icon}
-              accessible={false}
-            />
-            <ThemedText style={styles.actionText}>Start review</ThemedText>
-          </NavigationLink>
-        </View>
-        <View style={styles.progressCard}>
-          <ThemedText style={styles.progressTitle}>
-            Your daily progress
-          </ThemedText>
-          <ThemedText style={styles.progressDetail}>
-            {preview.saved} saved words · {preview.due} ready to review
-          </ThemedText>
-          <ThemedText style={styles.previewNote}>Sample data</ThemedText>
-        </View>
+            <ThemedText style={styles.duePrompt}>
+              {summary
+                ? 'Ready for a quick review?'
+                : error
+                  ? 'Progress unavailable'
+                  : 'Loading your progress…'}
+            </ThemedText>
+            <View style={styles.sparkle}>
+              <Image
+                source={require('@/assets/images/wordwell/sparkle.svg')}
+                style={styles.sparkleIcon}
+                accessible={false}
+              />
+            </View>
+          </View>
+        )}
+        {summary?.saved_count !== 0 && (
+          <>
+            <ThemedText style={styles.sectionTitle} accessibilityRole="header">
+              What would you like to do?
+            </ThemedText>
+            <View style={styles.actions}>
+              <NavigationLink
+                href="/add-word"
+                label="Add word"
+                style={[styles.action, styles.primaryAction]}
+              >
+                <Image
+                  source={require('@/assets/images/wordwell/add-white.svg')}
+                  style={styles.icon}
+                  accessible={false}
+                />
+                <ThemedText style={[styles.actionText, styles.primaryText]}>
+                  Add word
+                </ThemedText>
+              </NavigationLink>
+              <NavigationLink
+                href="/review-preparation"
+                label="Start review"
+                style={[styles.action, styles.secondaryAction]}
+              >
+                <Image
+                  source={require('@/assets/images/wordwell/review-dark.svg')}
+                  style={styles.icon}
+                  accessible={false}
+                />
+                <ThemedText style={styles.actionText}>Start review</ThemedText>
+              </NavigationLink>
+            </View>
+            <View style={styles.progressCard}>
+              <ThemedText style={styles.progressTitle}>
+                Your daily progress
+              </ThemedText>
+              <ThemedText style={styles.progressDetail}>
+                {summary
+                  ? `${summary.saved_count} saved words · ${Math.min(summary.due_count, summary.daily_remaining, 50)} ready to review`
+                  : 'Your progress will appear here.'}
+              </ThemedText>
+            </View>
+          </>
+        )}
       </View>
     </AppScreen>
   );
@@ -210,14 +279,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '400',
     marginTop: 7,
-  },
-  previewNote: {
-    fontFamily,
-    color: colors.secondary,
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: '400',
-    marginTop: 4,
   },
   icon: { width: 24, height: 24 },
 });

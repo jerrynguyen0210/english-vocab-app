@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.auth import COOKIE, DB, get_current_user
@@ -17,14 +17,19 @@ from app.services.dictionary import (
     DictionaryEntry,
     PartOfSpeech,
     VerbForm,
+    review_parts,
     search_dictionary,
 )
-from app.services.review_prompt import mask_target
+from app.services.review_choices import review_options
+from app.services.review_preparation import ReviewSelection, selected_words
+from app.services.review_prompt import mask_target, prompt_sentence
 from app.services.review_queue import (
     answer_matches,
     remaining_daily_reviews,
+    review_totals,
     schedule_review,
 )
+from app.services.review_ticket import issue_ticket, valid_ticket
 
 router = APIRouter()
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -76,13 +81,37 @@ class ReviewItem(BaseModel):
     example_sentence: str | None = None
 
 
-class SessionItem(ReviewItem):
+class TypingSessionItem(ReviewItem):
+    prompt_sentence: str
     attempt_id: uuid.UUID
+    review_token: str
+
+
+class SessionItem(TypingSessionItem):
+    choices: list[str] = Field(min_length=4, max_length=4)
+
+    @field_validator("choices")
+    @classmethod
+    def four_unique_choices(cls, values: list[str]) -> list[str]:
+        if (
+            len(values) != 4
+            or any(not normalise_word(value) for value in values)
+            or len({normalise_word(value) for value in values}) != 4
+        ):
+            raise ValueError("Multiple choice requires four distinct nonblank options")
+        return values
+
+
+class ChoiceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    attempt_id: uuid.UUID
+    review_token: str = Field(max_length=4096)
 
 
 class AnswerInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     attempt_id: uuid.UUID | None = None
+    review_token: str | None = Field(default=None, max_length=4096)
     typed_answer: str = Field(max_length=200)
     time_taken_ms: int = Field(ge=0, le=2147483647, strict=True)
 
@@ -114,24 +143,32 @@ def find_words(
     response.headers["Cache-Control"] = "no-store"
     try:
         entries = search_dictionary(
-            query, include_family,
+            query,
+            include_family,
             parts if parts is not None else ["noun", "verb", "adjective", "adverb"],
             forms if forms is not None else ["V1", "V2", "V3"],
         )
     except LookupError:
-        raise HTTPException(503, "Dictionary is unavailable. Please try again later.") from None
+        raise HTTPException(
+            503, "Dictionary is unavailable. Please try again later."
+        ) from None
     normalized = {normalise_word(entry.word) for entry in entries}
-    saved = set(
-        db.scalars(
-            select(Word.normalised_word).where(
-                Word.user_id == user.id,
-                Word.normalised_word.in_(normalized),
+    saved = (
+        set(
+            db.scalars(
+                select(Word.normalised_word).where(
+                    Word.user_id == user.id,
+                    Word.normalised_word.in_(normalized),
+                )
             )
         )
-    ) if normalized else set()
+        if normalized
+        else set()
+    )
     return [
         WordSearchResult(
-            **entry.model_dump(), saved=normalise_word(entry.word) in saved,
+            **entry.model_dump(),
+            saved=normalise_word(entry.word) in saved,
         )
         for entry in entries
     ]
@@ -194,7 +231,6 @@ def next_reviews(
         .order_by(ReviewState.due_at, Word.id)
         .limit(min(limit, remaining))
     )
-    response.headers["Cache-Control"] = "no-store"
     return [
         ReviewItem(
             word_id=row.id,
@@ -209,13 +245,134 @@ def next_reviews(
     ]
 
 
-@router.get("/reviews/session", response_model=list[SessionItem])
-def review_session(response: Response, db: DB, user: CurrentUser) -> list[SessionItem]:
-    # A bounded snapshot; words created later belong to the next session.
-    return [
-        SessionItem(**item.model_dump(), attempt_id=uuid.uuid4())
-        for item in next_reviews(response, db, user, limit=50)
-    ]
+@router.get("/reviews/summary")
+def review_summary(response: Response, db: DB, user: CurrentUser) -> dict[str, int]:
+    response.headers["Cache-Control"] = "no-store"
+    return review_totals(db, user, datetime.now(UTC))
+
+
+@router.get("/reviews/preparation")
+def review_preparation(
+    response: Response,
+    db: DB,
+    user: CurrentUser,
+    selection: Annotated[ReviewSelection, Query()],
+) -> dict[str, int]:
+    response.headers["Cache-Control"] = "no-store"
+    now = datetime.now(UTC)
+    matching = (
+        db.scalar(
+            select(func.count()).select_from(
+                selected_words(user, now, selection).order_by(None).subquery()
+            )
+        )
+        or 0
+    )
+    totals = review_totals(db, user, now)
+    return {
+        **totals,
+        "count": min(matching, totals["daily_remaining"], 50),
+        "matching_count": matching,
+    }
+
+
+@router.get("/reviews/session", response_model=list[SessionItem | TypingSessionItem])
+def review_session(
+    response: Response,
+    db: DB,
+    user: CurrentUser,
+    selection: Annotated[ReviewSelection, Query()],
+) -> list[TypingSessionItem]:
+    response.headers["Cache-Control"] = "no-store"
+    now = datetime.now(UTC)
+    remaining = min(50, remaining_daily_reviews(db, user, now))
+    rows = db.execute(selected_words(user, now, selection).limit(remaining)).all()
+    if not rows:
+        return []
+    # Infer POS once per saved word; all prompts share these cached profiles.
+    bank = (
+        list(
+            db.scalars(
+                select(Word.word).where(Word.user_id == user.id).order_by(Word.id)
+            )
+        )
+        if selection.answer_mode == "choice"
+        else []
+    )
+    saved_parts = (
+        {word: review_parts(word) for word in bank}
+        if selection.answer_mode == "choice"
+        else {}
+    )
+    items: list[TypingSessionItem] = []
+    for word, state in rows:
+        attempt_id = uuid.uuid4()
+        item = TypingSessionItem(
+            word_id=word.id,
+            attempt_id=attempt_id,
+            review_token=issue_ticket(user.id, state, attempt_id, now),
+            prompt_sentence=prompt_sentence(
+                word.example_sentence, word.english_explanation, word.word
+            ),
+            english_explanation=mask_target(word.english_explanation, word.word),
+            example_sentence=mask_target(word.example_sentence, word.word)
+            if word.example_sentence
+            else None,
+        )
+        if selection.answer_mode == "choice":
+            items.append(
+                SessionItem(
+                    **item.model_dump(), choices=review_options(word.word, saved_parts)
+                )
+            )
+        else:
+            items.append(item)
+    return items
+
+
+@router.post("/reviews/{word_id}/choices", response_model=SessionItem)
+def word_choices(
+    word_id: uuid.UUID,
+    body: ChoiceRequest,
+    response: Response,
+    db: DB,
+    user: CurrentUser,
+) -> SessionItem:
+    """Reveal D16 options only after an explicit switch to multiple choice."""
+    pair = db.execute(
+        select(Word, ReviewState)
+        .join(ReviewState, ReviewState.word_id == Word.id)
+        .where(Word.id == word_id, Word.user_id == user.id)
+    ).first()
+    if pair is None:
+        raise HTTPException(404, "Review item not found")
+    word, state = pair
+    now = datetime.now(UTC)
+    if not valid_ticket(body.review_token, user.id, state, body.attempt_id, now):
+        raise HTTPException(
+            409, "Review session expired or changed. Start a new review."
+        )
+    if remaining_daily_reviews(db, user, now) == 0:
+        raise HTTPException(409, "Daily review cap reached")
+    bank = db.scalars(
+        select(Word.word).where(Word.user_id == user.id).order_by(Word.id)
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return SessionItem(
+        word_id=word.id,
+        attempt_id=body.attempt_id,
+        review_token=body.review_token,
+        prompt_sentence=prompt_sentence(
+            word.example_sentence, word.english_explanation, word.word
+        ),
+        english_explanation=mask_target(word.english_explanation, word.word),
+        example_sentence=mask_target(word.example_sentence, word.word)
+        if word.example_sentence
+        else None,
+        choices=review_options(
+            word.word, {value: review_parts(value) for value in bank}
+        ),
+    )
 
 
 @router.post("/reviews/{word_id}/answer", response_model=AnswerResult)
@@ -250,7 +407,13 @@ def submit_answer(
                 next_due_at=state.due_at,
             )
     now = datetime.now(UTC)
-    if state.due_at > now:
+    if body.review_token is not None and not valid_ticket(
+        body.review_token, user.id, state, body.attempt_id, now
+    ):
+        raise HTTPException(
+            409, "Review session expired or changed. Start a new review."
+        )
+    if body.review_token is None and state.due_at > now:
         raise HTTPException(409, "Review item is not due")
     if remaining_daily_reviews(db, user, now) == 0:
         raise HTTPException(409, "Daily review cap reached")

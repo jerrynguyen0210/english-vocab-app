@@ -5,8 +5,8 @@
 | D1 | Fields captured when adding a word | Word + English explanation only · plus example sentence · plus where you met it | Word + English explanation (required); example sentence optional | P0 |
 | D2 | Answer checking rules | Exact match · ignore case and leading/trailing spaces · also ignore punctuation · allow small typos | Ignore case and leading/trailing spaces; otherwise exact spelling | P6 |
 | D3 | Hints and retries | No hints · first letter / word length · one retry before revealing | No hints, one attempt, then reveal the correct word | P6 |
-| D4 | Review scheduling (which words come back, and when) | Simple Leitner boxes · SM-2-style · FSRS | Leitner boxes driven by correct/incorrect (it fits pass/fail typed answers) | P6 |
-| D5 | Session rules | Fixed count per session · all due words · daily cap | Due words first with a daily cap | P6 |
+| D4 | Review scheduling (which words come back, and when) | Simple Leitner boxes · SM-2-style · FSRS | SM-2-style scheduling driven by correct/incorrect (supersedes Leitner) | P6 |
+| D5 | Session rules | Fixed count per session · all due words · daily cap | Selected source snapshot with a daily cap | P6 |
 | D6 | Connectivity when offline | Online required · read-only cache · queue adds/answers locally and sync later | Online required for R0; explicit cache/queue decision before R1 | R0 implementation; before R1 scope |
 | D7 | Auth method | Email + password · email magic link · OAuth/social | Email + password or magic link through your own FastAPI auth | P3 |
 | D8 | Backend hosting | VPS/Docker host · managed container platform · BaaS for the database only | Docker on a host you're comfortable with; check pricing when you choose | P10 |
@@ -14,6 +14,7 @@
 | D10 | iOS build path | Mac + Xcode locally · cloud builds (Expo Build) · skip iOS for now | Depends on Mac access and the Apple account (see Platform realities) | Before P8 iOS testing |
 | D11 | App name, bundle ID / package name | App name: **WordRecall**<br>iOS bundle ID: `com.jerrynguyen.wordrecall`<br>Android package name: `com.jerrynguyen.wordrecall` | Choose before the first native build | P2 |
 | D12 | How friends get the app | Web link · Android APK · Play internal/closed testing · TestFlight | Web link + Android internal first | P10 |
+| D16 | Multiple-choice distractors | Similar-POS saved words → word-family forms → other saved words → general dictionary vocabulary | Accepted: server selects three unique distractors and shuffles four options, including the target once | Review implementation |
 
 ## D11 — App identity
 
@@ -120,13 +121,29 @@ Before the next UI changes, add backend unit coverage for these rules:
   punctuation, accents and compatibility characters. Empty input is incorrect.
 - D3: no hints, one recorded attempt per prompt. Retrying a submission after a
   lost response reuses its attempt ID and returns its recorded result.
-- D4: correct answers advance one level, capped at 7, with intervals of
-  1, 2, 4, 7, 14, 30 and 60 days. Incorrect answers reset to level 0 and are due
-  in 10 minutes. All intervals start at server submission time.
-- D5: snapshot currently due words at session start, oldest due first, up to the
-  remaining 20-attempt daily allowance. Newly added words wait for the next
-  session. Finish when that snapshot is exhausted, or the server reports that
-  the daily cap was reached elsewhere. No client clock determines eligibility.
+- D4: SM-2-style scheduling (selected with Review preparation) supersedes the
+  original Leitner intervals. Correct answers use grade 4; incorrect answers use
+  grade 1. Initial ease is 2.5, with a floor of 1.3. Success intervals are 1 day,
+  6 days, then the prior interval multiplied by prior ease and rounded up. Ease
+  adapts using the SM-2 formula. Incorrect answers reset repetitions and interval
+  and are due in 10 minutes for same-day relearning; the next success restarts at
+  1 day. Intervals are bounded at 36,500 days. All intervals start at server
+  submission time. The legacy level remains for compatibility and does not
+  determine scheduling. Migration 0010 preserves existing due dates and history,
+  initializing SM-2 state for subsequent answers.
+- D5: preparation and session creation use the same user-scoped selection:
+  Yesterday is the previous local calendar day (including DST); Weekly and
+  Monthly are rolling 7/30-day saved-date windows. Recall includes all words
+  scheduled today, optionally including earlier days. Topic search is deferred
+  to a future backend implementation; user-entered topic tags are removed.
+  Sessions are limited to 50 words and the
+  remaining daily allowance (20 attempts by default), including time-based
+  practice. Newly added words wait for the next session. No client clock
+  determines eligibility. Answer mode is selected on the Review screen;
+  choice distractors follow D16 and always provide four unique server options.
+  Both answer modes use the same D2 checking and D4 updates.
+
+See [Review preparation](review-preparation.md) for API and session details.
 
 Nothing due is a distinct empty state. Authentication expiry preserves the
 in-memory draft behind the existing sign-in overlay; signing into another account
@@ -233,3 +250,52 @@ requires an in-app flow, supersede this decision and specify authentication,
 account scoping, delivery and temporary-file cleanup before implementing it.
 No such requirement has been established in this task; this decision makes no
 claim that backend export alone guarantees compliance in every jurisdiction.
+
+
+## D16 — Multiple-choice options
+
+Status: Accepted.
+
+For an explicit multiple-choice request, the server returns exactly four
+nonblank, unique options: the saved target once
+and three distractors, selected in this order:
+
+1. Other saved words sharing at least one dictionary-inferred part of speech.
+2. Other forms in the target's lexical family, using the existing WordNet and
+   LemmInflect family/inflection rules.
+3. Other words saved by the current user.
+4. General dictionary vocabulary as a final fallback, including for small banks
+   and custom words without a dictionary family. The server bundles a small
+   general vocabulary by part of speech so this fallback also works when the
+   local dictionary corpus is unavailable.
+
+POS is inferred at review time; word creation does not collect or persist it.
+Unknown POS skips the first tier. Prefer the target POS in the final vocabulary
+tier where available, then use its remaining vocabulary if needed. Deduplicate
+across all tiers using Unicode compatibility normalization, case folding and
+whitespace folding; exclude the target before selecting distractors. Shuffle
+within each tier, fill higher-priority tiers first, and shuffle the completed
+four options so the correct position varies. Only the user's saved words enter
+the saved-word tiers; another user's vocabulary is never used.
+
+The client preserves the returned order and labels the options A–D. It never
+creates, replaces, pads, sorts, or reshuffles them. Check answer requires a selected
+option and sends its exact text through the existing answer endpoint. Invalid
+option payloads disable multiple choice and allow Typing without synthesizing
+options. Network retries retain the exact original submission.
+
+
+### Typing payloads and input
+
+Typing is the default review-session response (`answer_mode=typing`). It contains
+masked prompt fields and signed attempt metadata, with no options or correct
+word before submission. The client requests choices only after an explicit
+Multiple choice selection, preserving the current attempt and progress. Such
+requests include the signed review token in the body, never in a URL. They
+validate ownership, current scheduling state and daily allowance without
+recording an answer. Returning to Typing removes the displayed options.
+
+Typing displays “Spelling matters · Enter to submit”, auto-focuses the input,
+and disables autocorrect, auto-capitalisation, autocomplete and spell checking.
+Enter and Check answer share the same guarded submission. The client sends the
+unaltered draft; D2 comparison and correct-word feedback remain server-owned.

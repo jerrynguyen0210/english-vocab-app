@@ -77,6 +77,7 @@ def test_export_is_complete_isolated_and_contains_no_credentials(database, tmp_p
     assert data["account"]["timezone"] == "Australia/Adelaide"
     assert data["words"][0]["word"] == "café 0"
     assert data["words"][0]["example_sentence"] is None
+    assert data["review_states"][0]["ease_factor"] == 2.5
     for collection in ["words", "review_states", "review_attempts", "session_metadata"]:
         assert len(data[collection]) == 1
     assert data["review_states"][0]["word_id"] == data["words"][0]["id"]

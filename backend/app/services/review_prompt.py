@@ -33,3 +33,18 @@ def mask_target(text: str, word: str) -> str:
     for start, end in reversed(spans):
         text = text[:start] + "_____" + text[end:]
     return text
+
+
+def prompt_sentence(example: str | None, explanation: str, word: str) -> str:
+    """Prefer a saved cloze sentence; definitions keep older words reviewable.
+
+    Only use examples that actually contain the target. A pre-existing blank or
+    an unrelated example does not guarantee a usable question. Mask the entire
+    fallback too, since the target can also occur in its connective wording.
+    """
+    if example and example.strip():
+        original = unicodedata.normalize("NFKC", example.strip())
+        masked = mask_target(original, word)
+        if masked != original:
+            return masked
+    return mask_target(f"“_____” means: {explanation.strip()}", word)

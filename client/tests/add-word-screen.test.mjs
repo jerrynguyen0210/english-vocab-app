@@ -13,6 +13,8 @@ function harness(fetch) {
   let tree;
   let signedIn = true;
   let dismissToast;
+  class HTMLInputElement {}
+  class HTMLTextAreaElement {}
   class AuthError extends Error {
     constructor(status) {
       super();
@@ -78,6 +80,27 @@ function harness(fetch) {
     },
   );
   const exports = {};
+  const formExports = {};
+  runInNewContext(
+    ts.transpileModule(
+      readFileSync(
+        new URL('../src/components/word-form.web.tsx', import.meta.url),
+        'utf8',
+      ),
+      {
+        compilerOptions: {
+          module: ts.ModuleKind.CommonJS,
+          jsx: ts.JsxEmit.ReactJSX,
+        },
+      },
+    ).outputText,
+    {
+      exports: formExports,
+      HTMLInputElement,
+      HTMLTextAreaElement,
+      require: (id) => dependencies[id],
+    },
+  );
   runInNewContext(outputText, {
     exports,
     performance,
@@ -116,8 +139,27 @@ function harness(fetch) {
       render();
     },
     filter: (label) => nodes().find((n) => n.props?.label === label),
-    input: () => nodes().find((n) => n.type === 'Input'),
+    input: () =>
+      nodes().find(
+        (n) =>
+          n.type === 'Input' &&
+          n.props.accessibilityLabel === 'Word to search (required)',
+      ),
     text,
+    enter: (overrides = {}) => {
+      const form = nodes().find((n) => n.type === 'Form');
+      const webForm = formExports.WordForm(form.props);
+      webForm.props.onKeyDownCapture({
+        target: new HTMLInputElement(),
+        key: 'Enter',
+        shiftKey: false,
+        repeat: false,
+        nativeEvent: {},
+        preventDefault() {},
+        stopPropagation() {},
+        ...overrides,
+      });
+    },
     toast: () => tree.props.toast,
     dismissToast: () => dismissToast(),
     saveButton: (word) =>
@@ -144,6 +186,29 @@ const entry = {
   english_explanation: 'Verb form of create: make something',
   example_sentence: null,
 };
+
+test('web Enter searches once and ignores composing or repeated key events', async () => {
+  const calls = [];
+  const h = harness(async (path) => {
+    calls.push(path);
+    return Response.json([]);
+  });
+  h.input().props.onChangeText(' create ');
+  await h.flush();
+  h.enter({ nativeEvent: { isComposing: true } });
+  h.enter({ nativeEvent: { keyCode: 229 } });
+  h.enter({ repeat: true });
+  h.enter({ shiftKey: true });
+  assert.equal(calls.length, 0);
+  h.enter();
+  await h.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(
+    new URL(calls[0], 'https://example.test').searchParams.get('q'),
+    'create',
+  );
+  assert.match(h.text(), /No matching words/);
+});
 
 test('required search and selected filters reach the API; results save and detect duplicates', async () => {
   const calls = [];
@@ -375,6 +440,109 @@ test('stale search responses are discarded when the query changes', async () => 
   assert.match(h.text(), /No results yet/);
   assert.doesNotMatch(h.text(), /created/);
 });
+
+test('empty results preserve the word and all filters so the user can adjust and retry', async () => {
+  const calls = [];
+  const h = harness(async (path) => {
+    calls.push(new URL(path, 'https://example.test').searchParams);
+    return Response.json(calls.length === 1 ? [] : [entry]);
+  });
+  h.input().props.onChangeText('create');
+  h.filter('Include word family').props.onPress();
+  h.filter('Noun').props.onPress();
+  h.filter('V1 · Base').props.onPress();
+  await h.flush();
+  const labels = [
+    'Include word family',
+    'Noun',
+    'Verb',
+    'Adjective',
+    'Adverb',
+    'Other',
+    'V1 · Base',
+    'V2 · Past',
+    'V3 · Past participle',
+  ];
+  const selections = () => labels.map((label) => h.filter(label).props.checked);
+  const before = selections();
+  await h.button('Search').props.onPress();
+  await h.flush();
+  assert.match(
+    h.text(),
+    /No matching words found\. Try another word or change your filters\./,
+  );
+  assert.match(h.text(), /0 found/);
+  assert.equal(h.input().props.value, 'create');
+  assert.deepEqual(selections(), before);
+  assert.equal(h.button('Search').props.disabled, false);
+
+  h.filter('V1 · Base').props.onPress();
+  await h.flush();
+  await h.button('Search').props.onPress();
+  await h.flush();
+  assert.equal(calls[1].get('q'), 'create');
+  assert.equal(calls[1].get('include_family'), 'false');
+  assert.deepEqual(calls[1].getAll('parts'), ['verb', 'adjective', 'adverb']);
+  assert.deepEqual(calls[1].getAll('forms'), ['V2', 'V3', 'V1']);
+  assert.match(h.text(), /1 found/);
+  assert.doesNotMatch(h.text(), /No matching words found/);
+  assert.equal(h.input().props.value, 'create');
+});
+
+for (const failure of ['network', 'server']) {
+  for (const action of ['search', 'save']) {
+    test(`${action} ${failure} failure preserves inputs and unsaved results and offers Try again`, async () => {
+      let failNext = false;
+      const calls = [];
+      const h = harness(async (path, init) => {
+        calls.push({ path, init });
+        if (failNext) {
+          failNext = false;
+          if (failure === 'network') throw new Error('offline');
+          return new Response(null, { status: 503 });
+        }
+        return init
+          ? Response.json({}, { status: 201 })
+          : Response.json([
+              entry,
+              { ...entry, word: 'create', verb_forms: ['V1'] },
+            ]);
+      });
+      h.input().props.onChangeText('create');
+      h.filter('Include word family').props.onPress();
+      h.filter('Noun').props.onPress();
+      h.filter('V1 · Base').props.onPress();
+      await h.flush();
+      await h.button('Search').props.onPress();
+      await h.flush();
+      failNext = true;
+      await (
+        action === 'search' ? h.button('Search') : h.saveButton('created')
+      ).props.onPress();
+      await h.flush();
+      assert.match(
+        h.text(),
+        action === 'search' ? /Could not search/ : /Could not save/,
+      );
+      assert.equal(h.input().props.value, 'create');
+      assert.equal(h.filter('Include word family').props.checked, false);
+      assert.equal(h.filter('Noun').props.checked, false);
+      assert.equal(h.filter('V1 · Base').props.checked, false);
+      assert.equal(h.saveButton('created').props.disabled, false);
+      assert.equal(h.saveButton('create').props.disabled, false);
+      assert.match(h.text(), /2 found/);
+      await h.button('Try again').props.onPress();
+      await h.flush();
+      assert.equal(calls.length, 3);
+      assert.equal(calls[2].path, calls[1].path);
+      assert.deepEqual(calls[2].init, calls[1].init);
+      assert.equal(h.button('Try again'), undefined);
+      assert.equal(h.input().props.value, 'create');
+      assert.equal(h.saveButton('create').props.disabled, false);
+      assert.equal(h.saveButton('created').props.disabled, action === 'save');
+    });
+  }
+}
 
 test('failed search can retry without losing query or filters', async () => {
   let count = 0;

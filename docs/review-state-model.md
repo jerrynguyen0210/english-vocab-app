@@ -18,10 +18,12 @@ valid ownership references and at most one state, but do not force every future
 word insert to create a state. Hard deletion of a word cascades to its state;
 account soft deletion retains it.
 
-This is a persistence foundation, not a scheduling implementation. Leitner can
-use `level` directly; SM-2 and FSRS need additional algorithm-specific state and
-a defined grading/scheduling policy before implementation. No algorithm is
-selected by this schema. Update counts, level, due time, and last-review time
-atomically when implementing reviews to avoid lost updates.
+Migration `0010` adds SM-2 `repetitions` (initially 0), `interval_days`
+(initially 0), and `ease_factor` (initially 2.5, minimum 1.3). Existing due dates,
+counts, levels, and history are preserved; subsequent answers use the new SM-2
+state. Level is retained for compatibility, but does not determine the interval.
+See [D4](decisions.md) and [Review preparation](review-preparation.md).
 
-Implementation: `backend/app/models/review_state.py`; migration: `0004_review_states`.
+Updates to scheduling state and immutable attempts occur in one transaction
+under the user/word locks. Session authorization binds to the prior scheduling
+state so another device's review invalidates stale prompts.
