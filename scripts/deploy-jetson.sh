@@ -67,6 +67,10 @@ while (( $# > 0 )); do
   esac
 done
 
+if [[ -e "$BASE_DIR/current" || -L "$BASE_DIR/current" ]]; then
+  die 'Existing production deployment: use devops/publish_production_web.sh after building. This legacy installer must not overwrite the API proxy.'
+fi
+
 [[ "$PORT" =~ ^[0-9]+$ ]] || die 'Port must be numeric'
 (( 1024 <= 10#$PORT && 10#$PORT <= 65535 )) || die 'Port must be in 1024..65535'
 [[ "$DOMAIN" =~ ^[a-zA-Z0-9.-]+$ ]] || die 'Hostname contains invalid characters'

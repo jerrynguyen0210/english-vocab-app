@@ -33,11 +33,16 @@ services:
 
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Missing POSTGRES_USER}:${POSTGRES_PASSWORD:?Missing POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:?Missing POSTGRES_DB}
+      APP_ENVIRONMENT: production
+      MIGRATION_BACKUP_DIR: /var/backups/wordrecall
       AUTH_COOKIE_SECURE: "true"
       CORS_ORIGINS: '["https://vocab.jerryitdev.com"]'
 
     ports:
       - "127.0.0.1:8001:8000"
+
+    volumes:
+      - migration_backups:/var/backups/wordrecall
 
     depends_on:
       db:
@@ -52,4 +57,5 @@ services:
       - "8000"
 
 volumes:
+  migration_backups:
   postgres_data:

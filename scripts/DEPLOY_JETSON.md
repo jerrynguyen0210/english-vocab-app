@@ -1,3 +1,5 @@
+> **Existing production site:** Do not rerun this legacy installer. Follow `WORDRECALL_JETSON_PRODUCTION_MANUAL.md`, then publish the tested build with `bash devops/publish_production_web.sh`. The installer now refuses existing deployments to preserve the API proxy.
+
 # English Vocabulary App — Jetson Nano web deployment
 
 This guide deploys the **static web frontend** of an Expo / React Native application onto an ARM64 Jetson running Debian/Ubuntu. It exposes the web UI at **https://vocab.jerryitdev.com** through an existing or new Cloudflare Tunnel.
