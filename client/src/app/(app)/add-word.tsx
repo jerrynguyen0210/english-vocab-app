@@ -278,42 +278,46 @@ export default function AddWordScreen() {
                 changed();
               }}
             />
-            <View style={styles.filters}>
-              {parts.map((part) => (
-                <CheckFilter
-                  key={part}
-                  label={part}
-                  checked={selectedParts.includes(part)}
-                  onPress={() => {
-                    setSelectedParts((current) =>
-                      current.includes(part)
-                        ? current.filter((item) => item !== part)
-                        : [...current, part],
-                    );
-                    changed();
-                  }}
-                />
-              ))}
-            </View>
-            <ThemedText style={styles.sectionLabel}>VERB FORMS</ThemedText>
-            <View style={styles.filters}>
-              {forms.map((form) => (
-                <CheckFilter
-                  key={form}
-                  label={formLabels[form]}
-                  checked={selectedForms.includes(form)}
-                  disabled={!selectedParts.includes('Verb')}
-                  onPress={() => {
-                    setSelectedForms((current) =>
-                      current.includes(form)
-                        ? current.filter((item) => item !== form)
-                        : [...current, form],
-                    );
-                    changed();
-                  }}
-                />
-              ))}
-            </View>
+            {includeFamily && (
+              <>
+                <View style={styles.filters}>
+                  {parts.map((part) => (
+                    <CheckFilter
+                      key={part}
+                      label={part}
+                      checked={selectedParts.includes(part)}
+                      onPress={() => {
+                        setSelectedParts((current) =>
+                          current.includes(part)
+                            ? current.filter((item) => item !== part)
+                            : [...current, part],
+                        );
+                        changed();
+                      }}
+                    />
+                  ))}
+                </View>
+                <ThemedText style={styles.sectionLabel}>VERB FORMS</ThemedText>
+                <View style={styles.filters}>
+                  {forms.map((form) => (
+                    <CheckFilter
+                      key={form}
+                      label={formLabels[form]}
+                      checked={selectedForms.includes(form)}
+                      disabled={!selectedParts.includes('Verb')}
+                      onPress={() => {
+                        setSelectedForms((current) =>
+                          current.includes(form)
+                            ? current.filter((item) => item !== form)
+                            : [...current, form],
+                        );
+                        changed();
+                      }}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: searching, busy: searching }}
