@@ -154,9 +154,15 @@ test.each(['typing', 'choice'] as const)(
             name: answer === 'Hello' ? 'A Hello' : 'B World',
           }),
         );
-      await fireEvent.press(
-        screen.getByRole('button', { name: 'Check answer' }),
-      );
+      if (mode === 'typing') {
+        await fireEvent.press(
+          screen.getByRole('button', { name: 'Check answer' }),
+        );
+      } else {
+        expect(
+          screen.queryByRole('button', { name: 'Check answer' }),
+        ).toBeNull();
+      }
       const feedback = await screen.findByTestId('review-feedback');
       expect(
         within(feedback).getByText(

@@ -358,8 +358,6 @@ test('selected source loads a live session; answer modes share the signed submis
   );
   h.button('Multiple choice').props.onPress();
   await h.flush();
-  h.button('A Hello').props.onPress();
-  await h.flush();
   h.button('Typing').props.onPress();
   await h.flush();
   assert.equal(h.input().props.value, '');
@@ -500,15 +498,13 @@ test('multiple choice renders exactly the server options in order and submits th
   h.button('Multiple choice').props.onPress();
   await h.flush();
   assert.equal(h.input(), undefined);
-  assert.equal(h.button('Check answer').props.disabled, true);
+  assert.equal(h.button('Check answer'), undefined);
   choices.forEach((value, index) =>
     assert.ok(h.button(`${String.fromCharCode(65 + index)} ${value}`)),
   );
   h.button('C Hello').props.onPress();
   await h.flush();
-  assert.equal(h.button('Check answer').props.disabled, false);
-  await h.button('Check answer').props.onPress();
-  await h.flush();
+  assert.equal(h.button('Check answer'), undefined);
   assert.equal(submitted.typed_answer, 'Hello');
 });
 
@@ -633,8 +629,6 @@ test('multiple-choice mode loads each next snapshot item without restarting the 
   await h.flush();
   h.button('A Hello').props.onPress();
   await h.flush();
-  await h.button('Check answer').props.onPress();
-  await h.flush();
   h.button('Next word').props.onPress();
   await h.flush();
   assert.ok(h.button('A Hello'));
@@ -729,7 +723,7 @@ for (const platform of ['web', 'android', 'ios']) {
           h.input().props.onChangeText(draft);
         }
         await h.flush();
-        h.button('Check answer').props.onPress();
+        if (mode === 'typing') h.button('Check answer').props.onPress();
         await h.flush();
         assert.ok(h.feedback());
         if (result === 'correct') {
@@ -949,4 +943,38 @@ test('daily cap interruption does not claim every snapshot word was reviewed', a
   await h.flush();
   assert.match(h.text(), /You reviewed 1 of 2 words/);
   assert.doesNotMatch(h.text(), /You reviewed all 2/);
+});
+
+test('choice submits once on rapid taps and retries the original answer after failure', async () => {
+  const bodies = [];
+  let rejectRequest;
+  const h = harness(async (_, init) => {
+    if (!init)
+      return Response.json([
+        { ...prompts[0], choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'] },
+      ]);
+    bodies.push(init.body);
+    if (bodies.length === 1)
+      return new Promise((_, reject) => {
+        rejectRequest = reject;
+      });
+    return Response.json({ result: 'correct', correct_word: 'Hello' });
+  });
+  await h.flush();
+  h.button('Multiple choice').props.onPress();
+  await h.flush();
+  h.button('A Hello').props.onPress();
+  h.button('B Goodbye').props.onPress();
+  assert.equal(bodies.length, 1);
+  rejectRequest(new Error('offline'));
+  await h.flush();
+  assert.equal(h.button('Check answer'), undefined);
+  assert.equal(h.button('A Hello').props.disabled, true);
+  assert.equal(h.button('A Hello').props.accessibilityState.checked, true);
+  await h.button('Retry submission').props.onPress();
+  await h.flush();
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0], bodies[1]);
+  assert.equal(JSON.parse(bodies[0]).typed_answer, 'Hello');
+  assert.match(h.feedbackText(), /Correct answer/);
 });

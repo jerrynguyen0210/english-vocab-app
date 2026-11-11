@@ -277,17 +277,18 @@ export default function ReviewScreen() {
     }
   }, [announcement]);
 
-  async function submit() {
+  async function submit(selectedAnswer: string, submittedAt: number) {
     if (
       !signedIn ||
       !item ||
       result ||
       conflict ||
       busy.current ||
-      (!pendingBody && !answer.trim())
+      (!pendingBody && !selectedAnswer.trim())
     )
       return;
     busy.current = true;
+    setAnswer(selectedAnswer);
     setLoading(true);
     setError('');
     const body =
@@ -295,10 +296,10 @@ export default function ReviewScreen() {
       JSON.stringify({
         attempt_id: item.attempt_id,
         ...(item.review_token ? { review_token: item.review_token } : {}),
-        typed_answer: answer,
+        typed_answer: selectedAnswer,
         time_taken_ms: Math.min(
           2147483647,
-          Math.max(0, Math.round(performance.now() - started.current)),
+          Math.max(0, Math.round(submittedAt - started.current)),
         ),
       });
     setPendingBody(body);
@@ -523,7 +524,7 @@ export default function ReviewScreen() {
                         accessibilityRole="radio"
                         accessibilityState={{ checked: answer === option }}
                         disabled={loading || !!pendingBody || !signedIn}
-                        onPress={() => setAnswer(option)}
+                        onPress={() => void submit(option, performance.now())}
                         style={[
                           styles.choice,
                           answer === option && styles.choiceSelected,
@@ -552,27 +553,33 @@ export default function ReviewScreen() {
                     maxLength={200}
                     editable={!loading && !pendingBody && signedIn}
                     returnKeyType="done"
-                    onSubmitEditing={() => void submit()}
+                    onSubmitEditing={() =>
+                      void submit(answer, performance.now())
+                    }
                   />
                 )}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    disabled:
-                      loading || conflict || !signedIn || !answer.trim(),
-                  }}
-                  style={[styles.button, loading && styles.disabled]}
-                  disabled={loading || conflict || !signedIn || !answer.trim()}
-                  onPress={() => void submit()}
-                >
-                  <ThemedText style={styles.buttonText}>
-                    {pendingBody ? 'Retry submission' : 'Check answer'}
-                  </ThemedText>
-                </Pressable>
+                {(mode !== 'choice' || !choiceAvailable || !!pendingBody) && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      disabled:
+                        loading || conflict || !signedIn || !answer.trim(),
+                    }}
+                    style={[styles.button, loading && styles.disabled]}
+                    disabled={
+                      loading || conflict || !signedIn || !answer.trim()
+                    }
+                    onPress={() => void submit(answer, performance.now())}
+                  >
+                    <ThemedText style={styles.buttonText}>
+                      {pendingBody ? 'Retry submission' : 'Check answer'}
+                    </ThemedText>
+                  </Pressable>
+                )}
                 <ThemedText style={styles.subtitle}>
                   {mode === 'typing' || !choiceAvailable
                     ? 'Spelling matters · Enter to submit'
-                    : 'Select one answer, then check it.'}
+                    : 'Tap an answer to submit it.'}
                 </ThemedText>
               </>
             )}
