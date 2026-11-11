@@ -85,7 +85,7 @@ def test_search_endpoint_validation_and_authentication(monkeypatch):
             def unavailable(*args):
                 raise LookupError("missing corpus")
 
-            monkeypatch.setattr("app.api.search_dictionary", unavailable)
+            monkeypatch.setattr("app.services.words.search_dictionary", unavailable)
             assert client.get("/api/v1/words/search?q=create").status_code == 503
         finally:
             app.dependency_overrides.clear()

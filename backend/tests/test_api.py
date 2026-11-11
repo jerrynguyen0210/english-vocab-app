@@ -646,8 +646,8 @@ def test_session_snapshot_excludes_later_additions(api):
 
 
 def test_preparation_windows_and_overdue_are_user_local(api, monkeypatch):
-    import app.api as api_module
     from app.core.time import local_day_bounds
+    from app.services import reviews as reviews_service
 
     client, db, owner, other, _ = api
     now = datetime(2026, 10, 5, 2, tzinfo=UTC)
@@ -657,7 +657,7 @@ def test_preparation_windows_and_overdue_are_user_local(api, monkeypatch):
         def now(cls, tz=None):
             return now
 
-    monkeypatch.setattr(api_module, "datetime", Clock)
+    monkeypatch.setattr(reviews_service, "datetime", Clock)
     user = db.scalar(select(User).where(User.email == "owner@example.com"))
     user.timezone = "Australia/Sydney"
     start, end = local_day_bounds(now, user.timezone)
