@@ -4,19 +4,22 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
 
-from app.auth import COOKIE, hasher
+from app.api.auth import COOKIE
 from app.core.config import get_settings
 from app.core.database import Base, get_session
 from app.main import app
 from app.models import AuthSession, User
+from app.services.auth import hasher
 
 
 @pytest.fixture
-def auth():
+def auth(api_database_url):
     engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        api_database_url,
+        connect_args={"check_same_thread": False}
+        if api_database_url.startswith("sqlite:")
+        else {},
     )
     Base.metadata.create_all(engine)
     with Session(engine) as db:
@@ -415,3 +418,40 @@ def test_registration_rejects_invalid_names(auth, name):
     )
     assert response.status_code == 422
     assert db.scalar(select(User)) is None
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_auth_service_rotates_and_revokes_tokens_without_http(auth, native):
+    from app.schemas.auth import Credentials, RegistrationCredentials
+    from app.services import auth as auth_service
+    from app.services.errors import InvalidAccessToken, InvalidSession
+
+    _, db = auth
+    tokens = auth_service.register(RegistrationCredentials(**CREDS), db, native)
+    user = auth_service.get_current_user(tokens.access_token, db)
+    assert user.email == CREDS["email"].lower()
+    record = db.scalar(select(AuthSession))
+    expires_at = record.refresh_expires_at
+    assert tokens.native is native
+    assert record.access_hash == auth_service.digest(tokens.access_token)
+    assert record.refresh_hash == auth_service.digest(tokens.refresh_token)
+    assert tokens.access_token not in repr(tokens)
+    assert tokens.refresh_token not in repr(tokens)
+
+    with pytest.raises(InvalidSession):
+        auth_service.refresh(tokens.refresh_token, not native, db)
+    rotated = auth_service.refresh(tokens.refresh_token, native, db)
+    assert record.refresh_expires_at == expires_at
+    assert rotated.access_token != tokens.access_token
+    assert rotated.refresh_token != tokens.refresh_token
+    with pytest.raises(InvalidAccessToken):
+        auth_service.get_current_user(tokens.access_token, db)
+    with pytest.raises(InvalidSession):
+        auth_service.refresh(tokens.refresh_token, native, db)
+    assert auth_service.get_current_user(rotated.access_token, db).id == user.id
+
+    auth_service.logout(rotated.refresh_token, native, db)
+    with pytest.raises(InvalidAccessToken):
+        auth_service.get_current_user(rotated.access_token, db)
+    signed_in = auth_service.sign_in(Credentials(**CREDS), db, native)
+    assert auth_service.get_current_user(signed_in.access_token, db).id == user.id

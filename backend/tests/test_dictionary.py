@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
-from app.auth import get_current_user
+from app.api.dependencies import get_current_user
 from app.core.database import get_session
 from app.main import app
 from app.services.dictionary import search_dictionary

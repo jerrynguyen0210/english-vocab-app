@@ -7,8 +7,13 @@ from fastapi import HTTPException
 
 from app.services.errors import (
     AccountUnavailable,
+    AuthRateLimited,
     DictionaryUnavailable,
+    InvalidAccessToken,
+    InvalidCredentials,
     InvalidSearch,
+    InvalidSession,
+    RegistrationConflict,
     ReviewConflict,
     ReviewNotFound,
     ServiceError,
@@ -17,6 +22,11 @@ from app.services.errors import (
 
 _STATUS_CODES = {
     AccountUnavailable: 401,
+    AuthRateLimited: 429,
+    InvalidCredentials: 401,
+    InvalidSession: 401,
+    InvalidAccessToken: 401,
+    RegistrationConflict: 409,
     InvalidSearch: 422,
     DictionaryUnavailable: 503,
     WordAlreadyExists: 409,
@@ -33,4 +43,9 @@ def service_errors() -> Iterator[None]:
         status = _STATUS_CODES.get(type(error))
         if status is None:
             raise
-        raise HTTPException(status, str(error)) from None
+        headers = None
+        if isinstance(error, AuthRateLimited):
+            headers = {"Retry-After": str(error.retry_after)}
+        elif isinstance(error, InvalidAccessToken):
+            headers = {"WWW-Authenticate": "Bearer"}
+        raise HTTPException(status, str(error), headers=headers) from None

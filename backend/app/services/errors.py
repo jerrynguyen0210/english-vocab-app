@@ -27,3 +27,25 @@ class ReviewNotFound(ServiceError):
 
 class ReviewConflict(ServiceError):
     pass
+
+
+class InvalidCredentials(ServiceError):
+    pass
+
+
+class InvalidSession(ServiceError):
+    pass
+
+
+class InvalidAccessToken(ServiceError):
+    pass
+
+
+class RegistrationConflict(ServiceError):
+    pass
+
+
+class AuthRateLimited(ServiceError):
+    def __init__(self, retry_after: int) -> None:
+        super().__init__("Too many authentication attempts")
+        self.retry_after = retry_after
