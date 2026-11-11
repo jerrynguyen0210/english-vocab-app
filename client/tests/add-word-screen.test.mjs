@@ -222,7 +222,7 @@ test('required search and selected filters reach the API; results save and detec
   assert.equal(calls.length, 0);
   h.input().props.onChangeText(' create ');
   h.filter('Include word family').props.onPress();
-  h.filter('V1 · Base').props.onPress();
+  h.filter('V2 · Past').props.onPress();
   await h.flush();
   await h.button('Search').props.onPress();
   await h.flush();
@@ -230,7 +230,7 @@ test('required search and selected filters reach the API; results save and detec
   assert.equal(query.get('q'), 'create');
   assert.equal(h.input().props.value, 'create');
   assert.equal(query.get('include_family'), 'false');
-  assert.deepEqual(query.getAll('forms'), ['V2', 'V3']);
+  assert.deepEqual(query.getAll('forms'), ['V1', 'V3']);
   assert.deepEqual(query.getAll('parts'), [
     'noun',
     'verb',
@@ -322,7 +322,7 @@ test('editing filters preserves the word and searches again with updated selecti
   await h.flush();
   assert.match(h.text(), /Search results/);
 
-  for (const label of ['Noun', 'V1 · Base', 'Include word family']) {
+  for (const label of ['Noun', 'V2 · Past', 'Include word family']) {
     h.filter(label).props.onPress();
     await h.flush();
     assert.equal(h.input().props.value, 'create');
@@ -335,7 +335,7 @@ test('editing filters preserves the word and searches again with updated selecti
   assert.equal(calls[1].get('q'), 'create');
   assert.equal(calls[1].get('include_family'), 'false');
   assert.deepEqual(calls[1].getAll('parts'), ['verb', 'adjective', 'adverb']);
-  assert.deepEqual(calls[1].getAll('forms'), ['V2', 'V3']);
+  assert.deepEqual(calls[1].getAll('forms'), ['V1', 'V3']);
   assert.equal(h.input().props.value, 'create');
   assert.match(h.text(), /Search results/);
 });
@@ -347,7 +347,7 @@ test('blank searches show validation and preserve every selected filter', async 
     return Response.json([]);
   });
   h.filter('Noun').props.onPress();
-  h.filter('V1 · Base').props.onPress();
+  h.filter('V2 · Past').props.onPress();
   await h.flush();
   const labels = [
     'Include word family',
@@ -356,7 +356,6 @@ test('blank searches show validation and preserve every selected filter', async 
     'Adjective',
     'Adverb',
     'Other',
-    'V1 · Base',
     'V2 · Past',
     'V3 · Past participle',
   ];
@@ -448,7 +447,7 @@ test('empty results preserve the word and all filters so the user can adjust and
   });
   h.input().props.onChangeText('create');
   h.filter('Noun').props.onPress();
-  h.filter('V1 · Base').props.onPress();
+  h.filter('V2 · Past').props.onPress();
   await h.flush();
   const labels = [
     'Include word family',
@@ -457,7 +456,6 @@ test('empty results preserve the word and all filters so the user can adjust and
     'Adjective',
     'Adverb',
     'Other',
-    'V1 · Base',
     'V2 · Past',
     'V3 · Past participle',
   ];
@@ -474,14 +472,14 @@ test('empty results preserve the word and all filters so the user can adjust and
   assert.deepEqual(selections(), before);
   assert.equal(h.button('Search').props.disabled, false);
 
-  h.filter('V1 · Base').props.onPress();
+  h.filter('V2 · Past').props.onPress();
   await h.flush();
   await h.button('Search').props.onPress();
   await h.flush();
   assert.equal(calls[1].get('q'), 'create');
   assert.equal(calls[1].get('include_family'), 'true');
   assert.deepEqual(calls[1].getAll('parts'), ['verb', 'adjective', 'adverb']);
-  assert.deepEqual(calls[1].getAll('forms'), ['V2', 'V3', 'V1']);
+  assert.deepEqual(calls[1].getAll('forms'), ['V1', 'V3', 'V2']);
   assert.match(h.text(), /1 found/);
   assert.doesNotMatch(h.text(), /No matching words found/);
   assert.equal(h.input().props.value, 'create');
@@ -508,7 +506,7 @@ for (const failure of ['network', 'server']) {
       });
       h.input().props.onChangeText('create');
       h.filter('Noun').props.onPress();
-      h.filter('V1 · Base').props.onPress();
+      h.filter('V2 · Past').props.onPress();
       await h.flush();
       await h.button('Search').props.onPress();
       await h.flush();
@@ -524,7 +522,7 @@ for (const failure of ['network', 'server']) {
       assert.equal(h.input().props.value, 'create');
       assert.equal(h.filter('Include word family').props.checked, true);
       assert.equal(h.filter('Noun').props.checked, false);
-      assert.equal(h.filter('V1 · Base').props.checked, false);
+      assert.equal(h.filter('V2 · Past').props.checked, false);
       assert.equal(h.saveButton('created').props.disabled, false);
       assert.equal(h.saveButton('create').props.disabled, false);
       assert.match(h.text(), /2 found/);
@@ -566,7 +564,6 @@ test('word family checkbox shows and hides every option while preserving selecti
     'Adjective',
     'Adverb',
     'Other',
-    'V1 · Base',
     'V2 · Past',
     'V3 · Past participle',
   ];
@@ -587,4 +584,51 @@ test('word family checkbox shows and hides every option while preserving selecti
     selected,
   );
   assert.match(h.text(), /VERB FORMS/);
+});
+
+test('base verb form is always included with no V1 option, even when V2 and V3 are off', async () => {
+  const calls = [];
+  const h = harness(async (path) => {
+    calls.push(new URL(path, 'https://example.test').searchParams);
+    return Response.json([]);
+  });
+  assert.equal(h.filter('V1 · Base'), undefined);
+  h.input().props.onChangeText('create');
+  await h.flush();
+  await h.button('Search').props.onPress();
+  await h.flush();
+  assert.deepEqual(calls[0].getAll('forms'), ['V1', 'V2', 'V3']);
+  for (const label of [
+    'Noun',
+    'Adjective',
+    'Adverb',
+    'V2 · Past',
+    'V3 · Past participle',
+  ]) {
+    h.filter(label).props.onPress();
+    await h.flush();
+  }
+  await h.button('Search').props.onPress();
+  await h.flush();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].getAll('parts'), ['verb']);
+  assert.deepEqual(calls[1].getAll('forms'), ['V1']);
+});
+
+test('Verb checkbox hides verb forms and restores their selections when checked again', async () => {
+  const h = harness(async () => Response.json([]));
+  h.filter('V2 · Past').props.onPress();
+  await h.flush();
+  h.filter('Verb').props.onPress();
+  await h.flush();
+  assert.equal(h.filter('Verb').props.checked, false);
+  assert.equal(h.filter('V2 · Past'), undefined);
+  assert.equal(h.filter('V3 · Past participle'), undefined);
+  assert.doesNotMatch(h.text(), /VERB FORMS/);
+  assert.ok(h.filter('Noun'));
+  h.filter('Verb').props.onPress();
+  await h.flush();
+  assert.match(h.text(), /VERB FORMS/);
+  assert.equal(h.filter('V2 · Past').props.checked, false);
+  assert.equal(h.filter('V3 · Past participle').props.checked, true);
 });

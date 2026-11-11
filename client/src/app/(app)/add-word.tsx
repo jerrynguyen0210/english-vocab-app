@@ -8,9 +8,8 @@ import { authenticatedFetch } from '@/services/auth';
 import { connectionMessage } from '@/services/connectivity';
 
 const parts = ['Noun', 'Verb', 'Adjective', 'Adverb', 'Other'] as const;
-const forms = ['V1', 'V2', 'V3'] as const;
+const forms = ['V2', 'V3'] as const;
 const formLabels = {
-  V1: 'V1 · Base',
   V2: 'V2 · Past',
   V3: 'V3 · Past participle',
 };
@@ -18,7 +17,7 @@ type Entry = {
   saved?: boolean;
   word: string;
   part_of_speech: string;
-  verb_forms: (typeof forms)[number][];
+  verb_forms: ('V1' | (typeof forms)[number])[];
   english_explanation: string;
   example_sentence: string | null;
 };
@@ -114,13 +113,8 @@ export default function AddWordScreen() {
       return;
     }
     setError('');
-    if (
-      !selectedParts.length ||
-      (selectedParts.length === 1 &&
-        selectedParts[0] === 'Verb' &&
-        !selectedForms.length)
-    ) {
-      setMessage('Select a word type and, for verbs, at least one verb form.');
+    if (!selectedParts.length) {
+      setMessage('Select a word type.');
       return;
     }
     const params = new URLSearchParams({
@@ -128,13 +122,9 @@ export default function AddWordScreen() {
       include_family: String(includeFamily),
     });
     selectedParts.forEach((part) => params.append('parts', part.toLowerCase()));
-    // Excluding Verb avoids the API's default forms when none are selected.
-    if (!selectedForms.length) {
-      params.delete('parts');
-      selectedParts
-        .filter((part) => part !== 'Verb')
-        .forEach((part) => params.append('parts', part.toLowerCase()));
-    } else selectedForms.forEach((form) => params.append('forms', form));
+    // The base form is always included; only V2 and V3 are optional.
+    params.append('forms', 'V1');
+    selectedForms.forEach((form) => params.append('forms', form));
     pending.current = true;
     setSearching(true);
     const requestGeneration = generation.current;
@@ -297,25 +287,30 @@ export default function AddWordScreen() {
                     />
                   ))}
                 </View>
-                <ThemedText style={styles.sectionLabel}>VERB FORMS</ThemedText>
-                <View style={styles.filters}>
-                  {forms.map((form) => (
-                    <CheckFilter
-                      key={form}
-                      label={formLabels[form]}
-                      checked={selectedForms.includes(form)}
-                      disabled={!selectedParts.includes('Verb')}
-                      onPress={() => {
-                        setSelectedForms((current) =>
-                          current.includes(form)
-                            ? current.filter((item) => item !== form)
-                            : [...current, form],
-                        );
-                        changed();
-                      }}
-                    />
-                  ))}
-                </View>
+                {selectedParts.includes('Verb') && (
+                  <>
+                    <ThemedText style={styles.sectionLabel}>
+                      VERB FORMS
+                    </ThemedText>
+                    <View style={styles.filters}>
+                      {forms.map((form) => (
+                        <CheckFilter
+                          key={form}
+                          label={formLabels[form]}
+                          checked={selectedForms.includes(form)}
+                          onPress={() => {
+                            setSelectedForms((current) =>
+                              current.includes(form)
+                                ? current.filter((item) => item !== form)
+                                : [...current, form],
+                            );
+                            changed();
+                          }}
+                        />
+                      ))}
+                    </View>
+                  </>
+                )}
               </>
             )}
             <Pressable
