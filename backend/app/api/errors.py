@@ -15,6 +15,7 @@ from app.services.errors import (
     InvalidSession,
     RegistrationConflict,
     ReviewConflict,
+    ReviewGenerationUnavailable,
     ReviewNotFound,
     ServiceError,
     WordAlreadyExists,
@@ -31,6 +32,7 @@ _STATUS_CODES = {
     DictionaryUnavailable: 503,
     WordAlreadyExists: 409,
     ReviewNotFound: 404,
+    ReviewGenerationUnavailable: 503,
     ReviewConflict: 409,
 }
 

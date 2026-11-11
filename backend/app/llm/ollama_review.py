@@ -1,4 +1,4 @@
-"""Standalone vocabulary prompt experiment; no backend imports or integration."""
+"""Ollama vocabulary prompt generation, also runnable as a standalone CLI."""
 
 import argparse
 import json
@@ -13,7 +13,9 @@ from urllib.request import Request, urlopen
 class ReviewError(Exception):
     """The local model could not produce a usable review question."""
 
+
 OLLAMA_URL = "http://192.168.0.108:11434"
+
 
 def generate_review(
     word: str,
@@ -21,8 +23,7 @@ def generate_review(
     *,
     model: str,
     base_url: str = OLLAMA_URL,
-    # base_url: str = "http://localhost:11434",
-    timeout: float = 120,
+    timeout: float = 500,
 ) -> dict[str, str]:
     """Ask Ollama for a sentence, then mask the answer locally."""
     word, meaning, model = word.strip(), meaning.strip(), model.strip()
@@ -33,7 +34,7 @@ def generate_review(
     payload = {
         "model": model,
         "stream": False,
-        "thinking": False,
+        "think": False,
         "system": (
             "Create one English vocabulary review sentence using the supplied word "
             "exactly once, in its exact spelling, with the supplied meaning. "

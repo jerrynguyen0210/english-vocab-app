@@ -35,7 +35,7 @@ def test_upgrade_and_repeated_run(tmp_path, monkeypatch):
         engine = create_engine(url)
         with engine.connect() as conn:
             assert (
-                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0011"
+                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0012"
             )
             assert (
                 conn.scalar(
@@ -118,5 +118,71 @@ def test_preparation_migration_preserves_existing_schedule_and_history(
         assert tuple(state) == (4, "2026-12-10 12:00:00", 5, 2, 0, 0, 2.5)
         assert connection.scalar(text("SELECT count(*) FROM review_attempts")) == 1
         assert "word_topics" not in inspect(connection).get_table_names()
+        assert (
+            connection.scalar(text("SELECT review_prompt FROM words"))
+            == "“_____” means: Meaning"
+        )
     engine.dispose()
     get_settings.cache_clear()
+
+
+def test_stored_prompt_migration_masks_legacy_examples(tmp_path, monkeypatch):
+    url = f"sqlite:///{tmp_path}/prompts.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    config = Config("alembic.ini")
+    engine = create_engine(url)
+    try:
+        command.upgrade(config, "0011")
+        cases = [
+            (
+                "straße",
+                "A road.",
+                "Try ＳＴＲＡＳＳＥ and Straße.",
+                "Try _____ and _____.",
+            ),
+            (
+                "take a break",
+                "To pause.",
+                "We take\na break at noon.",
+                "We _____ at noon.",
+            ),
+            (
+                "hello",
+                "Hello is a greeting.",
+                None,
+                "“_____” means: _____ is a greeting.",
+            ),
+        ]
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, password_hash) VALUES (:id, 'legacy@example.test', 'placeholder')"
+                ),
+                {"id": "1" * 32},
+            )
+            for index, (word, meaning, example, _) in enumerate(cases, start=2):
+                connection.execute(
+                    text(
+                        "INSERT INTO words (id, user_id, word, normalised_word, english_explanation, example_sentence) "
+                        "VALUES (:id, :owner, :word, :word, :meaning, :example)"
+                    ),
+                    {
+                        "id": str(index) * 32,
+                        "owner": "1" * 32,
+                        "word": word,
+                        "meaning": meaning,
+                        "example": example,
+                    },
+                )
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("SELECT example_sentence, review_prompt FROM words ORDER BY id")
+            ).all()
+            assert [tuple(row) for row in rows] == [
+                (case[2], case[3]) for case in cases
+            ]
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()

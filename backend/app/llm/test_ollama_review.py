@@ -2,24 +2,29 @@
 
 import io
 import json
+import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from urllib.error import URLError
 
-from ollama_review import ReviewError, generate_review
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.llm.ollama_review import OLLAMA_URL, ReviewError, generate_review
 
 
 class ReviewTests(unittest.TestCase):
-    def response(self, sentence):
+    def response(self, sentence: str) -> io.BytesIO:
         return io.BytesIO(
             json.dumps(
                 {"done": True, "response": json.dumps({"sentence": sentence})}
             ).encode()
         )
 
-    def test_request_and_masked_output(self):
+    def test_request_and_masked_output(self) -> None:
         with patch(
-            "ollama_review.urlopen",
+            "app.llm.ollama_review.urlopen",
             return_value=self.response(
                 "She was reluctant to leave her friends behind."
             ),
@@ -33,24 +38,27 @@ class ReviewTests(unittest.TestCase):
             },
         )
         request = call.call_args.args[0]
-        self.assertEqual(request.full_url, "http://localhost:11434/api/generate")
+        self.assertEqual(request.full_url, f"{OLLAMA_URL}/api/generate")
         payload = json.loads(request.data)
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["model"], "local-model")
         self.assertEqual(payload["format"]["required"], ["sentence"])
 
-    def test_rejects_missing_repeated_or_embedded_answer(self):
+    def test_rejects_missing_repeated_or_embedded_answer(self) -> None:
         for sentence in ("She left early.", "Go go home.", "The mango is ripe."):
             with (
                 self.subTest(sentence=sentence),
-                patch("ollama_review.urlopen", return_value=self.response(sentence)),
+                patch(
+                    "app.llm.ollama_review.urlopen",
+                    return_value=self.response(sentence),
+                ),
                 self.assertRaises(ReviewError),
             ):
                 generate_review("go", "move", model="local-model")
 
-    def test_phrase_and_unicode(self):
+    def test_phrase_and_unicode(self) -> None:
         with patch(
-            "ollama_review.urlopen",
+            "app.llm.ollama_review.urlopen",
             return_value=self.response("Please TAKE   OFF your coat."),
         ):
             self.assertEqual(
@@ -60,17 +68,19 @@ class ReviewTests(unittest.TestCase):
                 "Please _____ your coat.",
             )
 
-    def test_invalid_response(self):
+    def test_invalid_response(self) -> None:
         for content in (b"not json", b"{}", b'{"done": true, "response": "[]"}'):
             with (
-                patch("ollama_review.urlopen", return_value=io.BytesIO(content)),
+                patch(
+                    "app.llm.ollama_review.urlopen", return_value=io.BytesIO(content)
+                ),
                 self.assertRaises(ReviewError),
             ):
                 generate_review("go", "move", model="local-model")
 
-    def test_connection_failure(self):
+    def test_connection_failure(self) -> None:
         with (
-            patch("ollama_review.urlopen", side_effect=URLError("refused")),
+            patch("app.llm.ollama_review.urlopen", side_effect=URLError("refused")),
             self.assertRaisesRegex(ReviewError, "Cannot reach Ollama"),
         ):
             generate_review("go", "move", model="local-model")

@@ -33,6 +33,9 @@ def history():
             "0007_auth",
             "0008_account_erasure",
             "0009_user_name",
+            "0010_review_preparation",
+            "0011_remove_word_topics",
+            "0012_stored_review_prompts",
         ]:
             spec = importlib.util.spec_from_file_location(
                 name, f"migrations/versions/{name}.py"

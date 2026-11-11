@@ -20,6 +20,14 @@ from app.models.word import normalise_word
 
 @pytest.fixture
 def api(api_database_url, monkeypatch):
+    # API contract tests stay offline; dedicated tests assert persistence/failures.
+    monkeypatch.setattr(
+        "app.services.words.generate_review",
+        lambda word, meaning, **kwargs: {
+            "prompt_sentence": "A saved _____ prompt.",
+            "answer": word,
+        },
+    )
     url = api_database_url
     monkeypatch.setenv("DATABASE_URL", url)
     get_settings.cache_clear()
@@ -884,7 +892,7 @@ def test_topic_search_is_deferred_and_tags_are_not_accepted(api):
         ),
     ],
 )
-def test_session_provides_masked_cloze_sentence_including_fallback(
+def test_session_uses_stored_prompt_independent_of_example(
     api, word, example, explanation, expected
 ):
     client, db, owner, _, _ = api
@@ -901,7 +909,7 @@ def test_session_provides_masked_cloze_sentence_including_fallback(
     response = client.get("/api/v1/reviews/session", headers=owner)
     assert response.status_code == 200
     item = response.json()[0]
-    assert item["prompt_sentence"] == expected.strip()
+    assert item["prompt_sentence"] == "A saved _____ prompt."
     assert "_____" in item["prompt_sentence"]
     assert normalise_word(word) not in normalise_word(item["prompt_sentence"])
     assert normalise_word(word) not in normalise_word(item["english_explanation"])
@@ -1105,3 +1113,66 @@ def test_choice_answer_persists_result_and_sm2_schedule(api, correct):
     assert as_utc(state.due_at) - as_utc(attempt.reviewed_at) == (
         timedelta(days=1) if correct else timedelta(minutes=10)
     )
+
+
+def test_generated_prompt_is_persisted_and_reused_without_ollama(api, monkeypatch):
+    from unittest.mock import Mock
+
+    client, db, owner, _, _ = api
+    generator = Mock(
+        return_value={
+            "prompt_sentence": "She was _____ to leave her friends.",
+            "answer": "reluctant",
+        }
+    )
+    monkeypatch.setattr("app.services.words.generate_review", generator)
+    response = create(client, owner, "reluctant")
+    assert response.status_code == 201
+    word_id = uuid.UUID(response.json()["id"])
+    db.expire_all()
+    stored = db.get(Word, word_id)
+    assert stored.review_prompt == "She was _____ to leave her friends."
+    generator.assert_called_once_with(
+        "reluctant",
+        "A greeting",
+        model=get_settings().ollama_model,
+        base_url=get_settings().ollama_url,
+        timeout=get_settings().ollama_timeout_seconds,
+    )
+    generator.side_effect = AssertionError("Review reads must never call Ollama")
+    assert create(client, owner, "RELUCTANT").status_code == 409
+    first = client.get("/api/v1/reviews/session", headers=owner).json()[0]
+    second = client.get("/api/v1/reviews/session", headers=owner).json()[0]
+    choices = client.post(
+        f"/api/v1/reviews/{word_id}/choices",
+        headers=owner,
+        json={"attempt_id": first["attempt_id"], "review_token": first["review_token"]},
+    )
+    assert choices.status_code == 200
+    for item in (first, second, choices.json()):
+        assert item["prompt_sentence"] == stored.review_prompt
+        assert "answer" not in item and "correct_word" not in item
+    assert generator.call_count == 1
+
+
+def test_generation_failure_saves_nothing_and_can_retry(api, monkeypatch):
+    from unittest.mock import Mock
+
+    from app.llm.ollama_review import ReviewError
+
+    client, db, owner, _, _ = api
+    generator = Mock(side_effect=ReviewError("Unavailable"))
+    monkeypatch.setattr("app.services.words.generate_review", generator)
+    response = create(client, owner)
+    assert response.status_code == 503
+    assert "Word was not saved" in response.json()["detail"]
+    assert db.scalar(select(func.count()).select_from(Word)) == 0
+    assert db.scalar(select(func.count()).select_from(ReviewState)) == 0
+    generator.side_effect = None
+    generator.return_value = {
+        "prompt_sentence": "She said _____ to greet me.",
+        "answer": "Hello",
+    }
+    assert create(client, owner).status_code == 201
+    assert db.scalar(select(func.count()).select_from(Word)) == 1
+    assert db.scalar(select(func.count()).select_from(ReviewState)) == 1

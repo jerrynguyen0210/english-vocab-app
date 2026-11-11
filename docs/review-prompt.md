@@ -32,11 +32,18 @@ Before serialization, the server replaces every occurrence of the target with
 whitespace in phrases. Substring matches are deliberately masked, including
 targets inside compounds, to avoid exposing the answer.
 
-The server uses the saved example when it contains the target. A missing, blank,
-or unrelated example uses a definition-based fallback, such as
-`“_____” means: A greeting.` The entire fallback is masked too, including its
-connective wording. A pre-existing blank in an unrelated example is insufficient.
-Stored words and examples remain unchanged.
+When a word is added, the backend asks the configured local Ollama model for a
+sentence, validates it, masks the target, and stores it in `words.review_prompt`
+in the same transaction as the word and review state. A generation failure returns
+503 without saving the word, so the user can retry. Known duplicates return 409
+without calling Ollama.
+
+Review sessions and multiple-choice requests retrieve that stored prompt from the
+database. They do not call Ollama or regenerate prompts from the example. The
+stored prompt is masked again before serialization to prevent answer leakage.
+Migration 0012 preserves existing words by storing their previous masked example
+or definition-based fallback. No model calls run during migrations. New words
+always use Ollama. Stored examples and review schedules remain unchanged.
 
 The screen renders only `prompt_sentence` as the question body. The target is not
 shown there in either answer mode, including after submission. Multiple-choice

@@ -49,3 +49,7 @@ class AuthRateLimited(ServiceError):
     def __init__(self, retry_after: int) -> None:
         super().__init__("Too many authentication attempts")
         self.retry_after = retry_after
+
+
+class ReviewGenerationUnavailable(ServiceError):
+    pass

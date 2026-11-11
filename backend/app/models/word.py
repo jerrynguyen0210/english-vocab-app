@@ -43,6 +43,7 @@ class Word(Base):
     normalised_word: Mapped[str] = mapped_column(Text)
     english_explanation: Mapped[str] = mapped_column(Text)
     example_sentence: Mapped[str | None] = mapped_column(Text)
+    review_prompt: Mapped[str] = mapped_column(Text, server_default="_____")
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), server_default=func.now()
     )

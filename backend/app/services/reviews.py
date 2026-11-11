@@ -28,7 +28,7 @@ from app.services.errors import (
 )
 from app.services.review_choices import review_options
 from app.services.review_preparation import ReviewSelection, selected_words
-from app.services.review_prompt import mask_target, prompt_sentence
+from app.services.review_prompt import mask_target
 from app.services.review_queue import (
     answer_matches,
     remaining_daily_reviews,
@@ -119,9 +119,7 @@ def review_session(
             word_id=word.id,
             attempt_id=attempt_id,
             review_token=issue_ticket(user.id, state, attempt_id, now),
-            prompt_sentence=prompt_sentence(
-                word.example_sentence, word.english_explanation, word.word
-            ),
+            prompt_sentence=mask_target(word.review_prompt, word.word),
             english_explanation=mask_target(word.english_explanation, word.word),
             example_sentence=mask_target(word.example_sentence, word.word)
             if word.example_sentence
@@ -162,9 +160,7 @@ def word_choices(
         word_id=word.id,
         attempt_id=body.attempt_id,
         review_token=body.review_token,
-        prompt_sentence=prompt_sentence(
-            word.example_sentence, word.english_explanation, word.word
-        ),
+        prompt_sentence=mask_target(word.review_prompt, word.word),
         english_explanation=mask_target(word.english_explanation, word.word),
         example_sentence=mask_target(word.example_sentence, word.word)
         if word.example_sentence
