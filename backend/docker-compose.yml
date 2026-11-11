@@ -33,5 +33,22 @@ services:
         condition: service_healthy
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+  prompt-worker:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-vocab}:${POSTGRES_PASSWORD:-vocab}@db:5432/${POSTGRES_DB:-vocab}
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      api:
+        condition: service_started
+      db:
+        condition: service_healthy
+    # API runs migrations; worker retries until the queue table is available.
+    entrypoint: ["python", "-m", "app.prompt_worker"]
+    restart: unless-stopped
+
 volumes:
   postgres_data:

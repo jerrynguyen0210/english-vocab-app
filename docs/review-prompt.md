@@ -32,18 +32,29 @@ Before serialization, the server replaces every occurrence of the target with
 whitespace in phrases. Substring matches are deliberately masked, including
 targets inside compounds, to avoid exposing the answer.
 
-When a word is added, the backend asks the configured local Ollama model for a
-sentence, validates it, masks the target, and stores it in `words.review_prompt`
-in the same transaction as the word and review state. A generation failure returns
-503 without saving the word, so the user can retry. Known duplicates return 409
-without calling Ollama.
+Saving a word atomically stores the word, review state, a masked example or
+definition-based fallback prompt, and a durable `prompt_jobs` row. The API returns
+201 immediately after this database transaction, without calling Ollama. Known
+duplicates return 409 and do not create additional jobs.
 
-Review sessions and multiple-choice requests retrieve that stored prompt from the
-database. They do not call Ollama or regenerate prompts from the example. The
-stored prompt is masked again before serialization to prevent answer leakage.
-Migration 0012 preserves existing words by storing their previous masked example
-or definition-based fallback. No model calls run during migrations. New words
-always use Ollama. Stored examples and review schedules remain unchanged.
+A separate process (`python -m app.prompt_worker`) claims queued words and calls
+the configured Ollama model outside any database transaction. On success, it
+replaces `words.review_prompt` and removes the job atomically. Reviews remain
+available using the fallback while generation is pending. Sessions already loaded
+by the client retain their displayed prompt; subsequent reads use the latest
+stored prompt. Review schedules and examples are unchanged.
+
+Failed generation retries with exponential delays from 10 seconds up to one hour.
+Jobs survive process restarts. Claims expire after the configured LLM timeout plus
+60 seconds, allowing another worker to recover interrupted work. A unique claim
+token prevents late results from overwriting a newer attempt. Multiple PostgreSQL
+workers skip jobs locked by other workers. Account erasure cascades to queued jobs;
+late completions cannot recreate erased data. Failed attempts log a count without
+logging vocabulary or provider response bodies.
+
+Review reads never call Ollama. Stored prompts are masked again before
+serialization to prevent answer leakage. Migration 0013 adds the queue without
+changing existing prompts or calling the model; only newly saved words are queued.
 
 The screen renders only `prompt_sentence` as the question body. The target is not
 shown there in either answer mode, including after submission. Multiple-choice

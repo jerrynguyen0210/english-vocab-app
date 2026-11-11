@@ -403,3 +403,23 @@ There are no runtime dictionary network calls or API keys. A missing corpus
 returns a retryable 503 response. Rebuild the backend image after this change.
 WordNet data retains its bundled Princeton license in the installed corpus; see
 [WordNet’s license](https://wordnet.princeton.edu/license-and-commercial-use).
+
+
+### Background review prompt generation
+
+Saving a word returns 201 after storing the word and its generation job in one
+transaction. The client does not wait for Ollama. A masked example or definition
+keeps the word reviewable until the generated prompt is ready. Failures retry
+automatically; users do not need to save the word again.
+
+Docker Compose includes a separate `prompt-worker` service. Rebuild and start the
+API and worker with `docker compose up -d --build api prompt-worker` from `backend/`.
+The API applies forward-only migration 0013 through its normal startup procedure;
+the worker retries database access while migration is in progress.
+
+For a local installation, run the normal migration command `python -m app.migrate`
+from `backend/`, then run `python -m app.prompt_worker` alongside the API using the
+same environment. The worker uses the existing `DATABASE_URL`, `OLLAMA_URL`,
+`OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` settings. No additional broker or
+credentials are required. Keep the worker running to drain the durable queue.
+See [review prompt behavior](docs/review-prompt.md) for retries and recovery.

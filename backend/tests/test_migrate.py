@@ -35,7 +35,7 @@ def test_upgrade_and_repeated_run(tmp_path, monkeypatch):
         engine = create_engine(url)
         with engine.connect() as conn:
             assert (
-                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0012"
+                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0013"
             )
             assert (
                 conn.scalar(
