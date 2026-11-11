@@ -531,7 +531,7 @@ export default function ReviewScreen() {
                         ]}
                       >
                         <ThemedText style={styles.explanation}>
-                          {String.fromCharCode(65 + index)} {option}
+                          {String.fromCharCode(65 + index)}. {option}
                         </ThemedText>
                       </Pressable>
                     ))}

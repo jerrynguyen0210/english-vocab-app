@@ -483,7 +483,7 @@ test('cloze prompt remains masked across modes and progress tracks the current w
   h.button('Multiple choice').props.onPress();
   await h.flush();
   assert.ok(h.sentence());
-  assert.ok(h.button('A Hello'));
+  assert.ok(h.button('A. Hello'));
 });
 
 test('multiple choice renders exactly the server options in order and submits the selection', async () => {
@@ -500,9 +500,9 @@ test('multiple choice renders exactly the server options in order and submits th
   assert.equal(h.input(), undefined);
   assert.equal(h.button('Check answer'), undefined);
   choices.forEach((value, index) =>
-    assert.ok(h.button(`${String.fromCharCode(65 + index)} ${value}`)),
+    assert.ok(h.button(`${String.fromCharCode(65 + index)}. ${value}`)),
   );
-  h.button('C Hello').props.onPress();
+  h.button('C. Hello').props.onPress();
   await h.flush();
   assert.equal(h.button('Check answer'), undefined);
   assert.equal(submitted.typed_answer, 'Hello');
@@ -523,7 +523,7 @@ for (const choices of [
     assert.ok(h.input());
     assert.equal(h.button('Multiple choice').props.disabled, true);
     assert.match(h.text(), /Spelling matters · Enter to submit/);
-    assert.equal(h.button('A Hello'), undefined);
+    assert.equal(h.button('A. Hello'), undefined);
   });
 }
 
@@ -591,7 +591,7 @@ test('typing loads no choices; switching modes fetches only the current item and
     attempt_id: 'attempt-one',
     review_token: 'signed',
   });
-  assert.ok(h.button('A Hello'));
+  assert.ok(h.button('A. Hello'));
   assert.equal(h.progress().props.accessibilityLabel, progress);
   const beforeTyping = h.focusCalls();
   h.button('Typing').props.onPress();
@@ -627,11 +627,11 @@ test('multiple-choice mode loads each next snapshot item without restarting the 
   await h.flush();
   await h.button('Multiple choice').props.onPress();
   await h.flush();
-  h.button('A Hello').props.onPress();
+  h.button('A. Hello').props.onPress();
   await h.flush();
   h.button('Next word').props.onPress();
   await h.flush();
-  assert.ok(h.button('A Hello'));
+  assert.ok(h.button('A. Hello'));
   assert.equal(h.input(), undefined);
   assert.equal(
     h.progress().props.accessibilityLabel,
@@ -672,7 +672,7 @@ test('option load failure returns to focused typing and can retry the current pr
   fail = false;
   await h.button('Multiple choice').props.onPress();
   await h.flush();
-  assert.ok(h.button('A Hello'));
+  assert.ok(h.button('A. Hello'));
   assert.doesNotMatch(h.text(), /Could not load answer options/);
 });
 
@@ -717,7 +717,7 @@ for (const platform of ['web', 'android', 'ios']) {
           h.button('Multiple choice').props.onPress();
           await h.flush();
           h.button(
-            result === 'correct' ? 'A Hello' : 'B Goodbye',
+            result === 'correct' ? 'A. Hello' : 'B. Goodbye',
           ).props.onPress();
         } else {
           h.input().props.onChangeText(draft);
@@ -963,14 +963,14 @@ test('choice submits once on rapid taps and retries the original answer after fa
   await h.flush();
   h.button('Multiple choice').props.onPress();
   await h.flush();
-  h.button('A Hello').props.onPress();
-  h.button('B Goodbye').props.onPress();
+  h.button('A. Hello').props.onPress();
+  h.button('B. Goodbye').props.onPress();
   assert.equal(bodies.length, 1);
   rejectRequest(new Error('offline'));
   await h.flush();
   assert.equal(h.button('Check answer'), undefined);
-  assert.equal(h.button('A Hello').props.disabled, true);
-  assert.equal(h.button('A Hello').props.accessibilityState.checked, true);
+  assert.equal(h.button('A. Hello').props.disabled, true);
+  assert.equal(h.button('A. Hello').props.accessibilityState.checked, true);
   await h.button('Retry submission').props.onPress();
   await h.flush();
   assert.equal(bodies.length, 2);

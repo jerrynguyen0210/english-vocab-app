@@ -139,7 +139,7 @@ test.each(['typing', 'choice'] as const)(
       await fireEvent.press(
         screen.getByRole('radio', { name: 'Multiple choice' }),
       );
-      await screen.findByRole('radio', { name: 'A Hello' });
+      await screen.findByRole('radio', { name: 'A. Hello' });
     }
     for (const [index, answer] of ['Hello', 'World'].entries()) {
       await screen.findByText(`Sentence ${index + 1}: Say _____.`);
@@ -151,7 +151,7 @@ test.each(['typing', 'choice'] as const)(
       else
         await fireEvent.press(
           await screen.findByRole('radio', {
-            name: answer === 'Hello' ? 'A Hello' : 'B World',
+            name: answer === 'Hello' ? 'A. Hello' : 'B. World',
           }),
         );
       if (mode === 'typing') {
