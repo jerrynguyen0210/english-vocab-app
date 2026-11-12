@@ -75,6 +75,18 @@ The new `client/app.config.js` selects SPA output only when
 `WORDRECALL_WEB_OUTPUT=single` is set. Other builds keep the `server` setting in
 `app.json`, along with the existing iOS/Android configuration.
 
+The client pins Jest's coverage dependency `test-exclude` to version 8 through
+an npm override. This removes the deprecated `glob` 7/10 and `inflight` chains
+and is compatible with the Node 24 build requirement. Remove the override once
+both Jest and the React Native Jest preset use version 8 or newer themselves.
+
+Two upstream development-tool warnings may still appear during `npm ci`:
+`whatwg-encoding@3` comes from Jest's jsdom environment, and `eslint@9` remains
+necessary while the React lint plugin's peer dependency excludes ESLint 10.
+These warnings do not mean the SPA export failed. Revisit them when the upstream
+packages support newer dependencies; do not bypass peer checks or substitute
+incompatible major versions just to hide the warnings.
+
 From the repository root on the build machine, with Node 24.3+:
 
 ```bash

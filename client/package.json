@@ -53,5 +53,10 @@
     "test:unit": "node --test tests/*.test.mjs",
     "test:components": "jest --runInBand"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "babel-plugin-istanbul": {
+      "test-exclude": "^8.0.0"
+    }
+  }
 }
