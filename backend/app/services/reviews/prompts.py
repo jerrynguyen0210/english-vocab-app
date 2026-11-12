@@ -32,7 +32,8 @@ def mask_target(text: str, word: str) -> str:
             spans.append((start, end))
     for start, end in reversed(spans):
         text = text[:start] + "_____" + text[end:]
-    return text
+    # Review sentences are plain text; model emphasis must not wrap blanks.
+    return re.sub(r"\*\*(\s*_____\s*)\*\*", r"\1", text)
 
 
 def prompt_sentence(example: str | None, explanation: str, word: str) -> str:

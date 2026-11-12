@@ -14,6 +14,9 @@ from app.services.reviews.prompts import mask_target, prompt_sentence
         ("ＳＴＲＡＳＳＥ and Straße.", "straße", "_____ and _____."),
         ("Her kindness was kind.", "kind", "Her _____ness was _____."),
         ("", "hello", ""),
+        ("He was **ready** to leave.", "ready", "He was _____ to leave."),
+        ("He was **_____** to leave.", "ready", "He was _____ to leave."),
+        ("He was ** _____ ** to leave.", "ready", "He was  _____  to leave."),
     ],
 )
 def test_mask_target(text, word, expected):

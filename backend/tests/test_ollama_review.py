@@ -39,6 +39,14 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(payload["model"], "local-model")
         self.assertEqual(payload["format"]["required"], ["sentence"])
 
+    def test_removes_bold_markers_around_answer(self) -> None:
+        with patch(
+            "app.llm.ollama_review.urlopen",
+            return_value=self.response("He was **ready** to take us home."),
+        ):
+            result = generate_review("ready", "prepared", model="local-model")
+        self.assertEqual(result["prompt_sentence"], "He was _____ to take us home.")
+
     def test_rejects_missing_repeated_or_embedded_answer(self) -> None:
         for sentence in ("She left early.", "Go go home.", "The mango is ripe."):
             with (

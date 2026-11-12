@@ -119,12 +119,32 @@ env examples instead. Never put secrets in `EXPO_PUBLIC_*` variables.
 ## Development commands
 
 For deployment on `jjnano@192.168.0.108` behind the existing
-`vocab.jerryitdev.com` domain, follow the
+`vocab.jerryitdev.com` domain, build and deploy directly on the Jetson:
+
+```bash
+ssh jjnano@192.168.0.108
+cd ~/english-vocab-app
+export COMPOSE_PROJECT_NAME=wordrecall
+bash devops/deploy-jetson.sh
+```
+
+Use the location of the existing checkout if it differs from `~/english-vocab-app`.
+The `wordrecall` project selects the existing API and database. Keep the existing
+database credentials in the Jetson's private `backend/.env`; optionally add
+`COMPOSE_PROJECT_NAME=wordrecall` there to retain the project selection.
+
+Omit `--web-build-dir` when building on the board. With Node 24.3+ or 26+ and npm
+available, the script installs client dependencies, builds a production SPA for
+the public domain, updates the API and prompt-worker images, applies guarded
+forward migrations, and publishes the frontend after local health checks.
+The existing database volume is checked before updating, and the working Nginx,
+Cloudflare tunnel and DNS are preserved by default.
+
+After deployment, open [vocab.jerryitdev.com](https://vocab.jerryitdev.com).
+For setup, troubleshooting and the optional prebuilt-SPA workflow, see the
 [Jetson production deployment guide](docs/DEPLOY_JETSON.md).
-It uses a prebuilt SPA, preserves the working Nginx/tunnel by default, and runs
-the API, PostgreSQL and prompt worker with the standalone production Compose file.
-`devops/deploy-jetson.sh` updates the full stack;
-`devops/publish_production_web.sh` publishes only the frontend.
+`devops/publish_production_web.sh` publishes only an already-built frontend;
+it does not update the backend.
 
 ### Interactive deployment helpers
 
