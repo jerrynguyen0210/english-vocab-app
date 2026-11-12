@@ -67,9 +67,30 @@ if operation[0] == failure or (failure == "up:api" and operation[0] == "up" and 
 @pytest.mark.parametrize(
     "action,expected",
     [
-        ("build", ["build", "api", "prompt-worker"]),
-        ("rebuild", ["build", "--no-cache", "--pull", "api", "prompt-worker"]),
-        ("logs", ["logs", "--tail", "100", "--follow", "api", "prompt-worker"]),
+        ("build", ["build", "api", "prompt-worker", "embedding-worker"]),
+        (
+            "rebuild",
+            [
+                "build",
+                "--no-cache",
+                "--pull",
+                "api",
+                "prompt-worker",
+                "embedding-worker",
+            ],
+        ),
+        (
+            "logs",
+            [
+                "logs",
+                "--tail",
+                "100",
+                "--follow",
+                "api",
+                "prompt-worker",
+                "embedding-worker",
+            ],
+        ),
         (
             "queue-status",
             ["exec", "-T", "api", "python", "-m", "app.prompt_jobs", "status"],
@@ -86,9 +107,9 @@ def test_start_builds_both_and_waits_for_migrations_before_starting_worker(deplo
     result, calls = deployment("start")
     assert result.returncode == 0, result.stderr
     assert calls == [
-        ["build", "api", "prompt-worker"],
+        ["build", "api", "prompt-worker", "embedding-worker"],
         ["up", "-d", "--wait", "--wait-timeout", "120", "db"],
-        ["stop", "prompt-worker"],
+        ["stop", "prompt-worker", "embedding-worker"],
         [
             "up",
             "-d",
@@ -109,8 +130,9 @@ def test_start_builds_both_and_waits_for_migrations_before_starting_worker(deplo
             "--wait-timeout",
             "120",
             "prompt-worker",
+            "embedding-worker",
         ],
-        ["ps", "db", "api", "prompt-worker"],
+        ["ps", "db", "api", "prompt-worker", "embedding-worker"],
     ]
 
 
@@ -118,8 +140,8 @@ def test_start_builds_both_and_waits_for_migrations_before_starting_worker(deplo
 def test_start_never_starts_worker_after_build_or_api_failure(deployment, failure):
     result, calls = deployment("start", failure)
     assert result.returncode != 0
-    assert not any(call[0] == "up" and call[-1] == "prompt-worker" for call in calls)
+    assert not any(call[0] == "up" and "embedding-worker" in call for call in calls)
     if failure == "build":
-        assert calls == [["build", "api", "prompt-worker"]]
+        assert calls == [["build", "api", "prompt-worker", "embedding-worker"]]
     if failure == "exec":
-        assert "Prompt worker remains stopped" in result.stderr
+        assert "Background workers remain stopped" in result.stderr

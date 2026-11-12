@@ -243,7 +243,8 @@ flowchart TB
     prep["Preparation focus or selection change"] --> debounce["Wait 250 ms<br/>Ignore obsolete focus results"]
     debounce --> source{"Source"}
     source -->|"Time or recall"| counts["GET /reviews/preparation<br/>Counts tied to exact query"]
-    source -->|"Topic"| unavailable["Coming later<br/>No backend request or start"]
+    source -->|"Topic"| topic["Enter topic and select Search<br/>GET preparation with source=topic"]
+    topic --> counts
     counts --> start["Start with selected source, period and overdue flag"]
     start --> session["GET /reviews/session<br/>answer_mode=typing"]
     session --> snapshot["First item in state<br/>Remaining items in queue ref"]
@@ -258,7 +259,10 @@ flowchart TB
 Preparation defaults to time, Weekly and inclusion of overdue words. The shared
 query helper defaults an unspecified source to recall, so a direct `/review`
 without selection parameters differs from opening preparation. Counts are hidden
-when their query no longer matches. Topic is a visible placeholder.
+when their query no longer matches. Topic text stays local until Search is
+selected; editing it invalidates earlier results. Topic selections include
+the submitted topic in both preparation and review requests. Pending embedding
+indexing shows a retryable message; topic sessions contain up to 10 related words.
 
 The backend supplies a bounded snapshot of up to 50 items. The client advances
 through that snapshot without fetching a new session for each answer. Choice mode

@@ -52,6 +52,17 @@ services:
       db:
         condition: service_healthy
 
+  embedding-worker:
+    image: english-vocab-backend:jetson
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment: *backend-environment
+    entrypoint: ["python", "-m", "app.embedding_worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   postgres_data:
     name: ${POSTGRES_VOLUME_NAME:-${COMPOSE_PROJECT_NAME:-backend}_postgres_data}

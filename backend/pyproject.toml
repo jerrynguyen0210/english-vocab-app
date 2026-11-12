@@ -18,6 +18,7 @@ dependencies = [
     "nltk>=3.9.1,<4",
     "lemminflect>=0.2.3,<0.3",
     "pydantic-settings>=2.7,<3",
+    "numpy>=2.0,<3",
 ]
 
 [project.optional-dependencies]

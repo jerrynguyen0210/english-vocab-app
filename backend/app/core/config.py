@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     ollama_model: str = Field(default="translategemma:4b", min_length=1)
     ollama_timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
     prompt_job_max_attempts: int = Field(default=5, ge=1, le=100)
+    embedding_model: str = Field(default="embeddinggemma", min_length=1)
+    embedding_revision: str = Field(default="1", min_length=1)
+    embedding_timeout_seconds: float = Field(default=10, gt=0, allow_inf_nan=False)
+    embedding_index_timeout_seconds: float = Field(
+        default=120, gt=0, allow_inf_nan=False
+    )
+    topic_similarity_threshold: float = Field(
+        default=0.35, ge=-1, le=1, allow_inf_nan=False
+    )
 
 
 @lru_cache

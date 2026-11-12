@@ -2,16 +2,24 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.text import normalise_word
 
 
 class ReviewSelection(BaseModel):
-    source: Literal["time", "recall"] = "recall"
+    source: Literal["time", "recall", "topic"] = "recall"
+    topic: str = Field(default="", max_length=200)
     period: Literal["Yesterday", "Weekly", "Monthly"] = "Weekly"
     include_overdue: bool = True
     answer_mode: Literal["typing", "choice"] = "typing"
+
+    @model_validator(mode="after")
+    def validate_topic(self) -> "ReviewSelection":
+        self.topic = self.topic.strip()
+        if self.source == "topic" and not self.topic:
+            raise ValueError("Enter a topic to search.")
+        return self
 
 
 class ReviewItem(BaseModel):

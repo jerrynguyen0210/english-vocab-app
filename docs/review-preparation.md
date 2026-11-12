@@ -8,7 +8,8 @@ is selected on the Review screen, after choosing a source and starting.
 
 `GET /api/v1/reviews/preparation` accepts:
 
-- `source`: `time` or `recall` (default).
+- `source`: `time`, `recall` (default), or `topic`.
+- `topic`: required, nonblank, at most 200 characters when source is `topic`.
 - `period`: `Yesterday`, `Weekly` (default), or `Monthly`.
 - `include_overdue`: boolean, default true; applies only to recall.
 
@@ -21,24 +22,80 @@ after today's local midnight. Future times within today are eligible.
 The response includes `count`, `matching_count`, `saved_count`, `due_count` and
 `daily_remaining`. Saved and due totals are scoped to the current user; due
 includes today and overdue words regardless of the selected filter. Count is the number ready for this
-session, capped at 50 per session, with no daily attempt limit.
+session, capped at 50 per session (10 for topics), with no daily attempt limit.
 The client disables Start until the current count loads, while empty or after a
 failure, and offers retry. Changing filters discards obsolete responses. Counts
 refresh when returning to preparation. A session rechecks selection and allowance
 at start, so its count may differ if another device changes data in the meantime.
 
-## Deferred topic search
+## Semantic topic search
 
-By topic displays the screen 08 topic panel with an editable topic input and a
-disabled Start button. The typed topic stays in local screen state when changing
-sources and does not trigger search requests. It loads authenticated
-`GET /reviews/summary` to show the
-user's saved-word bank total, with loading, retry and focus refresh. This total
-is labelled as the word bank size, never as topic matches. No search requests or
-topic review sessions are sent. Topic search is a future backend operation;
-users do not enter topic tags when adding words.
-The backend currently accepts only time and recall sources, and exposes no
-saved-tag search endpoint or topic fields on word creation.
+By topic searches the current user's saved words by meaning. Enter a topic and
+select **Search** (or the keyboard Search key); typing alone sends no search.
+Changing the text invalidates previous matches and disables Start. Searches and
+counts refresh on focus, discard obsolete responses, and offer manual retry.
+Before searching, the panel shows the saved-word bank total from `/reviews/summary`.
+
+`GET /reviews/preparation?source=topic&topic=...` ranks the user's saved words with
+NumPy cosine similarity against an Ollama topic embedding. It returns `count`
+(up to 10) and `matching_count` (all words above the configured similarity
+threshold), plus the existing summary totals. It reveals no words or answers.
+`GET /reviews/session` uses the same selection and returns the top 10 signed,
+masked review prompts in descending similarity order. Ties use word IDs. Topic
+practice includes words regardless of due date and uses the same answer and
+SM-2 scheduling flow as other practice. Selection is rechecked at session start.
+No matches means no related saved words, even when nothing is due for recall.
+Users do not need to assign topic tags.
+
+### Embeddings and deployment
+
+Migration `0016` adds nullable JSON embeddings, a model/revision key and a source
+text hash to `words`. Old vocabulary and review history are preserved. Embeddings
+are removed with their words during account erasure. Shipped migrations remain
+unchanged; apply the new revision using the existing guarded forward migration
+process (`python -m app.migrate`). Never downgrade or stamp a deployed database.
+
+The `embedding-worker` service in both Compose stacks embeds each word together
+with its explanation and optional example. It automatically indexes existing
+words, newly saved words and model/revision changes in batches of 32. Saving a
+word never waits on Ollama. Source edits invalidate stored embeddings. Updates
+only persist if the source still matches; concurrent deletion cannot resurrect
+data. Restarting resumes pending work without regenerating completed vectors.
+Provider failures retry every 10 seconds and never log private vocabulary.
+
+Install the configured model on the Ollama host first, for example:
+
+```sh
+ollama pull embeddinggemma
+```
+
+Configure the backend using these sanitized example settings:
+
+```dotenv
+EMBEDDING_MODEL=embeddinggemma
+EMBEDDING_REVISION=1
+EMBEDDING_TIMEOUT_SECONDS=10
+EMBEDDING_INDEX_TIMEOUT_SECONDS=120
+TOPIC_SIMILARITY_THRESHOLD=0.35
+```
+
+The model must support `/api/embed`; it is separate from `OLLAMA_MODEL`, which
+generates review sentences. Both indexing and querying use `EMBEDDING_MODEL`.
+Bump `EMBEDDING_REVISION` if weights are replaced under the same model name;
+this queues a full reindex. The cosine threshold is an initial configurable
+cutoff, not a validated confidence score; tune it with representative topics.
+
+For a backend running outside Compose, start `python -m app.embedding_worker`.
+To backfill once and exit after all pending words are indexed, run
+`python -m app.embedding_worker --once` from `backend/`. A failed one-time run
+exits nonzero and can safely be repeated. Compose and the deployment helper
+start the worker automatically after API migrations.
+
+While any current-user word is awaiting indexing, topic preparation/session
+returns 409 with a retryable preparation message. Other users' pending words
+do not block searches. Provider failures, malformed/zero/nonfinite vectors and
+dimension mismatches return 503 instead of a false empty result. Embeddings
+are persisted, and only the short query is embedded for each search/session.
 
 ## Review sessions and answers
 
@@ -62,7 +119,7 @@ return the persisted result without another attempt or scheduling change. The
 server still enforces ownership and scheduling under its existing locks.
 A client retry retains the exact body and disables editing/mode changes.
 
-Both modes and the supported sources update SM-2 state and attempt history. Binary grades
+Both modes and all three sources update SM-2 state and attempt history. Binary grades
 are 4 for correct and 1 for incorrect, with 10-minute relearning after failure.
 D4 documents the full policy, based on the
 [original SM-2 algorithm](https://super-memory.org/archive/english/ol/sm2.htm).
@@ -87,8 +144,8 @@ they show **Nothing due** and **You're all caught up**, with an **Add word** lin
 A selection
 with no matches while other words are due says **No words match this review**,
 so changing a filter does not falsely imply that all reviews are done. These
-states retain an Add word action. By topic remains deferred and does not display
-an empty-data result.
+states retain an Add word action. A topic with no related saved words displays
+No words match this review, independently of recall due counts.
 
 Direct empty review sessions use preparation totals to show the same state and
 Add word action, with a Back to Home link. No answer options or word contents

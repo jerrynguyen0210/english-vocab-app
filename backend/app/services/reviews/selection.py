@@ -13,6 +13,8 @@ from app.schemas.reviews import ReviewSelection
 def selected_words(
     user: User, now: datetime, selection: ReviewSelection
 ) -> Select[Word, ReviewState]:
+    if selection.source == "topic":
+        raise ValueError("Topic selections must use semantic ranking")
     query = (
         select(Word, ReviewState)
         .join(ReviewState, ReviewState.word_id == Word.id)

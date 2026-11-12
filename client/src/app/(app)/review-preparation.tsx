@@ -41,12 +41,15 @@ export default function ReviewPreparationScreen() {
   const [source, setSource] = useState<ReviewSource>('time');
   const [period, setPeriod] = useState<ReviewPeriod>('Weekly');
   const [topic, setTopic] = useState('');
+  const [searchedTopic, setSearchedTopic] = useState('');
   const [includeOverdue, setIncludeOverdue] = useState(true);
   const query = reviewQuery({
     source,
     period,
     includeOverdue: String(includeOverdue),
+    topic: searchedTopic,
   });
+  const awaitingTopic = source === 'topic' && !searchedTopic;
   const [ready, setReady] = useState<{
     query: string;
     count: number;
@@ -64,20 +67,26 @@ export default function ReviewPreparationScreen() {
       setReady(null);
       setError('');
       const timer = setTimeout(() => {
-        // Topic search is deferred. Only load bank totals, never topic matches.
         void authenticatedFetch(
-          source === 'topic'
-            ? '/reviews/summary'
-            : `/reviews/preparation?${query}`,
+          awaitingTopic ? '/reviews/summary' : `/reviews/preparation?${query}`,
         )
           .then(async (response) => {
-            if (!response.ok) throw new Error();
+            if (!response.ok) {
+              if (source === 'topic' && response.status === 409) {
+                if (active)
+                  setError(
+                    'Your word bank is being prepared for topic search. Please try again shortly.',
+                  );
+                return;
+              }
+              throw new Error();
+            }
             const result = await response.json();
             if (active)
               setReady({
                 query,
-                count: source === 'topic' ? 0 : result.count,
-                matching: source === 'topic' ? 0 : result.matching_count,
+                count: awaitingTopic ? 0 : result.count,
+                matching: awaitingTopic ? 0 : result.matching_count,
                 summary: result,
               });
           })
@@ -87,7 +96,7 @@ export default function ReviewPreparationScreen() {
                 connectionMessage(
                   failure,
                   source === 'topic'
-                    ? 'Could not load your word bank. Please try again.'
+                    ? 'Could not load topic matches. Please try again.'
                     : 'Could not load ready words. Please try again.',
                 ),
               );
@@ -97,9 +106,14 @@ export default function ReviewPreparationScreen() {
         active = false;
         clearTimeout(timer);
       };
-    }, [query, retry, source]),
+    }, [query, retry, source, awaitingTopic]),
   );
   const startLabel = `Start review · ${count} words`;
+  const searchTopic = () => {
+    if (!topic.trim()) return;
+    setSearchedTopic(topic.trim());
+    setRetry((value) => value + 1);
+  };
   return (
     <AppScreen selected="Review">
       <View style={styles.content}>
@@ -213,43 +227,63 @@ export default function ReviewPreparationScreen() {
                 />
                 <TextInput
                   accessibilityLabel="Topic search"
-                  accessibilityHint="Topic search is coming later. Choose By time or SM-2 recall to start a review."
+                  accessibilityHint="Enter a topic, then select Search to find related saved words."
                   value={topic}
-                  onChangeText={setTopic}
+                  onChangeText={(value) => {
+                    setTopic(value);
+                    setSearchedTopic('');
+                  }}
+                  maxLength={200}
+                  returnKeyType="search"
+                  onSubmitEditing={searchTopic}
                   placeholder="e.g. Workplace communication"
                   placeholderTextColor={colors.placeholder}
                   style={styles.topicInput}
                 />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Search topic"
+                  accessibilityState={{ disabled: !topic.trim() }}
+                  disabled={!topic.trim()}
+                  onPress={searchTopic}
+                  style={styles.topicSearch}
+                >
+                  <ThemedText style={styles.next}>Search</ThemedText>
+                </Pressable>
               </View>
               <ThemedText
                 accessibilityLiveRegion="polite"
-                style={styles.topicBadge}
+                style={awaitingTopic ? styles.topicBadge : styles.badge}
               >
                 {count === null
                   ? error
-                    ? 'Word bank unavailable'
-                    : 'Loading word bank…'
-                  : `${ready?.summary?.saved_count} words in your word bank`}
+                    ? 'Count unavailable'
+                    : awaitingTopic
+                      ? 'Loading word bank…'
+                      : 'Finding related words…'
+                  : awaitingTopic
+                    ? `${ready?.summary?.saved_count} words in your word bank`
+                    : `${ready?.matching} matching words`}
               </ThemedText>
               <ThemedText style={styles.detail}>
-                Topic search is coming later.
+                {awaitingTopic
+                  ? 'Search your saved words by meaning.'
+                  : 'Matches saved word meanings · up to 10 per review.'}
               </ThemedText>
             </>
           )}
         </View>
         <View style={styles.row}>
           <ThemedText accessibilityLiveRegion="polite" style={styles.summary}>
-            {source === 'topic'
-              ? 'Not available yet'
+            {awaitingTopic
+              ? 'Enter a topic and select Search'
               : count === null
                 ? error
                   ? 'Count unavailable'
                   : 'Loading ready words…'
                 : `${count} words ready`}
           </ThemedText>
-          <ThemedText style={styles.next}>
-            {source === 'topic' ? 'Search coming later' : 'Answer mode next →'}
-          </ThemedText>
+          <ThemedText style={styles.next}>Answer mode next →</ThemedText>
         </View>
         {!!error && (
           <View accessibilityLiveRegion="polite">
@@ -263,18 +297,23 @@ export default function ReviewPreparationScreen() {
             </Pressable>
           </View>
         )}
-        {source !== 'topic' && count === 0 && !error && ready?.summary && (
+        {!awaitingTopic && count === 0 && !error && ready?.summary && (
           <ReviewEmptyState
-            kind={reviewEmptyKind(ready.summary, ready.matching)}
+            kind={
+              source === 'topic' && ready.summary.saved_count > 0
+                ? 'no_matches'
+                : reviewEmptyKind(ready.summary, ready.matching)
+            }
           />
         )}
         {count !== null && ready && ready.matching > count && (
           <ThemedText style={styles.detail}>
-            {ready.matching} matching words · each session includes up to 50
+            {ready.matching} matching words · each session includes up to{' '}
+            {source === 'topic' ? 10 : 50}
             words.
           </ThemedText>
         )}
-        {source !== 'topic' && count !== null && count > 0 && !error ? (
+        {!awaitingTopic && count !== null && count > 0 && !error ? (
           <NavigationLink
             href={{
               pathname: '/review',
@@ -282,6 +321,7 @@ export default function ReviewPreparationScreen() {
                 source,
                 period,
                 includeOverdue: String(includeOverdue),
+                ...(source === 'topic' ? { topic: searchedTopic } : {}),
               },
             }}
             label={startLabel}
@@ -297,8 +337,8 @@ export default function ReviewPreparationScreen() {
             style={[styles.button, styles.disabled]}
           >
             <ThemedText style={styles.white}>
-              {source === 'topic'
-                ? 'Topic review coming later'
+              {awaitingTopic
+                ? 'Search a topic to begin'
                 : error
                   ? 'Count unavailable'
                   : count === null
@@ -362,6 +402,11 @@ const styles = StyleSheet.create({
   selectedIcon: { backgroundColor: '#DEE4FF' },
   sourceIcon: { width: 26, height: 26 },
   topicPanel: { gap: 8 },
+  topicSearch: {
+    minHeight: 44,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+  },
   topicField: {
     flexDirection: 'row',
     alignItems: 'center',

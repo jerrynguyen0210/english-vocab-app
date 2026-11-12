@@ -4,12 +4,16 @@ export function reviewQuery(selection: {
   source?: string;
   period?: string;
   includeOverdue?: string;
+  topic?: string;
 }) {
-  return new URLSearchParams({
+  const query = new URLSearchParams({
     source: selection.source ?? 'recall',
     period: selection.period ?? 'Weekly',
     include_overdue: selection.includeOverdue ?? 'true',
-  }).toString();
+  });
+  if (selection.source === 'topic')
+    query.set('topic', selection.topic?.trim() ?? '');
+  return query.toString();
 }
 
 export type ReviewSummary = {

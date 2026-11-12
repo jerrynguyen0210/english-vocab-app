@@ -130,9 +130,10 @@ Before the next UI changes, add backend unit coverage for these rules:
 - D5: preparation and session creation use the same user-scoped selection:
   Yesterday is the previous local calendar day (including DST); Weekly and
   Monthly are rolling 7/30-day saved-date windows. Recall includes all words
-  scheduled today, optionally including earlier days. Topic search is deferred
-  to a future backend implementation; user-entered topic tags are removed.
-  Sessions are limited to 50 words, including time-based practice.
+  scheduled today, optionally including earlier days. Topic search now ranks
+  saved word meanings using Ollama embeddings and NumPy cosine similarity;
+  user-entered topic tags are not needed. Migration 0016 persists embeddings.
+  Sessions are limited to 50 words for time/recall and 10 for topics.
   There is no daily allowance. Newly added words wait for the next session. No client clock
   determines eligibility. Answer mode is selected on the Review screen;
   choice distractors follow D16 and always provide four unique server options.

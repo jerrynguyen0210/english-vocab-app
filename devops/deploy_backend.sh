@@ -58,11 +58,11 @@ PY
 }
 
 build_backend() {
-    compose build api prompt-worker
+    compose build api prompt-worker embedding-worker
 }
 
 rebuild_backend() {
-    compose build --no-cache --pull api prompt-worker
+    compose build --no-cache --pull api prompt-worker embedding-worker
 }
 
 wait_for_api() {
@@ -94,20 +94,20 @@ start_backend() {
         printf 'Replace the example SECRET_KEY using Configure before starting.\n' >&2
         return 1
     fi
-    printf 'Building the API and prompt worker from the current backend source.\n'
+    printf 'Building the API and background workers from the current backend source.\n'
     build_backend || return
     compose up -d --wait --wait-timeout 120 db || return
     # Stop old worker code before applying new schema changes. Always recreate
-    # both application containers, including when only bind-mounted code changed.
-    compose stop prompt-worker || return
+    # all application containers, including when only bind-mounted code changed.
+    compose stop prompt-worker embedding-worker || return
     printf 'Starting the API; its entrypoint applies guarded forward migrations.\n'
     compose up -d --no-deps --force-recreate --wait --wait-timeout 120 api || return
     if ! wait_for_api; then
-        printf 'Prompt worker remains stopped. Fix API startup, then run Start / update again.\n' >&2
+        printf 'Background workers remain stopped. Fix API startup, then run Start / update again.\n' >&2
         return 1
     fi
-    compose up -d --no-deps --force-recreate --wait --wait-timeout 120 prompt-worker || return
-    compose ps db api prompt-worker
+    compose up -d --no-deps --force-recreate --wait --wait-timeout 120 prompt-worker embedding-worker || return
+    compose ps db api prompt-worker embedding-worker
 }
 
 clean_backend() {
@@ -134,7 +134,7 @@ run_action() {
         5|clean) clean_backend ;;
         6|configure) configure_backend ;;
         7|status) compose ps ;;
-        8|logs) compose logs --tail 100 --follow api prompt-worker ;;
+        8|logs) compose logs --tail 100 --follow api prompt-worker embedding-worker ;;
         9|migrate) compose exec api python -m app.migrate ;;
         10|queue-status) compose exec -T api python -m app.prompt_jobs status ;;
         -h|--help) usage ;;

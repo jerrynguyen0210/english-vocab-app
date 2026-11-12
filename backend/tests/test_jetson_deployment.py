@@ -171,11 +171,11 @@ def test_jetson_uses_production_backend_and_preserves_site_until_ready(
         monkeypatch.setenv("MOCK_BUILD_FAIL", "1")
     result = run(orchestrate=True)
     operations = [json.loads(line) for line in log.read_text().splitlines()]
-    assert ["build", "api", "prompt-worker"] in operations
+    assert ["build", "api", "prompt-worker", "embedding-worker"] in operations
     if build_fails:
         assert result.returncode != 0
         assert (root / "current").resolve() == old
-        assert ["stop", "prompt-worker"] not in operations
+        assert ["stop", "prompt-worker", "embedding-worker"] not in operations
     else:
         assert result.returncode == 0, result.stderr
         assert (root / "current/index.html").read_text() == "New public SPA"
@@ -188,6 +188,7 @@ def test_jetson_uses_production_backend_and_preserves_site_until_ready(
             "--wait-timeout",
             "120",
             "prompt-worker",
+            "embedding-worker",
         ] in operations
 
 

@@ -18,10 +18,14 @@ from app.services.errors import (
     ReviewGenerationUnavailable,
     ReviewNotFound,
     ServiceError,
+    TopicIndexPending,
+    TopicSearchUnavailable,
     WordAlreadyExists,
 )
 
 _STATUS_CODES = {
+    TopicSearchUnavailable: 503,
+    TopicIndexPending: 409,
     AccountUnavailable: 401,
     AuthRateLimited: 429,
     InvalidCredentials: 401,

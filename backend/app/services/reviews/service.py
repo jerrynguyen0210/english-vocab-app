@@ -34,6 +34,7 @@ from app.services.reviews.queries import review_totals
 from app.services.reviews.scheduling import schedule_review
 from app.services.reviews.selection import selected_words
 from app.services.reviews.tickets import issue_ticket, valid_ticket
+from app.services.reviews.topics import topic_words
 
 CHOICE_CANDIDATE_LIMIT = 200
 
@@ -85,6 +86,13 @@ def review_preparation(
     db: Session, user: User, selection: ReviewSelection
 ) -> dict[str, int]:
     now = datetime.now(UTC)
+    if selection.source == "topic":
+        rows, matching = topic_words(db, user, selection.topic)
+        return {
+            **review_totals(db, user, now),
+            "count": len(rows),
+            "matching_count": matching,
+        }
     matching = (
         db.scalar(
             select(func.count()).select_from(
@@ -105,7 +113,11 @@ def review_session(
     db: Session, user: User, selection: ReviewSelection
 ) -> list[TypingSessionItem]:
     now = datetime.now(UTC)
-    rows = db.execute(selected_words(user, now, selection).limit(50)).all()
+    rows = (
+        topic_words(db, user, selection.topic)[0]
+        if selection.source == "topic"
+        else db.execute(selected_words(user, now, selection).limit(50)).all()
+    )
     if not rows:
         return []
     saved_parts = (

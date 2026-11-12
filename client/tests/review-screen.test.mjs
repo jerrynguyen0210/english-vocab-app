@@ -380,7 +380,7 @@ test('preparation loads live counts, rejects stale responses and passes selected
   assert.ok(paths.some((path) => path.includes('include_overdue=false')));
 });
 
-test('preparation retries counts and topic loads bank totals without searching', async () => {
+test('topic searches only on submit and passes the searched topic into review', async () => {
   let fail = true;
   const paths = [];
   const h = harness(
@@ -409,16 +409,29 @@ test('preparation retries counts and topic loads bank totals without searching',
   await h.flush();
   await h.advance();
   assert.equal(h.input().props.value, 'Workplace communication');
-  assert.match(h.text(), /Topic search is coming later/);
+  assert.match(h.text(), /Search your saved words by meaning/);
   assert.match(h.text(), /12 words in your word bank/);
-  assert.equal(h.button('Topic review coming later').props.disabled, true);
+  assert.equal(h.button('Search a topic to begin').props.disabled, true);
   assert.equal(paths.length, requestsBeforeTopic + 1);
   assert.equal(paths.at(-1), '/reviews/summary');
+  h.input().props.onSubmitEditing();
+  await h.flush();
+  assert.equal(h.link(), undefined);
+  await h.advance();
+  assert.match(h.text(), /2 matching words/);
+  assert.equal(h.link().props.href.params.topic, 'Workplace communication');
+  assert.equal(
+    new URLSearchParams(paths.at(-1).split('?')[1]).get('topic'),
+    'Workplace communication',
+  );
+  h.input().props.onChangeText('A different topic');
+  await h.flush();
+  assert.equal(h.link(), undefined);
   h.radio('By time').props.onPress();
   await h.flush();
   h.radio('By topic').props.onPress();
   await h.flush();
-  assert.equal(h.input().props.value, 'Workplace communication');
+  assert.equal(h.input().props.value, 'A different topic');
 });
 
 test('topic summary retries, refreshes on focus and ignores responses after switching sources', async () => {
@@ -434,9 +447,9 @@ test('topic summary retries, refreshes on focus and ignores responses after swit
   h.radio('By topic').props.onPress();
   await h.flush();
   assert.match(h.text(), /Loading word bank/);
-  assert.equal(h.button('Topic review coming later').props.disabled, true);
+  assert.equal(h.button('Search a topic to begin').props.disabled, true);
   await h.advance();
-  assert.match(h.text(), /Could not load your word bank/);
+  assert.match(h.text(), /Could not load topic matches/);
   assert.doesNotMatch(h.text(), /0 words in your word bank/);
   summaryReply = () => Response.json({ saved_count: 0 });
   h.button('Try again').props.onPress();
@@ -460,6 +473,64 @@ test('topic summary retries, refreshes on focus and ignores responses after swit
   assert.match(h.text(), /3 words ready/);
   assert.doesNotMatch(h.text(), /99 words/);
   assert.ok(h.link());
+});
+
+test('topic search handles pending indexing, retry, no matches and stale responses', async () => {
+  const paths = [];
+  let reply = () => Response.json({}, { status: 409 });
+  const h = harness(
+    async (path) => {
+      paths.push(path);
+      return path === '/reviews/summary'
+        ? Response.json({ saved_count: 5 })
+        : reply();
+    },
+    {},
+    'review-preparation',
+  );
+  h.radio('By topic').props.onPress();
+  await h.flush();
+  await h.advance();
+  h.input().props.onChangeText('   ');
+  await h.flush();
+  h.input().props.onSubmitEditing();
+  await h.flush();
+  await h.advance();
+  assert.equal(paths.filter((path) => path.includes('source=topic')).length, 0);
+  h.input().props.onChangeText('work');
+  await h.flush();
+  h.button('Search').props.onPress();
+  await h.flush();
+  await h.advance();
+  assert.match(h.text(), /being prepared/);
+  assert.equal(h.link(), undefined);
+  reply = () =>
+    Response.json({
+      count: 0,
+      matching_count: 0,
+      saved_count: 5,
+      due_count: 0,
+    });
+  h.button('Try again').props.onPress();
+  await h.flush();
+  await h.advance();
+  assert.match(h.text(), /No words match this review/);
+  assert.doesNotMatch(h.text(), /Nothing due/);
+  let resolveOld;
+  reply = () =>
+    new Promise((resolve) => {
+      resolveOld = resolve;
+    });
+  h.input().props.onSubmitEditing();
+  await h.flush();
+  await h.advance();
+  h.input().props.onChangeText('travel');
+  await h.flush();
+  resolveOld(Response.json({ count: 10, matching_count: 10, saved_count: 5 }));
+  await h.flush();
+  await h.advance();
+  assert.equal(h.link(), undefined);
+  assert.doesNotMatch(h.text(), /10 matching words/);
 });
 
 test('multiple choice renders exactly the server options in order and submits the selection', async () => {

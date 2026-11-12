@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     ForeignKey,
     Text,
@@ -39,6 +40,9 @@ class Word(Base):
     english_explanation: Mapped[str] = mapped_column(Text)
     example_sentence: Mapped[str | None] = mapped_column(Text)
     review_prompt: Mapped[str] = mapped_column(Text, server_default="_____")
+    embedding_vector: Mapped[list[float] | None] = mapped_column(JSON)
+    embedding_model: Mapped[str | None] = mapped_column(Text)
+    embedding_hash: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), server_default=func.now()
     )
@@ -46,4 +50,12 @@ class Word(Base):
     @validates("word")
     def _set_normalised_word(self, key: str, value: str) -> str:
         self.normalised_word = normalise_word(value)
+        self.embedding_vector = None
+        self.embedding_hash = None
+        return value
+
+    @validates("english_explanation", "example_sentence")
+    def _invalidate_embedding(self, key: str, value: str | None) -> str | None:
+        self.embedding_vector = None
+        self.embedding_hash = None
         return value

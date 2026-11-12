@@ -18,7 +18,7 @@ const messages = {
   },
   no_matches: {
     title: 'No words match this review',
-    detail: 'Try another source or time period, or add a word.',
+    detail: 'Try another topic, source or time period, or add a word.',
     action: 'Add word',
   },
 };

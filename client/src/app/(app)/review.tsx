@@ -58,6 +58,7 @@ export default function ReviewScreen() {
     source?: string;
     period?: string;
     includeOverdue?: string;
+    topic?: string;
   }>();
   const [mode, setMode] = useState<'choice' | 'typing'>('typing');
   const query = reviewQuery(params);
@@ -252,7 +253,9 @@ export default function ReviewScreen() {
       ? `You reviewed all ${reviewed} ${reviewed === 1 ? 'word' : 'words'}.`
       : `You reviewed ${reviewed} of ${total} words.`;
   const emptyKind = emptySummary
-    ? reviewEmptyKind(emptySummary, emptySummary.matching_count)
+    ? params.source === 'topic' && emptySummary.saved_count > 0
+      ? 'no_matches'
+      : reviewEmptyKind(emptySummary, emptySummary.matching_count)
     : 'nothing_due';
   const announcement = result
     ? result.result === 'correct'

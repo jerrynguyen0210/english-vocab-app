@@ -5,6 +5,14 @@ class ServiceError(Exception):
     pass
 
 
+class TopicSearchUnavailable(ServiceError):
+    pass
+
+
+class TopicIndexPending(ServiceError):
+    pass
+
+
 class AccountUnavailable(ServiceError):
     pass
 
