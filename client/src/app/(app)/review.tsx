@@ -19,6 +19,7 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -79,6 +80,9 @@ export default function ReviewScreen() {
     (ReviewSummary & { matching_count: number }) | null
   >(null);
   const answerInput = useRef<ComponentRef<typeof TextInput>>(null);
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const [modeScrollRequest, setModeScrollRequest] = useState(0);
+  const lastScroll = useRef('');
   const busy = useRef(false);
   const started = useRef(0);
   const mounted = useRef(true);
@@ -230,6 +234,25 @@ export default function ReviewScreen() {
     }
   }
 
+  async function changeMode(value: 'typing' | 'choice') {
+    if (value === (choiceAvailable ? mode : 'typing') || busy.current) return;
+    await chooseMode(value);
+    if (mounted.current) setModeScrollRequest((request) => request + 1);
+  }
+
+  const questionId = item?.attempt_id;
+  useEffect(() => {
+    if (!questionId || loading) return;
+    const request = `${questionId}:${modeScrollRequest}`;
+    if (lastScroll.current === request) return;
+    // Wait for the question and selected answer controls to finish rendering.
+    const timer = setTimeout(() => {
+      scroll.current?.scrollToEnd({ animated: true });
+      lastScroll.current = request;
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [modeScrollRequest, questionId, loading]);
+
   useEffect(() => {
     // Wait until the loaded prompt is editable, including after a failed submit.
     if (
@@ -240,7 +263,14 @@ export default function ReviewScreen() {
       !result &&
       !pendingBody
     ) {
-      answerInput.current?.focus();
+      if (Platform.OS === 'web') {
+        // The web ref is a DOM input: focus without scrolling past the question.
+        (answerInput.current as unknown as HTMLInputElement | null)?.focus({
+          preventScroll: true,
+        });
+      } else {
+        answerInput.current?.focus();
+      }
     }
   }, [signedIn, mode, item, loading, result, pendingBody, choiceAvailable]);
 
@@ -346,7 +376,7 @@ export default function ReviewScreen() {
   }
 
   return (
-    <AppScreen selected="Review">
+    <AppScreen selected="Review" scrollRef={scroll}>
       <View style={styles.content}>
         <ThemedText style={styles.title} accessibilityRole="header">
           {finished
@@ -418,7 +448,7 @@ export default function ReviewScreen() {
                         (value === 'choice' && !canLoadChoices),
                       checked: (choiceAvailable ? mode : 'typing') === value,
                     }}
-                    onPress={() => void chooseMode(value)}
+                    onPress={() => void changeMode(value)}
                     style={[
                       styles.modeButton,
                       (choiceAvailable ? mode : 'typing') === value &&

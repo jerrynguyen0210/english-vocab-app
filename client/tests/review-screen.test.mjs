@@ -29,6 +29,8 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
   let effects = [];
   let tree;
   let focusCalls = 0;
+  const focusOptions = [];
+  const scrollCalls = [];
   let previousInputRef;
   let signedIn = true;
   let focusCallback;
@@ -161,13 +163,20 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
   function render() {
     cursor = 0;
     tree = exports.default();
+    const scrollRef = nodes().find((node) => node.type === 'Screen')?.props
+      .scrollRef;
+    if (scrollRef)
+      scrollRef.current = {
+        scrollToEnd: (options) => scrollCalls.push(options),
+      };
     if (previousInputRef) previousInputRef.current = null;
     const inputNode = nodes().find((node) => node.type === 'Input');
     previousInputRef = inputNode?.props.ref;
     if (previousInputRef)
       previousInputRef.current = {
-        focus: () => {
+        focus: (options) => {
           focusCalls++;
+          focusOptions.push(options);
         },
       };
     const pending = effects;
@@ -201,6 +210,8 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
     feedbackText: () =>
       text(nodes().find((node) => node.props?.testID === 'review-feedback')),
     focusCalls: () => focusCalls,
+    focusOptions: () => focusOptions,
+    scrollCalls: () => scrollCalls,
     refocus() {
       focusCleanup?.();
       focusCleanup = focusCallback?.();
@@ -596,7 +607,10 @@ test('typing auto-focuses with spelling assistance off and Enter uses the exact 
   assert.equal(h.input().props.autoComplete, 'off');
   assert.equal(h.input().props.spellCheck, false);
   assert.ok(h.focusCalls() > 0);
+  assert.equal(h.focusOptions().at(-1).preventScroll, true);
   assert.match(h.text(), /Spelling matters · Enter to submit/);
+  await h.advance();
+  assert.equal(h.scrollCalls().length, 1);
   h.input().props.onChangeText(' HeLLo ');
   await h.flush();
   h.input().props.onSubmitEditing();
@@ -609,6 +623,9 @@ test('typing auto-focuses with spelling assistance off and Enter uses the exact 
   await h.flush();
   assert.equal(h.input().props.value, '');
   assert.ok(h.focusCalls() > beforeNext);
+  assert.equal(h.focusOptions().at(-1).preventScroll, true);
+  await h.advance();
+  assert.equal(h.scrollCalls().length, 2);
 });
 
 test('typing loads no choices; switching modes fetches only the current item and preserves progress', async () => {
@@ -630,6 +647,8 @@ test('typing loads no choices; switching modes fetches only the current item and
   assert.ok(h.input());
   assert.ok(h.sentence());
   const progress = h.progress().props.accessibilityLabel;
+  await h.advance();
+  assert.equal(h.scrollCalls().length, 1);
   await h.button('Multiple choice').props.onPress();
   await h.flush();
   assert.equal(requests[1].path, '/reviews/one/choices');
@@ -638,11 +657,16 @@ test('typing loads no choices; switching modes fetches only the current item and
     review_token: 'signed',
   });
   assert.ok(h.button('A. Hello'));
+  await h.advance();
+  assert.equal(h.scrollCalls().length, 2);
+  assert.equal(h.scrollCalls()[0].animated, true);
   assert.equal(h.progress().props.accessibilityLabel, progress);
   assert.ok(h.sentence());
   const beforeTyping = h.focusCalls();
   h.button('Typing').props.onPress();
   await h.flush();
+  await h.advance();
+  assert.equal(h.scrollCalls().length, 3);
   assert.doesNotMatch(h.text(), /Hello/);
   assert.ok(h.focusCalls() > beforeTyping);
   assert.equal(requests.length, 2);

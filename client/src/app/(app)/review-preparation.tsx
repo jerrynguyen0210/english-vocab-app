@@ -329,7 +329,7 @@ export default function ReviewPreparationScreen() {
           >
             <ThemedText style={styles.white}>{startLabel}</ThemedText>
           </NavigationLink>
-        ) : (
+        ) : count === 0 && !awaitingTopic && !error ? null : (
           <Pressable
             disabled
             accessibilityRole="button"

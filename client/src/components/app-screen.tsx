@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { type PropsWithChildren } from 'react';
+import { type ComponentRef, type PropsWithChildren, type Ref } from 'react';
 import { NavigationLink } from '@/components/navigation-link';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
@@ -39,9 +39,11 @@ export function AppScreen({
   children,
   selected,
   toast,
+  scrollRef,
 }: PropsWithChildren<{
   selected: 'Home' | 'Add' | 'Review' | 'Account';
   toast?: string;
+  scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
 }>) {
   return (
     <KeyboardAvoidingView
@@ -75,6 +77,7 @@ export function AppScreen({
           </View>
         </View>
         <ScrollView
+          ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
