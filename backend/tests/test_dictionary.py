@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_session
+from app.core.text import normalise_word
 from app.main import app
 from app.services.dictionary import search_dictionary
 
@@ -23,7 +24,7 @@ def test_create_family_and_shared_past_spelling():
 
 
 def test_filters_and_irregular_forms():
-    entries = search_dictionary("write", False, ["verb"], ["V2", "V3"])
+    entries = search_dictionary("write", True, ["verb"], ["V2", "V3"])
     assert {entry.word for entry in entries} == {"wrote", "written"}
     assert search_dictionary("create", True, ["verb"], []) == []
     assert all(
@@ -32,14 +33,25 @@ def test_filters_and_irregular_forms():
     )
     assert {
         entry.word for entry in search_dictionary("create", False, PARTS, FORMS)
-    } == {"create", "created"}
+    } == {"create"}
 
 
 def test_unknown_and_inflected_query():
     assert search_dictionary("zzxxyyqq", True, PARTS, FORMS) == []
-    assert "write" in {
+    assert {"written"} == {
         entry.word for entry in search_dictionary("written", False, ["verb"], FORMS)
     }
+
+
+def test_exact_search_ignores_hidden_filters():
+    for query in ("create", "created", "write", "wrote", "written", "creation"):
+        entries = search_dictionary(query, False, [], [])
+        assert entries
+        assert {normalise_word(entry.word) for entry in entries} == {query}
+    assert search_dictionary("zzxxyyqq", False, [], []) == []
+    assert {
+        entry.word for entry in search_dictionary(" WRITTEN ", False, [], [])
+    } == {"written"}
 
 
 def test_concurrent_search_and_cached_results_are_not_mutated():
@@ -72,6 +84,17 @@ def test_search_endpoint_validation_and_authentication(monkeypatch):
             assert response.status_code == 200
             assert [entry["word"] for entry in response.json()] == ["written"]
             assert response.headers["Cache-Control"] == "no-store"
+            exact = client.get(
+                "/api/v1/words/search",
+                params={
+                    "q": " WRITTEN ",
+                    "include_family": "false",
+                    "parts": "noun",
+                    "forms": "V1",
+                },
+            )
+            assert exact.status_code == 200
+            assert {entry["word"] for entry in exact.json()} == {"written"}
             for params in (
                 {"q": " "},
                 {"q": "x" * 201},

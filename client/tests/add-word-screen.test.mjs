@@ -230,13 +230,8 @@ test('required search and selected filters reach the API; results save and detec
   assert.equal(query.get('q'), 'create');
   assert.equal(h.input().props.value, 'create');
   assert.equal(query.get('include_family'), 'false');
-  assert.deepEqual(query.getAll('forms'), ['V1', 'V3']);
-  assert.deepEqual(query.getAll('parts'), [
-    'noun',
-    'verb',
-    'adjective',
-    'adverb',
-  ]);
+  assert.deepEqual(query.getAll('forms'), []);
+  assert.deepEqual(query.getAll('parts'), []);
   await h.button('Save').props.onPress();
   await h.flush();
   assert.equal(JSON.parse(calls[1].init.body).word, 'created');
@@ -334,8 +329,8 @@ test('editing filters preserves the word and searches again with updated selecti
   assert.equal(calls.length, 2);
   assert.equal(calls[1].get('q'), 'create');
   assert.equal(calls[1].get('include_family'), 'false');
-  assert.deepEqual(calls[1].getAll('parts'), ['verb', 'adjective', 'adverb']);
-  assert.deepEqual(calls[1].getAll('forms'), ['V1', 'V3']);
+  assert.deepEqual(calls[1].getAll('parts'), []);
+  assert.deepEqual(calls[1].getAll('forms'), []);
   assert.equal(h.input().props.value, 'create');
   assert.match(h.text(), /Search results/);
 });
@@ -571,6 +566,29 @@ test('word family checkbox shows and hides every option while preserving selecti
     selected,
   );
   assert.match(h.text(), /VERB FORMS/);
+});
+
+test('exact search works after clearing all family filters', async () => {
+  const calls = [];
+  const h = harness(async (path) => {
+    calls.push(new URL(path, 'https://example.test').searchParams);
+    return Response.json([]);
+  });
+  h.input().props.onChangeText('written');
+  for (const label of ['Noun', 'Verb', 'Adjective', 'Adverb']) {
+    h.filter(label).props.onPress();
+    await h.flush();
+  }
+  h.filter('Include word family').props.onPress();
+  await h.flush();
+  await h.button('Search').props.onPress();
+  await h.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].get('q'), 'written');
+  assert.equal(calls[0].get('include_family'), 'false');
+  assert.deepEqual(calls[0].getAll('parts'), []);
+  assert.deepEqual(calls[0].getAll('forms'), []);
+  assert.doesNotMatch(h.text(), /Select a word type/);
 });
 
 test('base verb form is always included with no V1 option, even when V2 and V3 are off', async () => {

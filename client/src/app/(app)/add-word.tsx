@@ -113,7 +113,7 @@ export default function AddWordScreen() {
       return;
     }
     setError('');
-    if (!selectedParts.length) {
+    if (includeFamily && !selectedParts.length) {
       setMessage('Select a word type.');
       return;
     }
@@ -121,10 +121,12 @@ export default function AddWordScreen() {
       q: query,
       include_family: String(includeFamily),
     });
-    selectedParts.forEach((part) => params.append('parts', part.toLowerCase()));
-    // The base form is always included; only V2 and V3 are optional.
-    params.append('forms', 'V1');
-    selectedForms.forEach((form) => params.append('forms', form));
+    if (includeFamily) {
+      selectedParts.forEach((part) => params.append('parts', part.toLowerCase()));
+      // The base form is always included; only V2 and V3 are optional.
+      params.append('forms', 'V1');
+      selectedForms.forEach((form) => params.append('forms', form));
+    }
     pending.current = true;
     setSearching(true);
     const requestGeneration = generation.current;

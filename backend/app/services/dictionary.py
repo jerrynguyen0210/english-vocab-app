@@ -106,10 +106,17 @@ def _lookup(query: str, include_family: bool) -> tuple[DictionaryEntry, ...]:
 def search_dictionary(
     query: str, include_family: bool, parts: list[PartOfSpeech], forms: list[VerbForm]
 ) -> list[DictionaryEntry]:
+    query = normalise_word(query)
     with _lock:
         entries = _lookup(query, include_family)
         results = []
         for entry in entries:
+            if not include_family:
+                # Exact searches ignore the advanced family filters. Keep
+                # inflection lookup so queries such as "written" still resolve.
+                if normalise_word(entry.word) == query:
+                    results.append(entry.model_copy(deep=True))
+                continue
             if entry.part_of_speech not in parts:
                 continue
             selected_forms = [form for form in entry.verb_forms if form in forms]
