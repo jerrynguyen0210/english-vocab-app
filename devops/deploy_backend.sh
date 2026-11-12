@@ -49,6 +49,7 @@ PY
         printf 'Created private backend configuration with a generated application secret.\n'
     fi
     printf 'Edit database, CORS, cookie and review options. API_PORT defaults to 8001.\n'
+    printf 'Set OLLAMA_URL, OLLAMA_MODEL and PROMPT_JOB_MAX_ATTEMPTS for background prompt generation.\n'
     printf 'This Compose file runs the local development stack. Database credentials must match existing data.\n'
     printf 'Preview/production migration backups require APP_ENVIRONMENT and persistent MIGRATION_BACKUP_HOST_DIR.\n'
     "${editor_command[@]}" "$BACKEND_DIR/.env" || return
@@ -56,11 +57,34 @@ PY
 }
 
 build_backend() {
-    compose build api
+    compose build api prompt-worker
 }
 
 rebuild_backend() {
-    compose build --no-cache --pull api
+    compose build --no-cache --pull api prompt-worker
+}
+
+wait_for_api() {
+    # Probe inside the newly recreated API container, so host port overrides
+    # and a previous API instance cannot produce a false readiness result.
+    compose exec -T api python - <<'PY'
+import sys
+import time
+from urllib.error import URLError
+from urllib.request import urlopen
+
+deadline = time.monotonic() + 120
+while time.monotonic() < deadline:
+    try:
+        with urlopen("http://127.0.0.1:8000/health", timeout=2) as response:
+            if response.status == 200:
+                print("API ready; startup migrations completed.")
+                sys.exit(0)
+    except (URLError, OSError):
+        pass
+    time.sleep(1)
+sys.exit("API did not become ready. Check API logs for startup or migration failures.")
+PY
 }
 
 start_backend() {
@@ -69,8 +93,20 @@ start_backend() {
         printf 'Replace the example SECRET_KEY using Configure before starting.\n' >&2
         return 1
     fi
-    printf 'Starting the development stack; the API entrypoint applies guarded forward migrations.\n'
-    compose up -d --build --wait --wait-timeout 120
+    printf 'Building the API and prompt worker from the current backend source.\n'
+    build_backend || return
+    compose up -d --wait --wait-timeout 120 db || return
+    # Stop old worker code before applying new schema changes. Always recreate
+    # both application containers, including when only bind-mounted code changed.
+    compose stop prompt-worker || return
+    printf 'Starting the API; its entrypoint applies guarded forward migrations.\n'
+    compose up -d --no-deps --force-recreate --wait --wait-timeout 120 api || return
+    if ! wait_for_api; then
+        printf 'Prompt worker remains stopped. Fix API startup, then run Start / update again.\n' >&2
+        return 1
+    fi
+    compose up -d --no-deps --force-recreate --wait --wait-timeout 120 prompt-worker || return
+    compose ps db api prompt-worker
 }
 
 clean_backend() {
@@ -82,7 +118,7 @@ clean_backend() {
 }
 
 usage() {
-    printf 'Usage: %s [build|rebuild|start|stop|clean|configure|status|logs|migrate|--help]\n' "$0"
+    printf 'Usage: %s [build|rebuild|start|stop|clean|configure|status|logs|queue-status|migrate|--help]\n' "$0"
     printf 'No argument opens the menu. Uses backend/docker-compose.yml (local development stack).\n'
     printf 'Clean retains database volumes and backups. VISUAL or EDITOR selects the configuration editor.\n'
 }
@@ -96,8 +132,9 @@ run_action() {
         5|clean) clean_backend ;;
         6|configure) configure_backend ;;
         7|status) compose ps ;;
-        8|logs) compose logs --tail 100 --follow api ;;
+        8|logs) compose logs --tail 100 --follow api prompt-worker ;;
         9|migrate) compose exec api python -m app.migrate ;;
+        10|queue-status) compose exec -T api python -m app.prompt_jobs status ;;
         -h|--help) usage ;;
         *) printf 'Unknown operation: %s\n' "$1" >&2; usage >&2; return 2 ;;
     esac
@@ -115,7 +152,7 @@ fi
 trap 'printf "\nOperation interrupted.\n" >&2' INT
 while true; do
     printf '\n=== WordRecall backend (Docker Compose development stack) ===\n'
-    printf '1) Build API image\n2) Rebuild API image (no cache, refresh base image)\n3) Start / update stack\n4) Stop stack\n5) Clean containers and local images (keep database)\n6) Configure options\n7) Show status\n8) Follow API logs (Ctrl+C to stop)\n9) Apply forward migrations\n0) Exit\n'
+    printf '1) Build API and worker images\n2) Rebuild API and worker images (no cache, refresh base image)\n3) Start / update stack\n4) Stop stack\n5) Clean containers and local images (keep database)\n6) Configure options\n7) Show status\n8) Follow API and worker logs (Ctrl+C to stop)\n9) Apply forward migrations\n10) Show prompt queue status\n0) Exit\n'
     read -r -p 'Select operation: ' choice || break
     [[ "$choice" == 0 ]] && break
     if run_action "$choice"; then

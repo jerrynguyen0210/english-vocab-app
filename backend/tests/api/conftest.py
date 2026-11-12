@@ -16,7 +16,7 @@ from app.main import app
 def api(api_database_url, monkeypatch):
     # API contract tests stay offline; dedicated tests assert persistence/failures.
     monkeypatch.setattr(
-        "app.prompt_worker.generate_review",
+        "app.services.prompt_jobs.worker.generate_review",
         lambda word, meaning, **kwargs: {
             "prompt_sentence": "A saved _____ prompt.",
             "answer": word,

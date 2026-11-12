@@ -33,7 +33,8 @@ Replace `SECRET_KEY` in `.env` with the generated value, then start the containe
 docker compose up -d --build
 ```
 
-The API container applies pending migrations before starting; migration failure stops startup.
+This starts PostgreSQL, the API, and the background prompt worker. The API
+container applies pending migrations before starting; migration failure stops startup.
 
 The API uses port **8001** by default (`API_PORT` overrides it), with live reload.
 PostgreSQL stays on the Pi's loopback interface. Stop containers with
@@ -95,15 +96,21 @@ restart Expo. Native devices keep using the LAN URL in `EXPO_PUBLIC_API_BASE_URL
 When opening the web app using the LAN IP, remove the web override or set it to
 the same LAN hostname. CORS must allow the web app's exact origin.
 
-After pulling backend schema changes, apply pending migrations to the running
-Compose database before using new fields:
+After pulling backend changes, rebuild and restart both application processes
+from the repository root:
 
 ```bash
-cd backend
-docker compose exec api python -m app.migrate
+./devops/deploy_backend.sh start
+./devops/deploy_backend.sh status
 ```
 
-This is a forward-only upgrade. `/health` alone does not confirm schema currency.
+Start/update builds the current source, starts the database, stops the old worker,
+and recreates the API. Its startup entrypoint applies all pending forward-only
+migrations, including `0014` (saved answer response dates) and `0015` (prompt job
+failure tracking). After the new API responds to its internal health check, the
+helper recreates the worker. If API startup fails, the worker remains stopped;
+inspect `./devops/deploy_backend.sh logs`, fix the cause, and run `start` again.
+`/health` on an already-running instance alone does not confirm schema currency.
 
 **Never commit secrets, real `.env` files, keystores, or Apple/Google credentials.**
 Use sanitized [client](client/.env.example) and [backend](backend/.env.example)
@@ -127,10 +134,12 @@ uses server rendering; building does not publish it to a hosting provider or
 produce native app binaries. Development port/host options last for the menu
 session, or can be supplied as `CLIENT_PORT=8081 CLIENT_HOST=lan`.
 
-The backend menu builds/rebuilds the API image and manages the existing local
-Docker Compose stack, including status, logs and forward migrations. Start/update
-builds and recreates changed services; startup retains the guarded migration
-entrypoint. This uses the existing development Compose file with live reload,
+The backend menu builds/rebuilds both API and prompt-worker images and manages
+the existing local Docker Compose stack, including status, combined API/worker
+logs, prompt queue status, and forward migrations. Start/update recreates both
+application containers in migration-safe order, including when only mounted
+source files changed; startup retains the guarded migration entrypoint.
+This uses the existing development Compose file with live reload,
 not a production hosting configuration. Clean asks for confirmation and retains
 database volumes and backups; client clean retains configuration and dependencies.
 
@@ -146,6 +155,21 @@ Use `--help` for all supported operations. They require Bash; client commands us
 Node/npm, backend commands use Docker Compose v2 with `--wait` support, and initial
 backend configuration uses Python 3. These helpers never downgrade or stamp the
 database.
+
+Useful backend commands from the repository root:
+
+```bash
+./devops/deploy_backend.sh start         # Build and run the latest API and worker
+./devops/deploy_backend.sh logs          # Follow both application logs
+./devops/deploy_backend.sh queue-status  # Counts and failed prompt-job identifiers
+```
+
+Configure `OLLAMA_URL` and `OLLAMA_MODEL` for a reachable Ollama server.
+`PROMPT_JOB_MAX_ATTEMPTS` defaults to 5, including for existing environment files
+without this setting. The API and worker share the same database and application
+code; the worker handles slow generation independently of HTTP requests. The
+`app.prompt_jobs` command is an on-demand administration tool, not another
+long-running process.
 
 ### Manual database management
 
@@ -422,10 +446,12 @@ keeps the word reviewable until the generated prompt is ready. Failures retry
 automatically up to `PROMPT_JOB_MAX_ATTEMPTS` (default 5); users do not need to
 save the word again. Permanently failed jobs retain their fallback prompts.
 
-Docker Compose includes a separate `prompt-worker` service. Rebuild and start the
-API and worker with `docker compose up -d --build api prompt-worker` from `backend/`.
-The API applies forward-only migrations through its normal startup procedure;
-the worker retries database access while migration is in progress.
+Docker Compose includes a separate `prompt-worker` service. Use
+`./devops/deploy_backend.sh start` from the repository root to rebuild and start
+the latest API and worker in order. The API applies forward-only migrations
+through its normal startup procedure; the helper starts the new worker after
+the new API is ready. When starting Compose directly, the worker retries database
+access while migration is in progress.
 
 For a local installation, run the normal migration command `python -m app.migrate`
 from `backend/`, then run `python -m app.prompt_worker` alongside the API using the
@@ -434,12 +460,23 @@ same environment. The worker uses the existing `DATABASE_URL`, `OLLAMA_URL`,
 credentials are required. Keep the worker running to drain the durable queue.
 See [review prompt behavior](docs/review-prompt.md) for retries and recovery.
 
+Prompt job logic lives in `backend/app/services/prompt_jobs/`: `worker.py` owns
+claiming and generation, and `management.py` owns queue status and retry.
+`app.prompt_worker` and `app.prompt_jobs` are thin command entry points.
+
 Operators can inspect queue counts, the oldest pending time, and up to 20 failed
 job identifiers without exposing vocabulary or provider messages:
 
 ```bash
 python -m app.prompt_jobs status
 python -m app.prompt_jobs retry --word-id WORD_UUID
+```
+
+For the running Compose stack, use `./devops/deploy_backend.sh queue-status`
+from the repository root. To reset a failed job, run the following from `backend/`:
+
+```bash
+docker compose exec -T api python -m app.prompt_jobs retry --word-id WORD_UUID
 ```
 
 Run these commands from `backend/` using the deployment environment. Retry accepts

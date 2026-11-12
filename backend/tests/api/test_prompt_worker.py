@@ -16,8 +16,8 @@ from .helpers import create
 def test_failed_jobs_stop_retrying_and_can_be_monitored_and_reset(api, monkeypatch):
     from app.llm.ollama_review import ReviewError
     from app.models import PromptJob
-    from app.prompt_jobs import queue_status, retry_failed_job
-    from app.prompt_worker import process_one
+    from app.services.prompt_jobs.management import queue_status, retry_failed_job
+    from app.services.prompt_jobs.worker import process_one
 
     client, db, owner, _, _ = api
     settings = get_settings()
@@ -30,7 +30,7 @@ def test_failed_jobs_stop_retrying_and_can_be_monitored_and_reset(api, monkeypat
             "Private provider response must not be stored", "provider_connection"
         )
 
-    monkeypatch.setattr("app.prompt_worker.generate_review", unavailable)
+    monkeypatch.setattr("app.services.prompt_jobs.worker.generate_review", unavailable)
     word_id = uuid.UUID(create(client, owner).json()["id"])
     db.rollback()
     engine = db.get_bind()
@@ -62,7 +62,7 @@ def test_failed_jobs_stop_retrying_and_can_be_monitored_and_reset(api, monkeypat
     assert queue_status(db)["pending"] == 1
     db.rollback()
     monkeypatch.setattr(
-        "app.prompt_worker.generate_review",
+        "app.services.prompt_jobs.worker.generate_review",
         lambda *args, **kwargs: {"prompt_sentence": "She said _____."},
     )
     assert process_one(engine)
@@ -73,8 +73,8 @@ def test_failed_jobs_stop_retrying_and_can_be_monitored_and_reset(api, monkeypat
 
 def test_crashed_final_attempt_becomes_failed_after_lease_expires(api, monkeypatch):
     from app.models import PromptJob
-    from app.prompt_jobs import queue_status
-    from app.prompt_worker import claim_job, finish_job
+    from app.services.prompt_jobs.management import queue_status
+    from app.services.prompt_jobs.worker import claim_job, finish_job
 
     client, db, owner, _, _ = api
     monkeypatch.setattr(get_settings(), "prompt_job_max_attempts", 1)
@@ -109,11 +109,11 @@ def test_generated_prompt_is_persisted_and_reused_without_ollama(api, monkeypatc
             "answer": "reluctant",
         }
     )
-    monkeypatch.setattr("app.prompt_worker.generate_review", generator)
+    monkeypatch.setattr("app.services.prompt_jobs.worker.generate_review", generator)
     response = create(client, owner, "reluctant")
     assert response.status_code == 201
     generator.assert_not_called()
-    from app.prompt_worker import process_one
+    from app.services.prompt_jobs.worker import process_one
 
     assert process_one(db.get_bind())
     word_id = uuid.UUID(response.json()["id"])
@@ -148,11 +148,11 @@ def test_generation_failure_keeps_word_and_retries_in_worker(api, monkeypatch):
 
     from app.llm.ollama_review import ReviewError
     from app.models import PromptJob
-    from app.prompt_worker import process_one
+    from app.services.prompt_jobs.worker import process_one
 
     client, db, owner, _, _ = api
     generator = Mock(side_effect=ReviewError("Unavailable"))
-    monkeypatch.setattr("app.prompt_worker.generate_review", generator)
+    monkeypatch.setattr("app.services.prompt_jobs.worker.generate_review", generator)
     response = create(client, owner)
     assert response.status_code == 201
     generator.assert_not_called()
@@ -183,7 +183,7 @@ def test_generation_failure_keeps_word_and_retries_in_worker(api, monkeypatch):
 
 def test_prompt_worker_recovers_expired_lease_and_ignores_stale_result(api):
     from app.models import PromptJob
-    from app.prompt_worker import claim_job, finish_job
+    from app.services.prompt_jobs.worker import claim_job, finish_job
 
     client, db, owner, _, _ = api
     word_id = uuid.UUID(create(client, owner).json()["id"])
@@ -211,8 +211,8 @@ def test_prompt_worker_recovers_expired_lease_and_ignores_stale_result(api):
 
 def test_account_erasure_removes_queued_and_inflight_prompts(api):
     from app.models import PromptJob
-    from app.prompt_worker import claim_job, finish_job
     from app.services.accounts import delete_account
+    from app.services.prompt_jobs.worker import claim_job, finish_job
 
     client, db, owner, _, _ = api
     word_id = uuid.UUID(create(client, owner).json()["id"])
@@ -253,7 +253,7 @@ def test_enqueue_failure_rolls_back_word_and_review_state(api):
 
 def test_prompt_worker_skips_jobs_locked_by_another_worker(api):
     from app.models import PromptJob
-    from app.prompt_worker import claim_job
+    from app.services.prompt_jobs.worker import claim_job
 
     client, db, owner, _, _ = api
     engine = db.get_bind()
