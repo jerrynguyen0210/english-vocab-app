@@ -197,11 +197,11 @@ sequenceDiagram
     A->>D: Increment shared peer-IP rate bucket
     A->>S: Validated credentials and platform
     alt Registration
-        S->>S: Argon2 password hash; normalize email
+        S->>S: Argon2 password hash, normalize email
         S->>D: Insert user and initial auth session in one transaction
     else Sign in
         S->>D: Load user and password hash
-        S->>S: Argon2 verification; reject inactive account
+        S->>S: Argon2 verification, reject inactive account
         S->>D: Insert new auth session
     end
     Note over S,D: Persist SHA-256 token digests, never plaintext tokens
@@ -212,13 +212,13 @@ sequenceDiagram
         A-->>C: Access and refresh tokens in JSON
     end
     C->>A: Protected request with bearer access token
-    A->>D: Resolve token digest; check expiry and active user
+    A->>D: Resolve token digest, check expiry and active user
     A-->>C: Authorized response
     C->>A: Refresh request
     A->>D: Apply auth guard and rate limit
     A->>S: Refresh token and platform
     S->>D: Lock matching session FOR UPDATE
-    S->>D: Replace access and refresh digests; commit
+    S->>D: Replace access and refresh digests, commit
     A-->>C: New tokens through the platform-specific transport
 ```
 
@@ -240,13 +240,13 @@ sequenceDiagram
     participant W as Background worker
     C->>A: GET /words/search with query and optional filters
     A->>S: Current user and validated search parameters
-    S->>L: Normalize query; WordNet family and LemmInflect forms
+    S->>L: Normalize query, WordNet family and LemmInflect forms
     L-->>S: Up to 60 matching dictionary entries
     S->>D: Find matching normalized words owned by this user
     S-->>C: Entries with saved markers
     C->>A: POST /words with word, definition and optional example
     A->>S: Validated input and current user
-    S->>D: Check normalized duplicate; lock active account
+    S->>D: Check normalized duplicate, lock active account
     S->>S: Build masked example or definition fallback
     S->>D: Insert word, immediately due review state, and prompt job
     S->>D: Commit all three records together
@@ -373,18 +373,18 @@ sequenceDiagram
     W->>Q: process_one
     Q->>D: Mark expired exhausted jobs failed
     Q->>D: Select eligible job FOR UPDATE SKIP LOCKED
-    Q->>D: Increment attempts; set lease token and expiry; commit
+    Q->>D: Increment attempts, set lease token and expiry, commit
     Q->>O: Generate sentence from word and meaning
     Note over Q,O: No database transaction is held during this HTTP request
     O-->>Q: Completed JSON sentence or provider failure
-    Q->>Q: Validate exact target occurrence; mask answer locally
+    Q->>Q: Validate exact target occurrence, mask answer locally
     Q->>D: Lock owner first, then job with matching lease token
     alt Valid output and current lease
-        Q->>D: Update words.review_prompt and delete job; commit
+        Q->>D: Update words.review_prompt and delete job, commit
     else Failure below attempt limit
-        Q->>D: Save safe category; clear lease; set backoff; commit
+        Q->>D: Save safe category, clear lease, set backoff, commit
     else Failure at limit
-        Q->>D: Save failure timestamp/category; clear lease; commit
+        Q->>D: Save failure timestamp/category, clear lease, commit
     else Deleted account or stale lease
         Q->>Q: Discard result
     end
