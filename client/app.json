@@ -36,11 +36,26 @@
           "imageWidth": 76
         }
       ],
-      ["expo-secure-store", { "configureAndroidBackup": true }]
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "6e2e8109-b8b6-408e-bdf3-65219c033311"
+      }
     }
   }
 }

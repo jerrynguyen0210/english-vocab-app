@@ -146,6 +146,48 @@ For setup, troubleshooting and the optional prebuilt-SPA workflow, see the
 `devops/publish_production_web.sh` publishes only an already-built frontend;
 it does not update the backend.
 
+### Android release builds
+
+Build a signed release APK to install directly on a phone, or an AAB for Google
+Play, using Expo's cloud build service. Requires Node.js 24+, npm, network access,
+and an Expo account; Android Studio and a local Android SDK are not required.
+
+Sign in once:
+
+```bash
+cd client
+npx eas-cli@latest login
+cd ..
+```
+
+Then run from the repository root:
+
+```bash
+./devops/build_android_release.sh       # Installable release APK
+./devops/build_android_release.sh aab   # Google Play release bundle
+```
+
+The script installs missing client dependencies, runs typecheck and lint, uploads
+the project, waits for the build, and prints the artifact download link. Download
+the APK to your phone and allow installation from that source when prompted.
+The AAB is uploaded separately through Google Play Console; the script does not
+publish to the store.
+
+On the first interactive build, follow Expo's prompts to create/link the project
+and generate or select its Android signing keystore. For an existing published
+app, use its existing signing credentials. Keep credentials in Expo's credential
+store, outside Git. Commit the public project-link configuration if Expo adds it
+to the app config. Later CI builds can use `--non-interactive` after linking and
+signing are configured, with `EXPO_TOKEN` supplied through the CI secret store.
+
+Both profiles in `client/eas.json` use `https://vocab.jerryitdev.com` as the public
+API URL and automatically increment the Android build number remotely. Change
+the profile's public URL before building for a different backend. Local client
+environment files are ignored by Git and are not the release configuration.
+Only public configuration belongs in the profile's `env` or `EXPO_PUBLIC_*`.
+See [Expo's build setup guide](https://docs.expo.dev/build/setup/) and
+[APK guide](https://docs.expo.dev/build-reference/apk/) for account and signing details.
+
 ### Interactive deployment helpers
 
 Run either menu from any directory:
