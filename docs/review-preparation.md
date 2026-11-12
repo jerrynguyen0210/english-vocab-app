@@ -29,9 +29,14 @@ at start, so its count may differ if another device changes data in the meantime
 
 ## Deferred topic search
 
-By topic remains visible as an unavailable option in Review preparation. It has
-no search input, issues no requests and cannot start a review. Topic search is a
-future backend operation; users do not enter topic tags when adding words.
+By topic displays the screen 08 topic panel with an editable topic input and a
+disabled Start button. The typed topic stays in local screen state when changing
+sources and does not trigger search requests. It loads authenticated
+`GET /reviews/summary` to show the
+user's saved-word bank total, with loading, retry and focus refresh. This total
+is labelled as the word bank size, never as topic matches. No search requests or
+topic review sessions are sent. Topic search is a future backend operation;
+users do not enter topic tags when adding words.
 The backend currently accepts only time and recall sources, and exposes no
 saved-tag search endpoint or topic fields on word creation.
 

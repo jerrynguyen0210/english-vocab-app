@@ -109,7 +109,20 @@ test('prepares time and SM-2 selections and keeps topic review unavailable', asy
   await fireEvent.press(screen.getByText('By topic'));
   expect(screen.getByText('Topic search is coming later.')).toBeOnTheScreen();
   expect(screen.queryByLabelText('Start review · 2 words')).toBeNull();
-  expect(fetchMock).toHaveBeenCalledTimes(calls);
+  expect(
+    screen.getByRole('button', { name: 'Topic review coming later' }),
+  ).toBeDisabled();
+  await screen.findByText('2 words in your word bank');
+  expect(fetchMock).toHaveBeenCalledTimes(calls + 1);
+  expect(fetchMock).toHaveBeenLastCalledWith('/reviews/summary');
+  await fireEvent.changeText(
+    screen.getByLabelText('Topic search'),
+    'Workplace communication',
+  );
+  expect(screen.getByLabelText('Topic search')).toHaveDisplayValue(
+    'Workplace communication',
+  );
+  expect(fetchMock).toHaveBeenCalledTimes(calls + 1);
 });
 
 test.each(['typing', 'choice'] as const)(

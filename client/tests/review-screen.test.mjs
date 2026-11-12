@@ -380,14 +380,14 @@ test('preparation loads live counts, rejects stale responses and passes selected
   assert.ok(paths.some((path) => path.includes('include_overdue=false')));
 });
 
-test('preparation retries counts and topic remains unavailable without backend requests', async () => {
+test('preparation retries counts and topic loads bank totals without searching', async () => {
   let fail = true;
   const paths = [];
   const h = harness(
     async (path) => {
       paths.push(path);
       if (fail) throw new Error('offline');
-      return Response.json({ count: 2, matching_count: 2 });
+      return Response.json({ count: 2, matching_count: 2, saved_count: 12 });
     },
     {},
     'review-preparation',
@@ -405,9 +405,61 @@ test('preparation retries counts and topic remains unavailable without backend r
   await h.flush();
   await h.advance();
   assert.equal(h.link(), undefined);
-  assert.equal(h.input(), undefined);
+  h.input().props.onChangeText('Workplace communication');
+  await h.flush();
+  await h.advance();
+  assert.equal(h.input().props.value, 'Workplace communication');
   assert.match(h.text(), /Topic search is coming later/);
-  assert.equal(paths.length, requestsBeforeTopic);
+  assert.match(h.text(), /12 words in your word bank/);
+  assert.equal(h.button('Topic review coming later').props.disabled, true);
+  assert.equal(paths.length, requestsBeforeTopic + 1);
+  assert.equal(paths.at(-1), '/reviews/summary');
+  h.radio('By time').props.onPress();
+  await h.flush();
+  h.radio('By topic').props.onPress();
+  await h.flush();
+  assert.equal(h.input().props.value, 'Workplace communication');
+});
+
+test('topic summary retries, refreshes on focus and ignores responses after switching sources', async () => {
+  let summaryReply = () => Response.json({}, { status: 503 });
+  const h = harness(
+    async (path) =>
+      path === '/reviews/summary'
+        ? summaryReply()
+        : Response.json({ count: 3, matching_count: 3 }),
+    {},
+    'review-preparation',
+  );
+  h.radio('By topic').props.onPress();
+  await h.flush();
+  assert.match(h.text(), /Loading word bank/);
+  assert.equal(h.button('Topic review coming later').props.disabled, true);
+  await h.advance();
+  assert.match(h.text(), /Could not load your word bank/);
+  assert.doesNotMatch(h.text(), /0 words in your word bank/);
+  summaryReply = () => Response.json({ saved_count: 0 });
+  h.button('Try again').props.onPress();
+  await h.flush();
+  await h.advance();
+  assert.match(h.text(), /0 words in your word bank/);
+  assert.equal(h.link(), undefined);
+  summaryReply = () => Response.json({ saved_count: 7 });
+  h.refocus();
+  await h.advance();
+  assert.match(h.text(), /7 words in your word bank/);
+  let resolveSummary;
+  summaryReply = () => new Promise((resolve) => (resolveSummary = resolve));
+  h.refocus();
+  await h.advance();
+  h.radio('By time').props.onPress();
+  await h.flush();
+  await h.advance();
+  resolveSummary(Response.json({ saved_count: 99 }));
+  await h.flush();
+  assert.match(h.text(), /3 words ready/);
+  assert.doesNotMatch(h.text(), /99 words/);
+  assert.ok(h.link());
 });
 
 test('multiple choice renders exactly the server options in order and submits the selection', async () => {

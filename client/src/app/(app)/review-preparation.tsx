@@ -1,9 +1,10 @@
 import { ReviewEmptyState } from '@/components/review-empty-state';
 import { useFocusEffect } from 'expo-router';
+import { Image } from 'expo-image';
 import { authenticatedFetch } from '@/services/auth';
 import { connectionMessage } from '@/services/connectivity';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/app-screen';
 import { NavigationLink } from '@/components/navigation-link';
 import { ThemedText } from '@/components/themed-text';
@@ -21,24 +22,25 @@ const sources = [
     key: 'time',
     title: 'By time',
     detail: 'Words added in a selected period',
-    icon: '◷',
+    icon: require('@/assets/images/wordwell/prep-time.svg'),
   },
   {
     key: 'recall',
     title: 'SM-2 recall',
     detail: 'Review words scheduled as due',
-    icon: '↗',
+    icon: require('@/assets/images/wordwell/prep-recall.svg'),
   },
   {
     key: 'topic',
     title: 'By topic',
-    detail: 'Coming later',
-    icon: '⌕',
+    detail: 'Search your saved word topics',
+    icon: require('@/assets/images/wordwell/prep-topic.svg'),
   },
 ] as const;
 export default function ReviewPreparationScreen() {
   const [source, setSource] = useState<ReviewSource>('time');
   const [period, setPeriod] = useState<ReviewPeriod>('Weekly');
+  const [topic, setTopic] = useState('');
   const [includeOverdue, setIncludeOverdue] = useState(true);
   const query = reviewQuery({
     source,
@@ -62,19 +64,20 @@ export default function ReviewPreparationScreen() {
       setReady(null);
       setError('');
       const timer = setTimeout(() => {
-        if (source === 'topic') {
-          setReady({ query, count: 0, matching: 0, summary: null });
-          return;
-        }
-        void authenticatedFetch(`/reviews/preparation?${query}`)
+        // Topic search is deferred. Only load bank totals, never topic matches.
+        void authenticatedFetch(
+          source === 'topic'
+            ? '/reviews/summary'
+            : `/reviews/preparation?${query}`,
+        )
           .then(async (response) => {
             if (!response.ok) throw new Error();
             const result = await response.json();
             if (active)
               setReady({
                 query,
-                count: result.count,
-                matching: result.matching_count,
+                count: source === 'topic' ? 0 : result.count,
+                matching: source === 'topic' ? 0 : result.matching_count,
                 summary: result,
               });
           })
@@ -83,7 +86,9 @@ export default function ReviewPreparationScreen() {
               setError(
                 connectionMessage(
                   failure,
-                  'Could not load ready words. Please try again.',
+                  source === 'topic'
+                    ? 'Could not load your word bank. Please try again.'
+                    : 'Could not load ready words. Please try again.',
                 ),
               );
           });
@@ -98,14 +103,16 @@ export default function ReviewPreparationScreen() {
   return (
     <AppScreen selected="Review">
       <View style={styles.content}>
-        <ThemedText accessibilityRole="header" style={styles.title}>
-          Prepare your review
-        </ThemedText>
-        <ThemedText style={styles.detail}>
-          Choose which words to practise.
-        </ThemedText>
-        <ThemedText style={styles.label}>REVIEW SOURCE</ThemedText>
+        <View>
+          <ThemedText accessibilityRole="header" style={styles.title}>
+            Prepare your review
+          </ThemedText>
+          <ThemedText style={styles.detail}>
+            Choose which words to practise.
+          </ThemedText>
+        </View>
         <View style={styles.sources}>
+          <ThemedText style={styles.label}>REVIEW SOURCE</ThemedText>
           {sources.map(({ key, title, detail, icon }) => (
             <Pressable
               key={key}
@@ -114,8 +121,14 @@ export default function ReviewPreparationScreen() {
               onPress={() => setSource(key)}
               style={[styles.source, source === key && styles.selected]}
             >
-              <View style={styles.icon}>
-                <ThemedText style={styles.iconText}>{icon}</ThemedText>
+              <View
+                style={[styles.icon, source === key && styles.selectedIcon]}
+              >
+                <Image
+                  source={icon}
+                  style={styles.sourceIcon}
+                  accessible={false}
+                />
               </View>
               <View style={styles.sourceText}>
                 <ThemedText style={styles.sourceTitle}>{title}</ThemedText>
@@ -129,7 +142,7 @@ export default function ReviewPreparationScreen() {
             </Pressable>
           ))}
         </View>
-        <View style={styles.panel}>
+        <View style={[styles.panel, source === 'topic' && styles.topicPanel]}>
           {source === 'time' ? (
             <>
               <ThemedText style={styles.label}>SELECT TIME PERIOD</ThemedText>
@@ -191,11 +204,35 @@ export default function ReviewPreparationScreen() {
             </>
           ) : (
             <>
-              <ThemedText style={styles.summary}>
-                Topic search is coming later.
+              <ThemedText style={styles.label}>TYPE A TOPIC</ThemedText>
+              <View style={styles.topicField}>
+                <Image
+                  source={require('@/assets/images/wordwell/prep-topic.svg')}
+                  style={styles.sourceIcon}
+                  accessible={false}
+                />
+                <TextInput
+                  accessibilityLabel="Topic search"
+                  accessibilityHint="Topic search is coming later. Choose By time or SM-2 recall to start a review."
+                  value={topic}
+                  onChangeText={setTopic}
+                  placeholder="e.g. Workplace communication"
+                  placeholderTextColor={colors.placeholder}
+                  style={styles.topicInput}
+                />
+              </View>
+              <ThemedText
+                accessibilityLiveRegion="polite"
+                style={styles.topicBadge}
+              >
+                {count === null
+                  ? error
+                    ? 'Word bank unavailable'
+                    : 'Loading word bank…'
+                  : `${ready?.summary?.saved_count} words in your word bank`}
               </ThemedText>
               <ThemedText style={styles.detail}>
-                Choose By time or SM-2 recall to start a review.
+                Topic search is coming later.
               </ThemedText>
             </>
           )}
@@ -210,7 +247,9 @@ export default function ReviewPreparationScreen() {
                   : 'Loading ready words…'
                 : `${count} words ready`}
           </ThemedText>
-          <ThemedText style={styles.next}>Answer mode next →</ThemedText>
+          <ThemedText style={styles.next}>
+            {source === 'topic' ? 'Search coming later' : 'Answer mode next →'}
+          </ThemedText>
         </View>
         {!!error && (
           <View accessibilityLiveRegion="polite">
@@ -235,7 +274,7 @@ export default function ReviewPreparationScreen() {
             words.
           </ThemedText>
         )}
-        {count !== null && count > 0 && !error ? (
+        {source !== 'topic' && count !== null && count > 0 && !error ? (
           <NavigationLink
             href={{
               pathname: '/review',
@@ -258,12 +297,12 @@ export default function ReviewPreparationScreen() {
             style={[styles.button, styles.disabled]}
           >
             <ThemedText style={styles.white}>
-              {error
-                ? 'Count unavailable'
-                : count === null
-                  ? 'Loading…'
-                  : source === 'topic'
-                    ? 'Coming later'
+              {source === 'topic'
+                ? 'Topic review coming later'
+                : error
+                  ? 'Count unavailable'
+                  : count === null
+                    ? 'Loading…'
                     : 'No words to review'}
             </ThemedText>
           </Pressable>
@@ -278,7 +317,7 @@ const styles = StyleSheet.create({
     maxWidth: 600,
     alignSelf: 'center',
     padding: 22,
-    paddingTop: 25,
+    paddingTop: 23,
     paddingBottom: 36,
     gap: 16,
   },
@@ -292,6 +331,7 @@ const styles = StyleSheet.create({
   label: {
     color: colors.secondary,
     fontSize: 11,
+    lineHeight: 14,
     fontWeight: '700',
     letterSpacing: 0.8,
   },
@@ -319,7 +359,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconText: { color: colors.primary, fontSize: 28, lineHeight: 34 },
+  selectedIcon: { backgroundColor: '#DEE4FF' },
+  sourceIcon: { width: 26, height: 26 },
+  topicPanel: { gap: 8 },
+  topicField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 47,
+    paddingHorizontal: 10,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: 10,
+  },
+  topicInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 12,
+    color: colors.text,
+    fontSize: 13,
+  },
+  topicBadge: {
+    color: colors.secondary,
+    backgroundColor: colors.background,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 11,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
   sourceText: { flex: 1, gap: 3 },
   sourceTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   radio: {
