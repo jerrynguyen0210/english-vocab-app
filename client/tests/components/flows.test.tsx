@@ -228,11 +228,12 @@ test('retries an uncertain review submission with the same answer and attempt', 
   await render(<ReviewScreen />);
   await fireEvent.changeText(
     await screen.findByLabelText('Your answer'),
-    'Hello',
+    ' Hello ',
   );
   await fireEvent.press(screen.getByRole('button', { name: 'Check answer' }));
   const retry = await screen.findByRole('button', { name: 'Retry submission' });
-  expect(screen.getByLabelText('Your answer')).toHaveDisplayValue('Hello');
+  expect(screen.getByLabelText('Your answer')).toHaveDisplayValue(' Hello ');
+  expect(screen.getByLabelText('Your answer')).toHaveProp('editable', false);
   await fireEvent.press(retry);
   expect(await screen.findByTestId('review-feedback')).toBeOnTheScreen();
   expect(fetchMock.mock.calls[2]).toEqual(fetchMock.mock.calls[1]);

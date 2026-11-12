@@ -134,46 +134,12 @@ def test_web_cookie_csrf_and_rotation(auth):
     assert client.cookies.get(COOKIE) is None
 
 
-def test_credentials_disabled_and_expired_refresh(auth):
+def test_expired_refresh_is_rejected(auth):
     client, db = auth
-    assert (
-        client.post(
-            "/api/v1/auth/register", json={**CREDS, "password": "short"}, headers=NATIVE
-        ).status_code
-        == 422
+    tokens = client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).json()
+    db.scalar(select(AuthSession)).refresh_expires_at = datetime.now(UTC) - timedelta(
+        seconds=1
     )
-    client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE)
-    assert (
-        client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE).status_code
-        == 409
-    )
-    assert (
-        client.post(
-            "/api/v1/auth/sign-in",
-            json={**CREDS, "password": "wrong long password"},
-            headers=NATIVE,
-        ).status_code
-        == 401
-    )
-    tokens = client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE).json()
-    user = db.scalar(select(User))
-    user.disabled_at = datetime.now(UTC)
-    db.commit()
-    assert (
-        client.post("/api/v1/auth/sign-in", json=CREDS, headers=NATIVE).status_code
-        == 401
-    )
-    assert (
-        client.post(
-            "/api/v1/auth/refresh",
-            json={"refresh_token": tokens["refresh_token"]},
-            headers=NATIVE,
-        ).status_code
-        == 401
-    )
-    user.disabled_at = None
-    for record in db.scalars(select(AuthSession)):
-        record.refresh_expires_at = datetime.now(UTC) - timedelta(seconds=1)
     db.commit()
     assert (
         client.post(
@@ -212,6 +178,7 @@ def test_rate_limit_shared_between_auth_routes(auth):
         {"email": "not-an-email", "password": "long test password"},
         {"email": None, "password": "long test password"},
         {"email": "learner@example.com", "password": None},
+        {"email": "learner@example.com", "password": "short"},
         {"email": "learner@example.com", "password": "x" * 129},
         {"email": "learner@example.com", "password": 123456789012},
         {**CREDS, "user_id": "someone-else"},

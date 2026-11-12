@@ -55,6 +55,7 @@ def test_search_marks_only_the_current_users_saved_forms(api):
         {"word": "\u3000\t\n", "english_explanation": "greeting"},
         {"word": "hello", "english_explanation": "\u3000\t\n"},
         {"word": "hello", "english_explanation": "x" * 5001},
+        {"word": "x" * 201, "english_explanation": "greeting"},
         {
             "word": "hello",
             "english_explanation": "greeting",

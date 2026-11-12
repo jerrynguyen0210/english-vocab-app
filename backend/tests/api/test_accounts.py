@@ -77,37 +77,6 @@ def test_timezone_update_changes_local_day_selection_without_rescheduling(
     assert state.due_at == now + timedelta(hours=6)
 
 
-def test_account_erases_owned_records_and_revokes_all_sessions(api):
-    client, db, owner, other, tokens = api
-    word_id = create(client, owner).json()["id"]
-    create(client, other, "World")
-    client.post(
-        f"/api/v1/reviews/{word_id}/answer",
-        headers=owner,
-        json={"typed_answer": "Hello", "time_taken_ms": 3},
-    )
-    with pytest.raises(DBAPIError, match="append-only"):
-        db.execute(text("DELETE FROM review_attempts"))
-    db.rollback()
-    response = client.delete("/api/v1/account", headers=owner)
-    assert response.status_code == 204 and response.content == b""
-    assert db.scalar(select(func.count()).select_from(User)) == 1
-    assert db.scalar(select(func.count()).select_from(Word)) == 1
-    assert db.scalar(select(func.count()).select_from(ReviewState)) == 1
-    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 0
-    assert db.scalar(select(func.count()).select_from(AuthSession)) == 1
-    assert client.get("/api/v1/auth/me", headers=owner).status_code == 401
-    assert client.get("/api/v1/auth/me", headers=other).status_code == 200
-    assert (
-        client.post(
-            "/api/v1/auth/refresh",
-            headers={"X-Auth-Platform": "native"},
-            json={"refresh_token": tokens["refresh_token"]},
-        ).status_code
-        == 401
-    )
-
-
 def test_account_deletion_preserves_other_users_history_and_sessions(api):
     client, db, owner, other, tokens = api
     second_device = client.post(
@@ -132,7 +101,13 @@ def test_account_deletion_preserves_other_users_history_and_sessions(api):
     other_identity = client.get("/api/v1/auth/me", headers=other).json()
     other_state = db.get(ReviewState, uuid.UUID(other_word))
     snapshot = (other_state.due_at, other_state.correct_count, other_state.level)
-    assert client.delete("/api/v1/account", headers=owner).status_code == 204
+    with pytest.raises(DBAPIError, match="append-only"):
+        db.execute(text("DELETE FROM review_attempts"))
+    db.rollback()
+    response = client.delete("/api/v1/account", headers=owner)
+    assert response.status_code == 204 and response.content == b""
+    for model in [User, Word, ReviewState, ReviewAttempt, AuthSession]:
+        assert db.scalar(select(func.count()).select_from(model)) == 1
     for session in [tokens, second_device]:
         assert (
             client.get(

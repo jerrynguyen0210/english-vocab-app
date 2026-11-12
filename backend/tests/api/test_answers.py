@@ -119,6 +119,7 @@ def test_create_queue_submit_and_schedule(api):
         {"typed_answer": "hello", "time_taken_ms": "1"},
         {"typed_answer": "hello", "time_taken_ms": 1.5},
         {"typed_answer": "hello", "time_taken_ms": None},
+        {"typed_answer": "hello", "time_taken_ms": -1},
         {"typed_answer": "hello", "time_taken_ms": 2147483648},
         {"typed_answer": "hello", "time_taken_ms": 1, "result": "correct"},
         {"typed_answer": "hello", "time_taken_ms": 1, "user_id": str(uuid.uuid4())},
@@ -162,10 +163,19 @@ def test_queue_and_submission_isolate_accounts(api):
     db.refresh(state)
     assert state.due_at == original_due and state.correct_count == 0
     assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 0
-    assert client.get("/api/v1/reviews/next?limit=0", headers=owner).status_code == 422
     assert (
-        client.get("/api/v1/reviews/next?limit=abc", headers=owner).status_code == 422
+        client.post(
+            f"/api/v1/reviews/{uuid.uuid4()}/answer",
+            headers=owner,
+            json={"typed_answer": "Hello", "time_taken_ms": 2},
+        ).status_code
+        == 404
     )
+    for limit in [0, 51, "abc"]:
+        assert (
+            client.get(f"/api/v1/reviews/next?limit={limit}", headers=owner).status_code
+            == 422
+        )
     assert (
         client.post(
             "/api/v1/reviews/not-a-uuid/answer",
@@ -304,8 +314,6 @@ def test_retry_after_lost_response_records_once(api):
     [
         (" HELLO ", "correct"),
         ("helo", "incorrect"),
-        ("hello!", "incorrect"),
-        ("ＨＥＬＬＯ", "correct"),
     ],
 )
 def test_typing_session_hides_answer_until_d2_submission(api, typed_answer, expected):

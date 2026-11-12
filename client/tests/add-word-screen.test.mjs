@@ -487,7 +487,7 @@ test('empty results preserve the word and all filters so the user can adjust and
 
 for (const failure of ['network', 'server']) {
   for (const action of ['search', 'save']) {
-    test(`${action} ${failure} failure preserves inputs and unsaved results and offers Try again`, async () => {
+    test(`${action} ${failure} failure preserves inputs and unsaved results for retry`, async () => {
       let failNext = false;
       const calls = [];
       const h = harness(async (path, init) => {
@@ -526,7 +526,11 @@ for (const failure of ['network', 'server']) {
       assert.equal(h.saveButton('created').props.disabled, false);
       assert.equal(h.saveButton('create').props.disabled, false);
       assert.match(h.text(), /2 found/);
-      await h.button('Try again').props.onPress();
+      const retry =
+        action === 'search' && failure === 'network'
+          ? h.button('Search')
+          : h.button('Try again');
+      await retry.props.onPress();
       await h.flush();
       assert.equal(calls.length, 3);
       assert.equal(calls[2].path, calls[1].path);
@@ -538,23 +542,6 @@ for (const failure of ['network', 'server']) {
     });
   }
 }
-
-test('failed search can retry without losing query or filters', async () => {
-  let count = 0;
-  const h = harness(async () => {
-    if (++count === 1) throw new Error('offline');
-    return Response.json([]);
-  });
-  h.input().props.onChangeText('create');
-  await h.flush();
-  await h.button('Search').props.onPress();
-  await h.flush();
-  assert.match(h.text(), /Could not search/);
-  assert.equal(h.input().props.value, 'create');
-  await h.button('Search').props.onPress();
-  await h.flush();
-  assert.match(h.text(), /No matching words/);
-});
 
 test('word family checkbox shows and hides every option while preserving selections', async () => {
   const h = harness(async () => Response.json([]));

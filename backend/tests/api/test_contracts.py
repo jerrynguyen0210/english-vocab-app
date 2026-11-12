@@ -8,41 +8,6 @@ from sqlalchemy import func, select
 
 from app.models import AuthSession, ReviewAttempt, User, Word
 
-from .helpers import create
-
-
-def test_auth_ownership_and_validation(api):
-    client, db, owner, other, _ = api
-    word_id = create(client, owner).json()["id"]
-    assert create(client, {}).status_code == 401
-    assert client.get("/api/v1/reviews/next").status_code == 401
-    assert client.delete("/api/v1/account").status_code == 401
-    for target in [word_id, str(uuid.uuid4())]:
-        assert (
-            client.post(
-                f"/api/v1/reviews/{target}/answer",
-                headers=other,
-                json={"typed_answer": "Hello", "time_taken_ms": 2},
-            ).status_code
-            == 404
-        )
-    for body in [
-        {"word": " ", "english_explanation": "x"},
-        {"word": "x", "english_explanation": ""},
-        {"word": "x" * 201, "english_explanation": "x"},
-    ]:
-        assert client.post("/api/v1/words", headers=owner, json=body).status_code == 422
-    assert client.get("/api/v1/reviews/next?limit=51", headers=owner).status_code == 422
-    assert (
-        client.post(
-            f"/api/v1/reviews/{word_id}/answer",
-            headers=owner,
-            json={"typed_answer": "Hello", "time_taken_ms": -1},
-        ).status_code
-        == 422
-    )
-    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 0
-
 
 def test_only_versioned_product_routes(api):
     client, *_ = api

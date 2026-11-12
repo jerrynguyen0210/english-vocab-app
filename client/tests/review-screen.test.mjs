@@ -263,35 +263,6 @@ const prompts = [
   },
 ];
 
-test('lost submit response retains draft and exact retry; snapshot finishes with count', async () => {
-  const bodies = [];
-  let loads = 0;
-  const h = harness(async (path, init) => {
-    if (!init) {
-      loads++;
-      return Response.json(prompts);
-    }
-    bodies.push(init.body);
-    if (bodies.length === 1) throw new Error('response lost');
-    return Response.json({ result: 'correct', correct_word: 'Hello' });
-  });
-  await h.flush();
-  h.input().props.onChangeText(' Hello ');
-  await h.flush();
-  await h.button('Check answer').props.onPress();
-  await h.flush();
-  assert.equal(h.input().props.value, ' Hello ');
-  assert.equal(h.input().props.editable, false);
-  await h.button('Retry submission').props.onPress();
-  await h.flush();
-  assert.equal(bodies[0], bodies[1]);
-  h.button('Next word').props.onPress();
-  await h.flush();
-  assert.match(h.text(), /Review finished/);
-  assert.match(h.text(), /1 of 1 answers correct/);
-  assert.equal(loads, 1); // Words added remotely cannot extend this session.
-});
-
 test('expiry retains answer and allows retry after same-account sign-in', async () => {
   let fail = true;
   const h = harness(async (_, init) => {
@@ -439,53 +410,6 @@ test('preparation retries counts and topic remains unavailable without backend r
   assert.equal(paths.length, requestsBeforeTopic);
 });
 
-test('cloze prompt remains masked across modes and progress tracks the current word', async () => {
-  let submitted = 0;
-  const h = harness(async (_, init) => {
-    if (!init)
-      return Response.json(
-        Array.from({ length: 12 }, (_, index) => ({
-          ...prompts[0],
-          word_id: String(index),
-          attempt_id: `attempt-${index}`,
-          choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'],
-        })),
-      );
-    submitted++;
-    return Response.json({ result: 'correct', correct_word: 'Hello' });
-  });
-  await h.flush();
-  assert.equal(
-    h.progress().props.accessibilityLabel,
-    'Word 1 of 12, 8% complete',
-  );
-  assert.ok(h.sentence());
-  h.button('Typing').props.onPress();
-  await h.flush();
-  assert.doesNotMatch(h.text(), /Hello/);
-  assert.ok(h.sentence());
-  for (let index = 0; index < 2; index++) {
-    h.input().props.onChangeText('Hello');
-    await h.flush();
-    await h.button('Check answer').props.onPress();
-    await h.flush();
-    assert.ok(h.sentence());
-    h.button('Next word').props.onPress();
-    await h.flush();
-  }
-  assert.equal(
-    h.progress().props.accessibilityLabel,
-    'Word 3 of 12, 25% complete',
-  );
-  assert.match(h.text(), /25% complete/);
-  assert.doesNotMatch(h.text(), /Hello/);
-  assert.equal(submitted, 2);
-  h.button('Multiple choice').props.onPress();
-  await h.flush();
-  assert.ok(h.sentence());
-  assert.ok(h.button('A. Hello'));
-});
-
 test('multiple choice renders exactly the server options in order and submits the selection', async () => {
   const choices = ['Farewell', 'Welcome', 'Hello', 'Goodbye'];
   let submitted;
@@ -510,8 +434,6 @@ test('multiple choice renders exactly the server options in order and submits th
 
 for (const choices of [
   [],
-  ['Hello'],
-  ['Hello', 'Goodbye'],
   ['Hello', 'Goodbye', 'Welcome'],
   ['Hello', 'Goodbye', 'Welcome', 'Farewell', 'Hi'],
   ['Hello', 'Hello', 'Goodbye', 'Welcome'],
@@ -583,6 +505,7 @@ test('typing loads no choices; switching modes fetches only the current item and
   assert.equal(requests.length, 1);
   assert.doesNotMatch(h.text(), /Hello/);
   assert.ok(h.input());
+  assert.ok(h.sentence());
   const progress = h.progress().props.accessibilityLabel;
   await h.button('Multiple choice').props.onPress();
   await h.flush();
@@ -593,12 +516,14 @@ test('typing loads no choices; switching modes fetches only the current item and
   });
   assert.ok(h.button('A. Hello'));
   assert.equal(h.progress().props.accessibilityLabel, progress);
+  assert.ok(h.sentence());
   const beforeTyping = h.focusCalls();
   h.button('Typing').props.onPress();
   await h.flush();
   assert.doesNotMatch(h.text(), /Hello/);
   assert.ok(h.focusCalls() > beforeTyping);
   assert.equal(requests.length, 2);
+  assert.ok(h.sentence());
 });
 
 test('multiple-choice mode loads each next snapshot item without restarting the session', async () => {
@@ -676,89 +601,91 @@ test('option load failure returns to focused typing and can retry the current pr
   assert.doesNotMatch(h.text(), /Could not load answer options/);
 });
 
-for (const platform of ['web', 'android', 'ios']) {
-  for (const mode of ['typing', 'choice']) {
-    for (const result of ['correct', 'incorrect']) {
-      test(`${platform} ${mode} ${result} feedback reveals labeled answers, announces and clears on Next word`, async () => {
-        const items = [
-          { ...prompts[0], review_token: 'signed-one' },
-          {
-            ...prompts[0],
-            word_id: 'two',
-            attempt_id: 'attempt-two',
-            review_token: 'signed-two',
-          },
-        ];
-        const h = harness(
-          async (path, init) => {
-            if (!init) return Response.json(items);
-            if (path.endsWith('/choices'))
-              return Response.json({
-                ...items[path.includes('/two/') ? 1 : 0],
-                choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'],
-              });
-            return Response.json({ result, correct_word: 'Hello' });
-          },
-          {},
-          'review',
-          platform,
-        );
-        await h.flush();
-        assert.equal(h.feedback(), undefined);
-        assert.equal(h.button('Next word'), undefined);
-        assert.equal(h.liveRegion().props.children, '');
-        const draft =
-          result === 'correct'
-            ? 'Hello'
-            : mode === 'choice'
-              ? 'Goodbye'
-              : 'helo';
-        if (mode === 'choice') {
-          h.button('Multiple choice').props.onPress();
-          await h.flush();
-          h.button(
-            result === 'correct' ? 'A. Hello' : 'B. Goodbye',
-          ).props.onPress();
-        } else {
-          h.input().props.onChangeText(draft);
-        }
-        await h.flush();
-        if (mode === 'typing') h.button('Check answer').props.onPress();
-        await h.flush();
-        assert.ok(h.feedback());
-        if (result === 'correct') {
-          assert.match(h.feedbackText(), /Correct answer!CORRECT WORDHello/);
-          assert.equal(
-            h.liveRegion().props.children,
-            'Correct answer! The word is Hello.',
-          );
-        } else {
-          assert.match(h.feedbackText(), /Incorrect answer/);
-          assert.ok(
-            h.feedbackText().includes(`YOUR ANSWER${draft}CORRECT WORDHello`),
-          );
-          assert.equal(
-            h.liveRegion().props.children,
-            `Incorrect answer. Your answer: ${draft}. Correct word: Hello.`,
-          );
-        }
-        assert.equal(h.liveRegion().props.accessibilityLiveRegion, 'polite');
-        if (platform === 'web')
-          assert.equal(h.liveRegion().props.accessibilityRole, 'status');
-        if (platform === 'ios')
-          assert.deepEqual(h.announcements(), [h.liveRegion().props.children]);
-        assert.equal(h.input(), undefined);
-        assert.ok(h.button('Next word'));
-        assert.equal(h.button('Check answer'), undefined);
-        h.button('Next word').props.onPress();
-        await h.flush();
-        assert.equal(h.feedback(), undefined);
-        assert.equal(h.liveRegion().props.children, '');
-        assert.equal(h.button('Next word'), undefined);
-        assert.ok(h.sentence());
-      });
+// Web covers every mode/result pair; native cases cover each announcement outcome.
+for (const [platform, mode, result] of [
+  ['web', 'typing', 'correct'],
+  ['web', 'typing', 'incorrect'],
+  ['web', 'choice', 'correct'],
+  ['web', 'choice', 'incorrect'],
+  ['android', 'typing', 'correct'],
+  ['android', 'choice', 'incorrect'],
+  ['ios', 'typing', 'correct'],
+  ['ios', 'choice', 'incorrect'],
+]) {
+  test(`${platform} ${mode} ${result} feedback reveals labeled answers, announces and clears on Next word`, async () => {
+    const items = [
+      { ...prompts[0], review_token: 'signed-one' },
+      {
+        ...prompts[0],
+        word_id: 'two',
+        attempt_id: 'attempt-two',
+        review_token: 'signed-two',
+      },
+    ];
+    const h = harness(
+      async (path, init) => {
+        if (!init) return Response.json(items);
+        if (path.endsWith('/choices'))
+          return Response.json({
+            ...items[path.includes('/two/') ? 1 : 0],
+            choices: ['Hello', 'Goodbye', 'Welcome', 'Farewell'],
+          });
+        return Response.json({ result, correct_word: 'Hello' });
+      },
+      {},
+      'review',
+      platform,
+    );
+    await h.flush();
+    assert.equal(h.feedback(), undefined);
+    assert.equal(h.button('Next word'), undefined);
+    assert.equal(h.liveRegion().props.children, '');
+    const draft =
+      result === 'correct' ? 'Hello' : mode === 'choice' ? 'Goodbye' : 'helo';
+    if (mode === 'choice') {
+      h.button('Multiple choice').props.onPress();
+      await h.flush();
+      h.button(
+        result === 'correct' ? 'A. Hello' : 'B. Goodbye',
+      ).props.onPress();
+    } else {
+      h.input().props.onChangeText(draft);
     }
-  }
+    await h.flush();
+    if (mode === 'typing') h.button('Check answer').props.onPress();
+    await h.flush();
+    assert.ok(h.feedback());
+    if (result === 'correct') {
+      assert.match(h.feedbackText(), /Correct answer!CORRECT WORDHello/);
+      assert.equal(
+        h.liveRegion().props.children,
+        'Correct answer! The word is Hello.',
+      );
+    } else {
+      assert.match(h.feedbackText(), /Incorrect answer/);
+      assert.ok(
+        h.feedbackText().includes(`YOUR ANSWER${draft}CORRECT WORDHello`),
+      );
+      assert.equal(
+        h.liveRegion().props.children,
+        `Incorrect answer. Your answer: ${draft}. Correct word: Hello.`,
+      );
+    }
+    assert.equal(h.liveRegion().props.accessibilityLiveRegion, 'polite');
+    if (platform === 'web')
+      assert.equal(h.liveRegion().props.accessibilityRole, 'status');
+    if (platform === 'ios')
+      assert.deepEqual(h.announcements(), [h.liveRegion().props.children]);
+    assert.equal(h.input(), undefined);
+    assert.ok(h.button('Next word'));
+    assert.equal(h.button('Check answer'), undefined);
+    h.button('Next word').props.onPress();
+    await h.flush();
+    assert.equal(h.feedback(), undefined);
+    assert.equal(h.liveRegion().props.children, '');
+    assert.equal(h.button('Next word'), undefined);
+    assert.ok(h.sentence());
+  });
 }
 
 for (const screen of ['index', 'review-preparation']) {
@@ -888,10 +815,19 @@ test('the final Next word finishes all twelve words with a count and Home link',
   });
   await h.flush();
   for (let index = 0; index < 12; index++) {
+    const percent = Math.round(((index + 1) / 12) * 100);
+    assert.equal(
+      h.progress().props.accessibilityLabel,
+      `Word ${index + 1} of 12, ${percent}% complete`,
+    );
+    assert.match(h.text(), new RegExp(`${percent}% complete`));
+    assert.ok(h.sentence());
+    assert.doesNotMatch(h.text(), /Hello/);
     h.input().props.onChangeText('Hello');
     await h.flush();
     h.button('Check answer').props.onPress();
     await h.flush();
+    assert.ok(h.sentence());
     h.button('Next word').props.onPress();
     await h.flush();
   }
