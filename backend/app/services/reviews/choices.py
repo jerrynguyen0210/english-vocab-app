@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from secrets import SystemRandom
 
-from app.models.word import normalise_word
+from app.core.text import normalise_word
 from app.services.dictionary import PartOfSpeech, review_family, review_parts
 
 # General dictionary vocabulary is the approved last tier for small banks,

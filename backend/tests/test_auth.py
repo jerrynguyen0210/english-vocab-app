@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.api.auth import COOKIE
+from app.api.auth_transport import COOKIE
 from app.core.config import get_settings
 from app.core.database import Base, get_session
 from app.main import app

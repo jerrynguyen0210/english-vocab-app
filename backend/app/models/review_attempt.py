@@ -16,8 +16,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.core.database import Base
+from app.core.text import normalise_word
 from app.core.time import UTCDateTime
-from app.models.word import normalise_word
 
 
 class ReviewAttempt(Base):

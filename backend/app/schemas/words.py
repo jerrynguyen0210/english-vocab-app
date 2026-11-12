@@ -2,7 +2,7 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.word import normalise_word
+from app.core.text import normalise_word
 from app.services.dictionary import DictionaryEntry
 
 

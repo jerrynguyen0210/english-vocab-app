@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.review_prompt import mask_target, prompt_sentence
+from app.services.reviews.prompts import mask_target, prompt_sentence
 
 
 @pytest.mark.parametrize(

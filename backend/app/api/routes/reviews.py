@@ -10,11 +10,11 @@ from app.schemas.reviews import (
     AnswerResult,
     ChoiceRequest,
     ReviewItem,
+    ReviewSelection,
     SessionItem,
     TypingSessionItem,
 )
-from app.services import reviews
-from app.services.review_preparation import ReviewSelection
+from app.services.reviews import service as reviews
 
 router = APIRouter()
 

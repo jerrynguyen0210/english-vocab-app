@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.api.auth import COOKIE
+from app.api.auth_transport import COOKIE
 from app.api.errors import service_errors
 from app.core.config import get_settings
 from app.core.database import get_session

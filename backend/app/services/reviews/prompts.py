@@ -3,7 +3,7 @@
 import re
 import unicodedata
 
-from app.models.word import normalise_word
+from app.core.text import normalise_word
 
 
 def mask_target(text: str, word: str) -> str:

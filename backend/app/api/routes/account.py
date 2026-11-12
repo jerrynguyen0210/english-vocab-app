@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Response
 
-from app.api.auth import clear_refresh_cookie
+from app.api.auth_transport import clear_refresh_cookie
 from app.api.dependencies import DB, CurrentUser
 from app.api.errors import service_errors
 from app.services import accounts

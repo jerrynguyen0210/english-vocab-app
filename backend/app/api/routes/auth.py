@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from app.api.auth import (
+from app.api.auth_transport import (
     clear_refresh_cookie,
     native_request,
     refresh_token,

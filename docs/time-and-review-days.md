@@ -28,4 +28,4 @@ Changing timezone immediately changes the daily workload boundary without changi
 stored due times, history, or review counts. API timestamps should include `Z` or
 an explicit UTC offset; clients display them in the user's selected zone.
 
-Implementation: `app/core/time.py` and `app/services/review_queue.py`.
+Implementation: `app/core/time.py` and `app/services/reviews/queries.py`.

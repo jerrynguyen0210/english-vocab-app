@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import Base
 from app.core.time import local_day_bounds
 from app.models import ReviewState, User, Word
-from app.services.review_queue import due_today, ready_to_review
+from app.services.reviews.queries import due_today, ready_to_review
 
 
 @pytest.mark.parametrize(

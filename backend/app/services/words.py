@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.text import normalise_word
 from app.models import PromptJob, ReviewState, User, Word
-from app.models.word import normalise_word
 from app.schemas.words import CreateWord, WordCreated, WordSearchResult
 from app.services.accounts import lock_account
 from app.services.dictionary import (
@@ -20,7 +20,7 @@ from app.services.errors import (
     InvalidSearch,
     WordAlreadyExists,
 )
-from app.services.review_prompt import prompt_sentence
+from app.services.reviews.prompts import prompt_sentence
 
 
 def find_words(

@@ -197,7 +197,7 @@ python -m pytest
 
 The default tests use temporary SQLite databases and ignore local `.env` settings.
 To repeat the API tests against PostgreSQL, set `TEST_POSTGRES_URL` to a local
-test database URL and run `python -m pytest tests/test_api.py`. Each test creates
+test database URL and run `python -m pytest tests/api`. Each test creates
 and removes its own randomly named schema; existing application tables are untouched.
 The database role needs permission to create schemas. CI runs both database paths.
 

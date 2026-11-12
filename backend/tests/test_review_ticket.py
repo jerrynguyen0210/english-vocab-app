@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.models import ReviewState
-from app.services.review_ticket import issue_ticket, valid_ticket
+from app.services.reviews.tickets import issue_ticket, valid_ticket
 
 
 def test_session_ticket_is_scoped_expires_and_invalidates_after_another_review():

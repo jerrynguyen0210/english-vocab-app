@@ -6,8 +6,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import Base
+from app.core.text import normalise_word
 from app.models import User, Word
-from app.models.word import normalise_word
 
 
 @pytest.fixture

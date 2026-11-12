@@ -8,6 +8,8 @@ from lemminflect import getInflection, getLemma
 from nltk.corpus import wordnet
 from pydantic import BaseModel
 
+from app.core.text import normalise_word
+
 PartOfSpeech = Literal["noun", "verb", "adjective", "adverb", "other"]
 VerbForm = Literal["V1", "V2", "V3"]
 POS: dict[str, PartOfSpeech] = {
@@ -123,8 +125,6 @@ def search_dictionary(
 @lru_cache(maxsize=1024)
 def review_parts(word: str) -> frozenset[PartOfSpeech]:
     """Infer saved-word POS without a new stored field or family expansion."""
-    from app.models.word import normalise_word
-
     query = normalise_word(word)
     try:
         with _lock:
@@ -137,8 +137,6 @@ def review_parts(word: str) -> frozenset[PartOfSpeech]:
 
 def review_family(word: str) -> tuple[str, ...]:
     """Use the same lexical-family/inflection rules as dictionary search."""
-    from app.models.word import normalise_word
-
     try:
         with _lock:
             return tuple(entry.word for entry in _lookup(normalise_word(word), True))

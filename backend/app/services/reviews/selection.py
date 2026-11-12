@@ -1,21 +1,13 @@
 """Shared selection for preparation counts and bounded review snapshots."""
 
 from datetime import UTC, datetime, time, timedelta
-from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel
 from sqlalchemy import Select, select
 
 from app.core.time import local_day_bounds
 from app.models import ReviewState, User, Word
-
-
-class ReviewSelection(BaseModel):
-    source: Literal["time", "recall"] = "recall"
-    period: Literal["Yesterday", "Weekly", "Monthly"] = "Weekly"
-    include_overdue: bool = True
-    answer_mode: Literal["typing", "choice"] = "typing"
+from app.schemas.reviews import ReviewSelection
 
 
 def selected_words(

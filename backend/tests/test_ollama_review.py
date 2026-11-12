@@ -1,15 +1,10 @@
-"""Run directly: python backend/app/llm/test_ollama_review.py."""
+"""Offline tests for Ollama prompt generation and response validation."""
 
 import io
 import json
-import sys
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 from urllib.error import URLError
-
-if __name__ == "__main__":
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.llm.ollama_review import OLLAMA_URL, ReviewError, generate_review
 

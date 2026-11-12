@@ -4,7 +4,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.word import normalise_word
+from app.core.text import normalise_word
+
+
+class ReviewSelection(BaseModel):
+    source: Literal["time", "recall"] = "recall"
+    period: Literal["Yesterday", "Weekly", "Monthly"] = "Weekly"
+    include_overdue: bool = True
+    answer_mode: Literal["typing", "choice"] = "typing"
 
 
 class ReviewItem(BaseModel):

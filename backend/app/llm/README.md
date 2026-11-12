@@ -58,7 +58,8 @@ is included for this local experiment; this output is not a backend API contract
 Run isolated tests without Ollama:
 
 ```bash
-python3 backend/app/llm/test_ollama_review.py
+cd backend
+python -m pytest tests/test_ollama_review.py
 ```
 
 API reference: https://docs.ollama.com/api/generate

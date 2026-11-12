@@ -1,9 +1,9 @@
 import pytest
 from pydantic import ValidationError
 
-import app.services.review_choices as choices
-from app.models.word import normalise_word
+from app.core.text import normalise_word
 from app.schemas.reviews import SessionItem
+from app.services.reviews import choices
 
 
 def profiles(**words):

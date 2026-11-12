@@ -1,6 +1,5 @@
-"""User-owned vocabulary and shared normalization for duplicates and history."""
+"""User-owned vocabulary with normalized duplicate detection."""
 
-import unicodedata
 import uuid
 from datetime import datetime
 
@@ -14,12 +13,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.core.database import Base
+from app.core.text import normalise_word
 from app.core.time import UTCDateTime
-
-
-def normalise_word(value: str) -> str:
-    """Fold Unicode compatibility, case and whitespace; retain accents/punctuation."""
-    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
 
 
 class Word(Base):

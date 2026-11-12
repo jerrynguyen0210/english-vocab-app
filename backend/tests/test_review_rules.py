@@ -3,7 +3,8 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 
 from app.models import ReviewState
-from app.services.review_queue import answer_matches, normalise_answer, schedule_review
+from app.services.reviews.answers import answer_matches, normalise_answer
+from app.services.reviews.scheduling import schedule_review
 
 
 @pytest.mark.parametrize(

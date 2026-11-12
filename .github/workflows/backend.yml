@@ -47,7 +47,7 @@ jobs:
       - run: python -m mypy
       - run: python -m pytest
       - name: Exercise API flows against isolated PostgreSQL schemas
-        run: python -m pytest tests/test_api.py
+        run: python -m pytest tests/api
         env:
           TEST_POSTGRES_URL: postgresql+psycopg://vocab:vocab@localhost:5432/vocab
       - run: python -m app.migrate

@@ -17,6 +17,7 @@ from app.schemas.reviews import (
     AnswerResult,
     ChoiceRequest,
     ReviewItem,
+    ReviewSelection,
     SessionItem,
     TypingSessionItem,
 )
@@ -26,15 +27,13 @@ from app.services.errors import (
     ReviewConflict,
     ReviewNotFound,
 )
-from app.services.review_choices import review_options
-from app.services.review_preparation import ReviewSelection, selected_words
-from app.services.review_prompt import mask_target
-from app.services.review_queue import (
-    answer_matches,
-    review_totals,
-    schedule_review,
-)
-from app.services.review_ticket import issue_ticket, valid_ticket
+from app.services.reviews.answers import answer_matches
+from app.services.reviews.choices import review_options
+from app.services.reviews.prompts import mask_target
+from app.services.reviews.queries import review_totals
+from app.services.reviews.scheduling import schedule_review
+from app.services.reviews.selection import selected_words
+from app.services.reviews.tickets import issue_ticket, valid_ticket
 
 
 def next_reviews(db: Session, user: User, limit: int = 1) -> list[ReviewItem]:
