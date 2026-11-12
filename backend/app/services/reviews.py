@@ -1,7 +1,7 @@
 """Review sessions, answer validation, and atomic review scheduling.
 
 Answer submission retains the account and review locks until its commit.
-Duplicate attempts are checked before ticket expiry and daily limits.
+Duplicate attempts are checked before ticket expiry.
 """
 
 import uuid
@@ -31,7 +31,6 @@ from app.services.review_preparation import ReviewSelection, selected_words
 from app.services.review_prompt import mask_target
 from app.services.review_queue import (
     answer_matches,
-    remaining_daily_reviews,
     review_totals,
     schedule_review,
 )
@@ -40,16 +39,13 @@ from app.services.review_ticket import issue_ticket, valid_ticket
 
 def next_reviews(db: Session, user: User, limit: int = 1) -> list[ReviewItem]:
     now = datetime.now(UTC)
-    remaining = remaining_daily_reviews(db, user, now)
-    if remaining == 0:
-        return []
     # Read the answer only to redact hints; never serialize it in the prompt.
     rows = db.execute(
         select(Word.id, Word.word, Word.english_explanation, Word.example_sentence)
         .join(ReviewState, ReviewState.word_id == Word.id)
         .where(Word.user_id == user.id, ReviewState.due_at <= now)
         .order_by(ReviewState.due_at, Word.id)
-        .limit(min(limit, remaining))
+        .limit(min(limit, 50))
     )
     return [
         ReviewItem(
@@ -84,7 +80,7 @@ def review_preparation(
     totals = review_totals(db, user, now)
     return {
         **totals,
-        "count": min(matching, totals["daily_remaining"], 50),
+        "count": min(matching, 50),
         "matching_count": matching,
     }
 
@@ -93,8 +89,7 @@ def review_session(
     db: Session, user: User, selection: ReviewSelection
 ) -> list[TypingSessionItem]:
     now = datetime.now(UTC)
-    remaining = min(50, remaining_daily_reviews(db, user, now))
-    rows = db.execute(selected_words(user, now, selection).limit(remaining)).all()
+    rows = db.execute(selected_words(user, now, selection).limit(50)).all()
     if not rows:
         return []
     # Infer POS once per saved word; all prompts share these cached profiles.
@@ -151,8 +146,6 @@ def word_choices(
     now = datetime.now(UTC)
     if not valid_ticket(body.review_token, user.id, state, body.attempt_id, now):
         raise ReviewConflict("Review session expired or changed. Start a new review.")
-    if remaining_daily_reviews(db, user, now) == 0:
-        raise ReviewConflict("Daily review cap reached")
     bank = db.scalars(
         select(Word.word).where(Word.user_id == user.id).order_by(Word.id)
     )
@@ -207,8 +200,6 @@ def submit_answer(
         raise ReviewConflict("Review session expired or changed. Start a new review.")
     if body.review_token is None and state.due_at > now:
         raise ReviewConflict("Review item is not due")
-    if remaining_daily_reviews(db, user, now) == 0:
-        raise ReviewConflict("Daily review cap reached")
     correct = answer_matches(body.typed_answer, word.word)
     result: Literal["correct", "incorrect"] = "correct" if correct else "incorrect"
     attempt = ReviewAttempt(

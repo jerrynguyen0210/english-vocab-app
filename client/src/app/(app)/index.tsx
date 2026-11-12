@@ -42,10 +42,7 @@ export default function HomeScreen() {
     }, [retry]),
   );
   const empty =
-    summary &&
-    (summary.saved_count === 0 ||
-      summary.due_count === 0 ||
-      summary.daily_remaining === 0);
+    summary && (summary.saved_count === 0 || summary.due_count === 0);
   return (
     <AppScreen selected="Home">
       <View style={styles.content}>
@@ -140,7 +137,7 @@ export default function HomeScreen() {
               </ThemedText>
               <ThemedText style={styles.progressDetail}>
                 {summary
-                  ? `${summary.saved_count} saved words · ${Math.min(summary.due_count, summary.daily_remaining, 50)} ready to review`
+                  ? `${summary.saved_count} saved words · ${Math.min(summary.due_count, 50)} ready to review`
                   : 'Your progress will appear here.'}
               </ThemedText>
             </View>

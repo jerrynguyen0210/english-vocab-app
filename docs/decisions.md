@@ -6,7 +6,7 @@
 | D2 | Answer checking rules | Exact match · ignore case and leading/trailing spaces · also ignore punctuation · allow small typos | Ignore case and leading/trailing spaces; otherwise exact spelling | P6 |
 | D3 | Hints and retries | No hints · first letter / word length · one retry before revealing | No hints, one attempt, then reveal the correct word | P6 |
 | D4 | Review scheduling (which words come back, and when) | Simple Leitner boxes · SM-2-style · FSRS | SM-2-style scheduling driven by correct/incorrect (supersedes Leitner) | P6 |
-| D5 | Session rules | Fixed count per session · all due words · daily cap | Selected source snapshot with a daily cap | P6 |
+| D5 | Session rules | Fixed count per session · all due words · daily cap | Selected source snapshot, up to 50 words per session | P6 |
 | D6 | Connectivity when offline | Online required · read-only cache · queue adds/answers locally and sync later | Online required for R0; explicit cache/queue decision before R1 | R0 implementation; before R1 scope |
 | D7 | Auth method | Email + password · email magic link · OAuth/social | Email + password or magic link through your own FastAPI auth | P3 |
 | D8 | Backend hosting | VPS/Docker host · managed container platform · BaaS for the database only | Docker on a host you're comfortable with; check pricing when you choose | P10 |
@@ -101,17 +101,13 @@ incorrect recall. The server records the original answer, result and elapsed tim
 and updates the schedule in the same transaction. Feedback is shown before the
 user advances to the next prompt.
 
-D5 uses due-time order and a cap of **20 attempts per user-local day**, confirmed
-by the user. Both correct and incorrect attempts count across sessions/devices.
-The cap is enforced on queue reads and submissions; rejected submissions do not
-record an attempt or change the schedule. It resets at local midnight according
-to the account's saved IANA timezone (UTC by default). `REVIEW_DAILY_CAP` is a
-server configuration override, default 20. No schema migration is required.
+D5 has no daily review cap (updated at the user's request on 2026-11-12).
+Sessions contain up to 50 matching words. Users may start additional sessions
+without a daily attempt allowance. Scheduling, ownership checks and duplicate
+submission protection still apply. `REVIEW_DAILY_CAP` is no longer used.
 
-A session ends when the queue is empty or the daily cap is reached. Its finish
-screen displays the number of correct answers out of attempts completed in that
-screen session; reopening Review starts a new screen-session total while retaining
-the server's daily cap usage.
+A session ends when its snapshot is exhausted. Its finish screen displays the
+number of correct answers and attempts completed in that session.
 
 ## Review implementation log — 2026-11-10
 
@@ -136,9 +132,8 @@ Before the next UI changes, add backend unit coverage for these rules:
   Monthly are rolling 7/30-day saved-date windows. Recall includes all words
   scheduled today, optionally including earlier days. Topic search is deferred
   to a future backend implementation; user-entered topic tags are removed.
-  Sessions are limited to 50 words and the
-  remaining daily allowance (20 attempts by default), including time-based
-  practice. Newly added words wait for the next session. No client clock
+  Sessions are limited to 50 words, including time-based practice.
+  There is no daily allowance. Newly added words wait for the next session. No client clock
   determines eligibility. Answer mode is selected on the Review screen;
   choice distractors follow D16 and always provide four unique server options.
   Both answer modes use the same D2 checking and D4 updates.
@@ -176,7 +171,7 @@ Before R1, review actual R0 usage and record an explicit accept/defer decision:
 | --- | --- | --- |
 | Keep online-only | Smallest maintenance burden; server remains authoritative | Accept interruption during outages |
 | Read-only local cache | Browse previously loaded words offline | Account isolation, stale-data labels, expiry, logout/deletion cleanup, storage/privacy tests |
-| Durable write queue | Add words or answer without a connection | Idempotent adds, review eligibility and daily-cap conflicts, ordering, retries, account changes, sync status, failed-item recovery, schema upgrades |
+| Durable write queue | Add words or answer without a connection | Idempotent adds, review eligibility conflicts, ordering, retries, account changes, sync status, failed-item recovery, schema upgrades |
 
 Default for R1 planning: keep online-only unless repeated real offline usage
 blocks learning. If the need is browsing, consider a read-only cache first.
@@ -292,7 +287,7 @@ masked prompt fields and signed attempt metadata, with no options or correct
 word before submission. The client requests choices only after an explicit
 Multiple choice selection, preserving the current attempt and progress. Such
 requests include the signed review token in the body, never in a URL. They
-validate ownership, current scheduling state and daily allowance without
+validate ownership, current scheduling state without
 recording an answer. Returning to Typing removes the displayed options.
 
 Typing displays “Spelling matters · Enter to submit”, auto-focuses the input,

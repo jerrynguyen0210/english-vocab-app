@@ -21,7 +21,7 @@ after today's local midnight. Future times within today are eligible.
 The response includes `count`, `matching_count`, `saved_count`, `due_count` and
 `daily_remaining`. Saved and due totals are scoped to the current user; due
 includes today and overdue words regardless of the selected filter. Count is the number ready for this
-session, capped at 50 and at the user's remaining daily attempt allowance.
+session, capped at 50 per session, with no daily attempt limit.
 The client disables Start until the current count loads, while empty or after a
 failure, and offers retry. Changing filters discards obsolete responses. Counts
 refresh when returning to preparation. A session rechecks selection and allowance
@@ -54,7 +54,7 @@ Answers submit the prompt's `attempt_id` and `review_token`, `typed_answer`
 attempt and prior scheduling state, and authorize selected practice even before
 the word's due date. Forged, expired or stale tokens are rejected. Exact retries
 return the persisted result without another attempt or scheduling change. The
-server still enforces ownership and daily allowance under its existing locks.
+server still enforces ownership and scheduling under its existing locks.
 A client retry retains the exact body and disables editing/mode changes.
 
 Both modes and the supported sources update SM-2 state and attempt history. Binary grades
@@ -79,7 +79,7 @@ failures offer retry.
 With no saved words, Home and preparation show **Empty word bank** with
 **Add your first word** linking to Add word. With a saved bank and no due words,
 they show **Nothing due** and **You're all caught up**, with an **Add word** link.
-A daily cap with matching words is **Daily review limit reached**. A selection
+A selection
 with no matches while other words are due says **No words match this review**,
 so changing a filter does not falsely imply that all reviews are done. These
 states retain an Add word action. By topic remains deferred and does not display
@@ -88,3 +88,6 @@ an empty-data result.
 Direct empty review sessions use preparation totals to show the same state and
 Add word action, with a Back to Home link. No answer options or word contents
 are included in the summary/count responses.
+
+`daily_remaining` is deprecated and always returns 50 for older clients. It no
+longer represents a daily allowance and never decreases after an answer.

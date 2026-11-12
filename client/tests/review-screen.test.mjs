@@ -783,16 +783,6 @@ for (const screen of ['index', 'review-preparation']) {
       title: "You're all caught up",
       action: 'Add word',
     },
-    {
-      name: 'daily cap',
-      saved_count: 3,
-      due_count: 2,
-      daily_remaining: 0,
-      matching_count: 2,
-      count: 0,
-      title: 'Daily review limit reached',
-      action: 'Add word',
-    },
   ]) {
     test(`${screen} distinguishes ${state.name} and links to Add word`, async () => {
       const h = harness(async () => Response.json(state), {}, screen);
@@ -804,8 +794,6 @@ for (const screen of ['index', 'review-preparation']) {
       else await h.advance();
       assert.ok(h.text().includes(state.title));
       assert.equal(h.navigation(state.action).props.href, '/add-word');
-      if (state.name === 'daily cap')
-        assert.doesNotMatch(h.text(), /You're all caught up/);
       assert.doesNotMatch(h.text(), /Sample data/);
     });
   }
@@ -917,7 +905,7 @@ test('the final Next word finishes all twelve words with a count and Home link',
   assert.equal(loads, 1);
 });
 
-test('daily cap interruption does not claim every snapshot word was reviewed', async () => {
+test('session conflict does not claim every snapshot word was reviewed', async () => {
   let submissions = 0;
   const h = harness(async (_, init) => {
     if (!init)
@@ -928,7 +916,10 @@ test('daily cap interruption does not claim every snapshot word was reviewed', a
     submissions++;
     return submissions === 1
       ? Response.json({ result: 'correct', correct_word: 'Hello' })
-      : Response.json({ detail: 'Daily review cap reached' }, { status: 409 });
+      : Response.json(
+          { detail: 'Review session expired or changed' },
+          { status: 409 },
+        );
   });
   await h.flush();
   h.input().props.onChangeText('Hello');
@@ -940,6 +931,8 @@ test('daily cap interruption does not claim every snapshot word was reviewed', a
   h.input().props.onChangeText('Hello');
   await h.flush();
   h.button('Check answer').props.onPress();
+  await h.flush();
+  h.button('Next word').props.onPress();
   await h.flush();
   assert.match(h.text(), /You reviewed 1 of 2 words/);
   assert.doesNotMatch(h.text(), /You reviewed all 2/);

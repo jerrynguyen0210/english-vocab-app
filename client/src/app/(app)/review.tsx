@@ -265,9 +265,7 @@ export default function ReviewScreen() {
           ? 'Empty word bank. Add your first word.'
           : emptyKind === 'nothing_due'
             ? "Nothing due. You're all caught up."
-            : emptyKind === 'daily_limit'
-              ? 'Daily review limit reached.'
-              : 'No words match this review.'
+            : 'No words match this review.'
       : '';
 
   useEffect(() => {
@@ -313,17 +311,11 @@ export default function ReviewScreen() {
         },
       );
       if (response.status === 409 || response.status === 404) {
-        const problem = await response.json();
         if (!mounted.current) return;
-        if (problem.detail === 'Daily review cap reached') {
-          queue.current = [];
-          setItem(null);
-        } else {
-          setConflict(true);
-          setError(
-            'This review item has expired or changed. Continue to the next item.',
-          );
-        }
+        setConflict(true);
+        setError(
+          'This review item has expired or changed. Continue to the next item.',
+        );
         return;
       }
       if (!response.ok) throw new Error();
@@ -361,9 +353,7 @@ export default function ReviewScreen() {
                 ? 'Empty word bank'
                 : emptyKind === 'nothing_due'
                   ? 'Nothing due'
-                  : emptyKind === 'daily_limit'
-                    ? 'Daily review limit reached'
-                    : 'No matching words'
+                  : 'No matching words'
             : 'Review your words'}
         </ThemedText>
         <ThemedText style={styles.subtitle}>

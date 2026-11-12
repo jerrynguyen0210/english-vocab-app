@@ -92,7 +92,7 @@ announces the outcome and correct word on web/Android (also the user’s answer
 when incorrect), and VoiceOver uses an explicit iOS announcement.
 Finished sessions announce and display the reviewed-word and correct-answer counts.
 
-The snapshot and every submission respect the daily cap across sessions/devices.
+Sessions contain up to 50 words, with no daily review limit.
 Only a confirmed answer increments totals. Network retries resend the same attempt
 ID, signed token, answer and duration; the server returns the saved result without
 recording or scheduling twice. Due times and day boundaries use the server clock.
@@ -109,11 +109,11 @@ These tests do not emulate native layout or screen-reader speech.
 After the final Next word exhausts the fixed snapshot, show **Review finished**
 and **You reviewed all N words**, with correct-answer totals and Back to Home.
 The count uses confirmed submissions, not the number of prompts shown. If a
-conflict skips a word or another device reaches the daily cap, show **You
+conflict skips a word, show **You
 reviewed R of N words** instead of claiming all words were reviewed. Completion
 has an accessible announcement and does not fetch or silently append a new queue.
 
 A session empty at start is not a finished review. It loads the selected
 preparation totals to distinguish **Empty word bank**, **Nothing due**, an empty
-filter and a daily cap. Every empty state links to Add word; failure to load the
+filter. Every empty state links to Add word; failure to load the
 totals shows a retryable error rather than a guessed empty state.

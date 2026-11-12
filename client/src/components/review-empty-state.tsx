@@ -21,11 +21,6 @@ const messages = {
     detail: 'Try another source or time period, or add a word.',
     action: 'Add word',
   },
-  daily_limit: {
-    title: 'Daily review limit reached',
-    detail: 'Come back tomorrow to review more words, or add a word now.',
-    action: 'Add word',
-  },
 };
 export function ReviewEmptyState({
   kind,

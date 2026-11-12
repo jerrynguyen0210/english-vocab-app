@@ -231,8 +231,8 @@ export default function ReviewPreparationScreen() {
         )}
         {count !== null && ready && ready.matching > count && (
           <ThemedText style={styles.detail}>
-            {ready.matching} matching words · this session is limited by your
-            remaining daily allowance.
+            {ready.matching} matching words · each session includes up to 50
+            words.
           </ThemedText>
         )}
         {count !== null && count > 0 && !error ? (

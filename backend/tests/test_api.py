@@ -533,12 +533,12 @@ def test_d2_result_is_recorded(api, answer, expected):
     assert attempt.time_taken_ms == 100
 
 
-def test_daily_cap_applies_across_sessions_and_isolates_users(api):
+def test_reviews_continue_beyond_twenty_attempts_and_isolate_users(api):
     client, db, owner, other, _ = api
-    # Seed 19 persisted attempts; only one more is permitted today.
+    # Seed more than the former daily cap; further reviews must remain available.
     word_id = create(client, owner, "First").json()["id"]
     word = db.get(Word, uuid.UUID(word_id))
-    for _ in range(19):
+    for _ in range(25):
         db.add(
             ReviewAttempt(
                 word_id=word.id,
@@ -551,7 +551,23 @@ def test_daily_cap_applies_across_sessions_and_isolates_users(api):
         )
     db.commit()
     second = create(client, owner, "Second").json()["id"]
-    assert len(client.get("/api/v1/reviews/next?limit=50", headers=owner).json()) == 1
+    preparation = client.get("/api/v1/reviews/preparation", headers=owner).json()
+    assert preparation["count"] == 2
+    items = client.get("/api/v1/reviews/session", headers=owner).json()
+    assert len(items) == 2
+    item = items[0]
+    assert (
+        client.post(
+            f"/api/v1/reviews/{item['word_id']}/choices",
+            headers=owner,
+            json={
+                "attempt_id": item["attempt_id"],
+                "review_token": item["review_token"],
+            },
+        ).status_code
+        == 200
+    )
+    assert len(client.get("/api/v1/reviews/next?limit=50", headers=owner).json()) == 2
     assert (
         client.post(
             f"/api/v1/reviews/{word_id}/answer",
@@ -560,15 +576,15 @@ def test_daily_cap_applies_across_sessions_and_isolates_users(api):
         ).status_code
         == 200
     )
-    assert client.get("/api/v1/reviews/next", headers=owner).json() == []
-    blocked = client.post(
+    assert len(client.get("/api/v1/reviews/next", headers=owner).json()) == 1
+    accepted = client.post(
         f"/api/v1/reviews/{second}/answer",
         headers=owner,
         json={"typed_answer": "Second", "time_taken_ms": 10},
     )
-    assert blocked.status_code == 409
-    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 20
-    assert db.get(ReviewState, uuid.UUID(second)).correct_count == 0
+    assert accepted.status_code == 200
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 27
+    assert db.get(ReviewState, uuid.UUID(second)).correct_count == 1
     other_word = create(client, other).json()["id"]
     assert len(client.get("/api/v1/reviews/next", headers=other).json()) == 1
     assert (
@@ -579,33 +595,6 @@ def test_daily_cap_applies_across_sessions_and_isolates_users(api):
         ).status_code
         == 200
     )
-
-
-def test_daily_cap_uses_user_local_midnight(api):
-    from app.core.time import local_day_bounds
-    from app.services.review_queue import remaining_daily_reviews
-
-    client, db, owner, _, _ = api
-    word_id = create(client, owner).json()["id"]
-    word = db.get(Word, uuid.UUID(word_id))
-    user = db.get(User, word.user_id)
-    user.timezone = "Australia/Adelaide"
-    now = datetime(2026, 11, 10, 14, 0, tzinfo=UTC)
-    start, end = local_day_bounds(now, user.timezone)
-    for moment in [start - timedelta(microseconds=1), start, end]:
-        db.add(
-            ReviewAttempt(
-                word_id=word.id,
-                user_id=user.id,
-                typed_answer="Hello",
-                result="correct",
-                reviewed_at=moment,
-                time_taken_ms=1,
-            )
-        )
-    db.commit()
-    assert remaining_daily_reviews(db, user, now) == 19
-    assert remaining_daily_reviews(db, user, end) == 19
 
 
 def test_retry_after_lost_response_records_once(api):
@@ -716,7 +705,7 @@ def test_preparation_windows_and_overdue_are_user_local(api, monkeypatch):
             "matching_count": expected,
             "saved_count": 8,
             "due_count": 6,
-            "daily_remaining": get_settings().review_daily_cap,
+            "daily_remaining": 50,
         }
         assert (
             len(
@@ -760,7 +749,7 @@ def test_time_session_authorizes_not_due_answers(api):
         "matching_count": 2,
         "saved_count": 2,
         "due_count": 0,
-        "daily_remaining": get_settings().review_daily_cap,
+        "daily_remaining": 50,
     }
     assert response.headers["cache-control"] == "no-store"
     items = client.get("/api/v1/reviews/session" + query, headers=owner).json()
@@ -807,9 +796,8 @@ def test_time_session_authorizes_not_due_answers(api):
     assert client.delete("/api/v1/account", headers=owner).status_code == 204
 
 
-def test_preparation_daily_allowance_and_four_options_for_small_bank(api, monkeypatch):
+def test_preparation_unlimited_reviews_and_four_options_for_small_bank(api):
     client, _, owner, _, _ = api
-    monkeypatch.setattr(get_settings(), "review_daily_cap", 1)
     create(client, owner)
     item = client.get(
         "/api/v1/reviews/session?source=recall&answer_mode=choice", headers=owner
@@ -821,11 +809,11 @@ def test_preparation_daily_allowance_and_four_options_for_small_bank(api, monkey
     assert client.get(
         "/api/v1/reviews/preparation?source=recall", headers=owner
     ).json() == {
-        "count": 1,
+        "count": 2,
         "matching_count": 2,
         "saved_count": 2,
         "due_count": 2,
-        "daily_remaining": 1,
+        "daily_remaining": 50,
     }
     result = client.post(
         f"/api/v1/reviews/{item['word_id']}/answer",
@@ -842,9 +830,12 @@ def test_preparation_daily_allowance_and_four_options_for_small_bank(api, monkey
         client.get("/api/v1/reviews/preparation?source=time", headers=owner).json()[
             "count"
         ]
-        == 0
+        == 2
     )
-    assert client.get("/api/v1/reviews/session?source=time", headers=owner).json() == []
+    assert (
+        len(client.get("/api/v1/reviews/session?source=time", headers=owner).json())
+        == 2
+    )
 
 
 def test_topic_search_is_deferred_and_tags_are_not_accepted(api):
@@ -991,18 +982,17 @@ def test_typing_is_default_and_choice_requires_explicit_authorized_request(api):
     assert client.post(path, headers=owner, json=body).status_code == 409
 
 
-def test_review_summary_distinguishes_empty_bank_nothing_due_and_cap(api, monkeypatch):
+def test_review_summary_distinguishes_empty_bank_and_nothing_due(api):
     client, db, owner, other, _ = api
-    monkeypatch.setattr(get_settings(), "review_daily_cap", 1)
     response = client.get("/api/v1/reviews/summary", headers=owner)
     assert response.status_code == 200
-    assert response.json() == {"saved_count": 0, "due_count": 0, "daily_remaining": 1}
+    assert response.json() == {"saved_count": 0, "due_count": 0, "daily_remaining": 50}
     assert response.headers["cache-control"] == "no-store"
     word_id = create(client, owner).json()["id"]
     assert client.get("/api/v1/reviews/summary", headers=owner).json() == {
         "saved_count": 1,
         "due_count": 1,
-        "daily_remaining": 1,
+        "daily_remaining": 50,
     }
     assert (
         client.get("/api/v1/reviews/summary", headers=other).json()["saved_count"] == 0
@@ -1015,7 +1005,7 @@ def test_review_summary_distinguishes_empty_bank_nothing_due_and_cap(api, monkey
     assert client.get("/api/v1/reviews/summary", headers=owner).json() == {
         "saved_count": 1,
         "due_count": 0,
-        "daily_remaining": 0,
+        "daily_remaining": 50,
     }
     db.get(ReviewState, uuid.UUID(word_id)).due_at = datetime.now(UTC) - timedelta(
         seconds=1
@@ -1025,9 +1015,9 @@ def test_review_summary_distinguishes_empty_bank_nothing_due_and_cap(api, monkey
     assert prep == {
         "saved_count": 1,
         "due_count": 1,
-        "daily_remaining": 0,
+        "daily_remaining": 50,
         "matching_count": 1,
-        "count": 0,
+        "count": 1,
     }
     assert client.get("/api/v1/reviews/summary").status_code == 401
 

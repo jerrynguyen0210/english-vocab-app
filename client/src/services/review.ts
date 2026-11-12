@@ -17,15 +17,12 @@ export type ReviewSummary = {
   due_count: number;
   daily_remaining: number;
 };
-export type ReviewEmptyKind =
-  'empty_bank' | 'nothing_due' | 'no_matches' | 'daily_limit';
+export type ReviewEmptyKind = 'empty_bank' | 'nothing_due' | 'no_matches';
 export function reviewEmptyKind(
   summary: ReviewSummary,
-  matching = summary.due_count,
+  _matching = summary.due_count,
 ): ReviewEmptyKind {
   if (summary.saved_count === 0) return 'empty_bank';
-  if (matching > 0 && summary.daily_remaining === 0) return 'daily_limit';
   if (summary.due_count === 0) return 'nothing_due';
-  if (summary.daily_remaining === 0) return 'daily_limit';
   return 'no_matches';
 }
