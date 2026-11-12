@@ -11,6 +11,50 @@ from app.models import ReviewAttempt, ReviewState, Word
 from .helpers import create
 
 
+def test_old_answer_retry_keeps_its_original_schedule_after_later_review(api):
+    client, db, owner, _, _ = api
+    word_id = create(client, owner).json()["id"]
+    first_item = client.get("/api/v1/reviews/session", headers=owner).json()[0]
+    body = {
+        "attempt_id": first_item["attempt_id"],
+        "review_token": first_item["review_token"],
+        "typed_answer": "Hello",
+        "time_taken_ms": 10,
+    }
+    url = f"/api/v1/reviews/{word_id}/answer"
+    first = client.post(url, headers=owner, json=body)
+    # Time-based practice can legitimately review an item before it is due.
+    next_item = client.get("/api/v1/reviews/session?source=time", headers=owner).json()[
+        0
+    ]
+    second = client.post(
+        url,
+        headers=owner,
+        json={
+            **body,
+            "attempt_id": next_item["attempt_id"],
+            "review_token": next_item["review_token"],
+        },
+    )
+    assert first.status_code == second.status_code == 200
+    assert first.json()["next_due_at"] != second.json()["next_due_at"]
+    assert client.post(url, headers=owner, json=body).json() == first.json()
+    assert db.scalar(select(func.count()).select_from(ReviewAttempt)) == 2
+
+
+def test_grading_and_recorded_normalization_agree(api):
+    client, db, owner, _, _ = api
+    word_id = create(client, owner, "take off").json()["id"]
+    response = client.post(
+        f"/api/v1/reviews/{word_id}/answer",
+        headers=owner,
+        json={"typed_answer": "  ＴＡＫＥ\t OFF  ", "time_taken_ms": 1},
+    )
+    assert response.status_code == 200
+    assert response.json()["result"] == "correct"
+    assert db.scalar(select(ReviewAttempt.normalised_answer)) == "take off"
+
+
 def test_create_queue_submit_and_schedule(api):
     client, db, owner, other, _ = api
     response = create(client, owner)
@@ -136,10 +180,10 @@ def test_queue_and_submission_isolate_accounts(api):
     ("answer", "expected"),
     [
         ("  TAKE a break  ", "correct"),
-        ("take  a break", "incorrect"),
+        ("take  a break", "correct"),
         ("take a break!", "incorrect"),
         ("take a brek", "incorrect"),
-        ("ＴＡＫＥ a break", "incorrect"),
+        ("ＴＡＫＥ a break", "correct"),
         ("", "incorrect"),
     ],
 )
@@ -261,7 +305,7 @@ def test_retry_after_lost_response_records_once(api):
         (" HELLO ", "correct"),
         ("helo", "incorrect"),
         ("hello!", "incorrect"),
-        ("ＨＥＬＬＯ", "incorrect"),
+        ("ＨＥＬＬＯ", "correct"),
     ],
 )
 def test_typing_session_hides_answer_until_d2_submission(api, typed_answer, expected):

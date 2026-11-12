@@ -9,7 +9,10 @@ local Ollama. The client uses Python's standard library and can still run direct
 and a durable generation job together, then returns 201 without waiting for Ollama.
 Known duplicates return 409. Run `python -m app.prompt_worker` separately (or use
 Compose's `prompt-worker` service) to generate and store `words.review_prompt`.
-Generation failures retain the word and retry automatically with backoff. Jobs
+Generation failures retain the word and retry automatically with backoff up to
+`PROMPT_JOB_MAX_ATTEMPTS` (default 5). Terminal failures remain inspectable with
+`python -m app.prompt_jobs status`; after fixing the cause, reset a failed job with
+`python -m app.prompt_jobs retry --word-id UUID`. Jobs
 survive restarts; expired claims are recovered and stale results are discarded.
 The existing masked example/definition fallback remains usable until completion.
 

@@ -1,9 +1,10 @@
-import importlib.util
 import uuid
 
 import pytest
+from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -23,26 +24,9 @@ def history():
         engine.begin() as connection,
         Operations.context(MigrationContext.configure(connection)),
     ):
-        for name in [
-            "0001_initial",
-            "0002_users",
-            "0003_words",
-            "0004_review_states",
-            "0005_review_attempts",
-            "0006_user_timezone",
-            "0007_auth",
-            "0008_account_erasure",
-            "0009_user_name",
-            "0010_review_preparation",
-            "0011_remove_word_topics",
-            "0012_stored_review_prompts",
-        ]:
-            spec = importlib.util.spec_from_file_location(
-                name, f"migrations/versions/{name}.py"
-            )
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            module.upgrade()
+        scripts = ScriptDirectory.from_config(Config("alembic.ini"))
+        for revision in reversed(list(scripts.walk_revisions())):
+            revision.module.upgrade()
     with Session(engine) as session:
         user = User(email="history@example.test", password_hash="test-hash")
         session.add(user)

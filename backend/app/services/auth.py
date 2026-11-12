@@ -108,6 +108,7 @@ def issue(
 def register(body: RegistrationCredentials, db: Session, native: bool) -> IssuedTokens:
     user = User(
         name=body.name,
+        timezone=body.timezone,
         email=str(body.email).lower(),
         password_hash=hasher.hash(body.password.get_secret_value()),
     )

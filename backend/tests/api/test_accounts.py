@@ -11,6 +11,72 @@ from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
 from .helpers import create
 
 
+def test_timezone_update_is_validated_and_scoped_to_owner(api):
+    client, _db, owner, other, _ = api
+    response = client.patch(
+        "/api/v1/account", headers=owner, json={"timezone": "Australia/Adelaide"}
+    )
+    assert response.status_code == 200
+    assert response.json()["timezone"] == "Australia/Adelaide"
+    assert response.headers["cache-control"] == "no-store"
+    assert (
+        client.get("/api/v1/auth/me", headers=owner).json()["timezone"]
+        == "Australia/Adelaide"
+    )
+
+    assert client.get("/api/v1/auth/me", headers=other).json()["timezone"] == "UTC"
+    for value in ["Invalid/Timezone", "", "../UTC", None, 123]:
+        assert (
+            client.patch(
+                "/api/v1/account", headers=owner, json={"timezone": value}
+            ).status_code
+            == 422
+        )
+    assert client.patch("/api/v1/account", json={"timezone": "UTC"}).status_code == 401
+    assert (
+        client.get("/api/v1/auth/me", headers=owner).json()["timezone"]
+        == "Australia/Adelaide"
+    )
+
+
+def test_timezone_update_changes_local_day_selection_without_rescheduling(
+    api, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import ReviewState
+    from app.services.reviews import service
+
+    client, db, owner, _, _ = api
+    now = datetime(2026, 11, 12, 20, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(service, "datetime", Clock)
+    word_id = uuid.UUID(create(client, owner).json()["id"])
+    word = db.get(Word, word_id)
+    word.created_at = now - timedelta(hours=10)
+    state = db.get(ReviewState, word_id)
+    state.due_at = now + timedelta(hours=6)
+    db.commit()
+    assert client.get("/api/v1/reviews/summary", headers=owner).json()["due_count"] == 0
+    yesterday = "/api/v1/reviews/session?source=time&period=Yesterday"
+    assert client.get(yesterday, headers=owner).json() == []
+    assert (
+        client.patch(
+            "/api/v1/account", headers=owner, json={"timezone": "Australia/Adelaide"}
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/v1/reviews/summary", headers=owner).json()["due_count"] == 1
+    assert client.get(yesterday, headers=owner).json()[0]["word_id"] == str(word_id)
+    db.refresh(state)
+    assert state.due_at == now + timedelta(hours=6)
+
+
 def test_account_erases_owned_records_and_revokes_all_sessions(api):
     client, db, owner, other, tokens = api
     word_id = create(client, owner).json()["id"]

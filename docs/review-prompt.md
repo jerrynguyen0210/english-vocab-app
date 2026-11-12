@@ -44,7 +44,11 @@ available using the fallback while generation is pending. Sessions already loade
 by the client retain their displayed prompt; subsequent reads use the latest
 stored prompt. Review schedules and examples are unchanged.
 
-Failed generation retries with exponential delays from 10 seconds up to one hour.
+Failed generation retries with exponential delays from 10 seconds up to one hour,
+until `PROMPT_JOB_MAX_ATTEMPTS` (default 5) is reached. Failed jobs retain a timestamp
+and a safe failure category; the fallback remains usable. Operators inspect counts
+and failed identifiers with `python -m app.prompt_jobs status` and explicitly reset
+a failed job with `python -m app.prompt_jobs retry --word-id UUID`.
 Jobs survive process restarts. Claims expire after the configured LLM timeout plus
 60 seconds, allowing another worker to recover interrupted work. A unique claim
 token prevents late results from overwriting a newer attempt. Multiple PostgreSQL
@@ -72,15 +76,14 @@ when advancing to the next typing prompt. Enter and Check answer use the same
 submission handler, which prevents duplicate or blank submissions. The original
 draft is sent unchanged: no client normalization or spelling correction occurs.
 
-D2 checking stays on the server: trim outer whitespace and case-fold for the
-comparison, while preserving internal whitespace, punctuation, accents and
-compatibility characters. The correct word appears only in submitted-answer
+D2 checking stays on the server: normalize Unicode NFKC, case, and whitespace
+for comparison while preserving punctuation, accents, and spelling. The correct word appears only in submitted-answer
 feedback for Typing. Explicit multiple-choice requests necessarily include it
 among the four options without identifying which one is correct.
 
 ## Submission and verification
 
-Submission uses D2 (case and outer whitespace ignored; otherwise exact spelling)
+Submission uses D2 (Unicode compatibility, case, and whitespace ignored; otherwise exact spelling)
 and records the original answer and elapsed time on the server. Correct feedback
 shows **Correct answer!**, a **Correct word** label and the server-returned word.
 Incorrect feedback shows **Incorrect answer**, with **Your answer** next to
@@ -95,7 +98,10 @@ Finished sessions announce and display the reviewed-word and correct-answer coun
 Sessions contain up to 50 words, with no daily review limit.
 Only a confirmed answer increments totals. Network retries resend the same attempt
 ID, signed token, answer and duration; the server returns the saved result without
-recording or scheduling twice. Due times and day boundaries use the server clock.
+recording or scheduling twice. New attempts also retain their original resulting
+due time; legacy attempts created before migration 0014 fall back to the current
+schedule because the original response cannot be reconstructed. Due times and day
+boundaries use the server clock.
 
 Backend tests cover Unicode/phrase/repeated-target masking, fallback sentences,
 HTTP serialization and unchanged stored examples. Screen-handler tests cover the

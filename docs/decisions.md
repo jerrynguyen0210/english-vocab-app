@@ -3,7 +3,7 @@
 | ID | Decision | Options | Recommended default | Decide by |
 | --- | --- | --- | --- | --- |
 | D1 | Fields captured when adding a word | Word + English explanation only · plus example sentence · plus where you met it | Word + English explanation (required); example sentence optional | P0 |
-| D2 | Answer checking rules | Exact match · ignore case and leading/trailing spaces · also ignore punctuation · allow small typos | Ignore case and leading/trailing spaces; otherwise exact spelling | P6 |
+| D2 | Answer checking rules | Exact match · ignore case and leading/trailing spaces · also ignore punctuation · allow small typos | Unicode NFKC, case folding, and collapsed whitespace; preserve punctuation and accents | P6 |
 | D3 | Hints and retries | No hints · first letter / word length · one retry before revealing | No hints, one attempt, then reveal the correct word | P6 |
 | D4 | Review scheduling (which words come back, and when) | Simple Leitner boxes · SM-2-style · FSRS | SM-2-style scheduling driven by correct/incorrect (supersedes Leitner) | P6 |
 | D5 | Session rules | Fixed count per session · all due words · daily cap | Selected source snapshot, up to 50 words per session | P6 |
@@ -90,11 +90,11 @@ retention policies remain the deployment operator's responsibility.
 
 ## D2, D3 and D5 — Typed recall and session completion
 
-D2 compares the typed answer and saved word after trimming outer whitespace and
-Unicode case folding. Internal whitespace, punctuation, accents, spelling and
-Unicode compatibility characters remain significant. This is intentionally
-stricter than D14's duplicate-word normalization; normalized attempt text remains
-available for history, but does not determine correctness.
+D2 compares the typed answer and saved word using the same Unicode NFKC, case
+folding, and collapsed-whitespace normalization as D14 and stored answer history
+(updated at the user's request on 2026-11-12). Punctuation, accents, and spelling
+remain significant. The original typed answer is preserved alongside its
+normalized form.
 
 D3 permits one recorded answer per presented prompt; blank input records an
 incorrect recall. The server records the original answer, result and elapsed time
@@ -113,8 +113,8 @@ number of correct answers and attempts completed in that session.
 
 Before the next UI changes, add backend unit coverage for these rules:
 
-- D2: trim outer whitespace and case-fold; preserve internal whitespace,
-  punctuation, accents and compatibility characters. Empty input is incorrect.
+- D2 (updated 2026-11-12): normalize Unicode NFKC, case, and whitespace;
+  preserve punctuation, accents, and spelling. Empty input is incorrect.
 - D3: no hints, one recorded attempt per prompt. Retrying a submission after a
   lost response reuses its attempt ID and returns its recorded result.
 - D4: SM-2-style scheduling (selected with Review preparation) supersedes the

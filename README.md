@@ -347,7 +347,12 @@ Client `authenticatedFetch` accepts v1-relative paths, such as `/words`.
 | POST | `/api/v1/words` | `word`, `english_explanation` → created word (201) |
 | GET | `/api/v1/reviews/next?limit=1` | Due items; limit 1–50; empty array when none |
 | POST | `/api/v1/reviews/{word_id}/answer` | `typed_answer`, `time_taken_ms` → grading result |
+| PATCH | `/api/v1/account` | Validated IANA `timezone` → updated profile (200) |
 | DELETE | `/api/v1/account` | Erase account and owned data (204) |
+
+Registration accepts an optional IANA `timezone` (defaults to `UTC`). Existing users
+can update it with `PATCH /api/v1/account`; local-day selection changes immediately
+without moving existing review due times.
 
 All routes above require a bearer access token. Auth registration, sign-in,
 refresh, logout and me routes also use the `/api/v1/auth` prefix.
@@ -359,9 +364,13 @@ Explanations are user-supplied text and are returned as entered.
 Answer checking uses Unicode NFKC, case folding and collapsed whitespace;
 accents and punctuation remain significant. Responses contain `attempt_id`,
 `result` (`correct` or `incorrect`), `correct_word`, and `next_due_at`.
-Correct answers advance through 1, 2, 4, 7, 14, 30 and 60 days; incorrect answers
+Correct answers use SM-2 intervals of 1 day, 6 days, then the prior interval
+multiplied by the prior ease factor and rounded up; incorrect answers
 reset the level and retry in 10 minutes. Each accepted answer records an immutable
-attempt and updates scheduling in one transaction. Items not yet due return 409
+attempt and updates scheduling in one transaction. New attempts retain the resulting
+due date so retries return the original response even after later reviews. Attempts
+from before migration 0014 have no historical due-date snapshot and retain the
+legacy behavior of returning the current due date. Items not yet due return 409
 without another attempt. Missing items and another account's items both return
 404. Invalid input returns 422. Protected responses disable caching.
 
@@ -410,11 +419,12 @@ WordNet data retains its bundled Princeton license in the installed corpus; see
 Saving a word returns 201 after storing the word and its generation job in one
 transaction. The client does not wait for Ollama. A masked example or definition
 keeps the word reviewable until the generated prompt is ready. Failures retry
-automatically; users do not need to save the word again.
+automatically up to `PROMPT_JOB_MAX_ATTEMPTS` (default 5); users do not need to
+save the word again. Permanently failed jobs retain their fallback prompts.
 
 Docker Compose includes a separate `prompt-worker` service. Rebuild and start the
 API and worker with `docker compose up -d --build api prompt-worker` from `backend/`.
-The API applies forward-only migration 0013 through its normal startup procedure;
+The API applies forward-only migrations through its normal startup procedure;
 the worker retries database access while migration is in progress.
 
 For a local installation, run the normal migration command `python -m app.migrate`
@@ -423,3 +433,18 @@ same environment. The worker uses the existing `DATABASE_URL`, `OLLAMA_URL`,
 `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` settings. No additional broker or
 credentials are required. Keep the worker running to drain the durable queue.
 See [review prompt behavior](docs/review-prompt.md) for retries and recovery.
+
+Operators can inspect queue counts, the oldest pending time, and up to 20 failed
+job identifiers without exposing vocabulary or provider messages:
+
+```bash
+python -m app.prompt_jobs status
+python -m app.prompt_jobs retry --word-id WORD_UUID
+```
+
+Run these commands from `backend/` using the deployment environment. Retry accepts
+only failed jobs and resets their attempt budget after the cause is fixed. A crash
+on the last attempt marks the job failed once its lease expires. Queue categories
+distinguish provider HTTP/connection errors, invalid responses, and exhausted
+attempts. Multiple-choice preparation analyzes at most 200 saved candidate words
+plus the session's 50 targets (201 profiles for a single choice request).

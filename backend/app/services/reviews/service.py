@@ -22,7 +22,7 @@ from app.schemas.reviews import (
     TypingSessionItem,
 )
 from app.services.accounts import lock_account
-from app.services.dictionary import review_parts
+from app.services.dictionary import PartOfSpeech, review_parts
 from app.services.errors import (
     ReviewConflict,
     ReviewNotFound,
@@ -34,6 +34,23 @@ from app.services.reviews.queries import review_totals
 from app.services.reviews.scheduling import schedule_review
 from app.services.reviews.selection import selected_words
 from app.services.reviews.tickets import issue_ticket, valid_ticket
+
+CHOICE_CANDIDATE_LIMIT = 200
+
+
+def choice_profiles(
+    db: Session, user: User, targets: list[str]
+) -> dict[str, frozenset[PartOfSpeech]]:
+    """Bound dictionary work to a candidate pool plus at most 50 session targets."""
+    bank = db.scalars(
+        select(Word.word)
+        .where(Word.user_id == user.id)
+        # Match the existing (user_id, normalised_word) unique index so this
+        # bounded read does not need to sort an account's entire vocabulary.
+        .order_by(Word.normalised_word)
+        .limit(CHOICE_CANDIDATE_LIMIT)
+    )
+    return {word: review_parts(word) for word in dict.fromkeys([*bank, *targets])}
 
 
 def next_reviews(db: Session, user: User, limit: int = 1) -> list[ReviewItem]:
@@ -91,18 +108,8 @@ def review_session(
     rows = db.execute(selected_words(user, now, selection).limit(50)).all()
     if not rows:
         return []
-    # Infer POS once per saved word; all prompts share these cached profiles.
-    bank = (
-        list(
-            db.scalars(
-                select(Word.word).where(Word.user_id == user.id).order_by(Word.id)
-            )
-        )
-        if selection.answer_mode == "choice"
-        else []
-    )
     saved_parts = (
-        {word: review_parts(word) for word in bank}
+        choice_profiles(db, user, [word.word for word, _ in rows])
         if selection.answer_mode == "choice"
         else {}
     )
@@ -145,9 +152,6 @@ def word_choices(
     now = datetime.now(UTC)
     if not valid_ticket(body.review_token, user.id, state, body.attempt_id, now):
         raise ReviewConflict("Review session expired or changed. Start a new review.")
-    bank = db.scalars(
-        select(Word.word).where(Word.user_id == user.id).order_by(Word.id)
-    )
     return SessionItem(
         word_id=word.id,
         attempt_id=body.attempt_id,
@@ -157,9 +161,7 @@ def word_choices(
         example_sentence=mask_target(word.example_sentence, word.word)
         if word.example_sentence
         else None,
-        choices=review_options(
-            word.word, {value: review_parts(value) for value in bank}
-        ),
+        choices=review_options(word.word, choice_profiles(db, user, [word.word])),
     )
 
 
@@ -190,7 +192,7 @@ def submit_answer(
                 attempt_id=previous.id,
                 result=previous.result,
                 correct_word=word.word,
-                next_due_at=state.due_at,
+                next_due_at=previous.next_due_at or state.due_at,
             )
     now = datetime.now(UTC)
     if body.review_token is not None and not valid_ticket(
@@ -201,6 +203,7 @@ def submit_answer(
         raise ReviewConflict("Review item is not due")
     correct = answer_matches(body.typed_answer, word.word)
     result: Literal["correct", "incorrect"] = "correct" if correct else "incorrect"
+    schedule_review(state, correct, now)
     attempt = ReviewAttempt(
         id=body.attempt_id or uuid.uuid4(),
         word_id=word.id,
@@ -209,13 +212,14 @@ def submit_answer(
         result=result,
         reviewed_at=now,
         time_taken_ms=body.time_taken_ms,
+        next_due_at=state.due_at,
     )
     db.add(attempt)
-    schedule_review(state, correct, now)
-    db.commit()
-    return AnswerResult(
+    response = AnswerResult(
         attempt_id=attempt.id,
         result=result,
         correct_word=word.word,
         next_due_at=state.due_at,
     )
+    db.commit()
+    return response

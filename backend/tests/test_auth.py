@@ -35,6 +35,35 @@ NATIVE = {"X-Auth-Platform": "native"}
 WEB = {"Origin": "http://localhost:8081"}
 
 
+def test_registration_accepts_validated_timezone(auth):
+    client, _ = auth
+    response = client.post(
+        "/api/v1/auth/register",
+        json={**CREDS, "timezone": "Australia/Adelaide"},
+        headers=NATIVE,
+    )
+    assert response.status_code == 201
+    headers = {"Authorization": "Bearer " + response.json()["access_token"]}
+    assert (
+        client.get("/api/v1/auth/me", headers=headers).json()["timezone"]
+        == "Australia/Adelaide"
+    )
+
+
+@pytest.mark.parametrize("timezone", ["Unknown/Zone", "", "../UTC", None])
+def test_registration_rejects_invalid_timezone(auth, timezone):
+    client, db = auth
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={**CREDS, "timezone": timezone},
+            headers=NATIVE,
+        ).status_code
+        == 422
+    )
+    assert db.scalar(select(User)) is None
+
+
 def test_native_lifecycle(auth):
     client, db = auth
     response = client.post("/api/v1/auth/register", json=CREDS, headers=NATIVE)

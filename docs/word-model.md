@@ -14,8 +14,7 @@ A `Word` is a vocabulary entry owned by one user.
 
 `normalise_word` applies Unicode NFKC normalization, Unicode case folding, and
 whitespace trimming/collapsing. Accents and punctuation remain significant.
-Attempt history uses the same normalization. D2 correctness instead compares
-the original strings with case folding and outer whitespace trimming only. Setting `Word.word` through the ORM refreshes `normalised_word` while
+Attempt history and D2 correctness use the same normalization. Setting `Word.word` through the ORM refreshes `normalised_word` while
 preserving the original input. Direct SQL and bulk updates bypass this validator;
 those callers must compute and supply the canonical value themselves and must
 not overwrite it independently.

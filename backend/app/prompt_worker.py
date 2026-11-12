@@ -30,10 +30,28 @@ class ClaimedJob:
 
 def claim_job(engine: Engine) -> ClaimedJob | None:
     now = datetime.now(UTC)
+    max_attempts = get_settings().prompt_job_max_attempts
     with Session(engine) as db, db.begin():
+        # A crash on the final attempt must also reach a terminal state once
+        # its lease expires, rather than being reclaimed forever.
+        db.execute(
+            update(PromptJob)
+            .where(
+                PromptJob.failed_at.is_(None),
+                PromptJob.available_at <= now,
+                PromptJob.attempts >= max_attempts,
+            )
+            .values(
+                failed_at=now, failure_category="attempts_exhausted", lease_token=None
+            )
+        )
         job = db.scalar(
             select(PromptJob)
-            .where(PromptJob.available_at <= now)
+            .where(
+                PromptJob.available_at <= now,
+                PromptJob.failed_at.is_(None),
+                PromptJob.attempts < max_attempts,
+            )
             .order_by(PromptJob.available_at, PromptJob.word_id)
             .with_for_update(skip_locked=True)
             .limit(1)
@@ -44,7 +62,12 @@ def claim_job(engine: Engine) -> ClaimedJob | None:
         # The conditional update also prevents double claims without row locking.
         claimed = db.execute(
             update(PromptJob)
-            .where(PromptJob.word_id == job.word_id, PromptJob.available_at <= now)
+            .where(
+                PromptJob.word_id == job.word_id,
+                PromptJob.available_at <= now,
+                PromptJob.failed_at.is_(None),
+                PromptJob.attempts < max_attempts,
+            )
             .values(
                 lease_token=token,
                 attempts=PromptJob.attempts + 1,
@@ -63,7 +86,12 @@ def claim_job(engine: Engine) -> ClaimedJob | None:
         )
 
 
-def finish_job(engine: Engine, claimed: ClaimedJob, prompt: str | None) -> None:
+def finish_job(
+    engine: Engine,
+    claimed: ClaimedJob,
+    prompt: str | None,
+    failure_category: str = "generation_error",
+) -> None:
     with Session(engine) as db, db.begin():
         # Match account erasure's lock ordering and never resurrect deleted data.
         owner = db.scalar(
@@ -83,6 +111,13 @@ def finish_job(engine: Engine, claimed: ClaimedJob, prompt: str | None) -> None:
             return  # Deleted or reclaimed after this worker's lease expired.
         if prompt is None:
             job.lease_token = None
+            job.failure_category = failure_category
+            if claimed.attempts >= get_settings().prompt_job_max_attempts:
+                job.failed_at = datetime.now(UTC)
+                logger.error(
+                    "Prompt job reached its attempt limit (%s)", claimed.attempts
+                )
+                return
             job.available_at = datetime.now(UTC) + timedelta(
                 seconds=min(3600, 5 * 2 ** min(claimed.attempts, 10))
             )
@@ -108,12 +143,15 @@ def process_one(engine: Engine) -> bool:
             base_url=settings.ollama_url,
             timeout=settings.ollama_timeout_seconds,
         )
-    except (ReviewError, ValueError):
+    except (ReviewError, ValueError) as error:
         # Avoid logging user vocabulary or provider error bodies.
-        logger.warning(
-            "Prompt generation failed; scheduling retry (attempt %s)", claimed.attempts
+        logger.warning("Prompt generation failed (attempt %s)", claimed.attempts)
+        finish_job(
+            engine,
+            claimed,
+            None,
+            error.category if isinstance(error, ReviewError) else "invalid_response",
         )
-        finish_job(engine, claimed, None)
     else:
         finish_job(engine, claimed, result["prompt_sentence"])
     return True

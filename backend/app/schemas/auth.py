@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
 
+from app.schemas.account import Timezone
+
 
 class Credentials(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -11,6 +13,7 @@ class Credentials(BaseModel):
 
 
 class RegistrationCredentials(Credentials):
+    timezone: Timezone = "UTC"
     # Optional for existing clients; new clients collect the name during sign-up.
     name: str | None = Field(default=None, min_length=1, max_length=100)
 

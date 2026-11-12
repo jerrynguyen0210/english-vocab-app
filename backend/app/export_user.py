@@ -75,6 +75,7 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
             ReviewAttempt.result,
             ReviewAttempt.reviewed_at,
             ReviewAttempt.time_taken_ms,
+            ReviewAttempt.next_due_at,
         )
         .where(ReviewAttempt.user_id == user_id)
         .order_by(ReviewAttempt.reviewed_at, ReviewAttempt.id)

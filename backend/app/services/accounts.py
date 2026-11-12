@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
+from app.schemas.account import AccountUpdate
 from app.services.errors import AccountUnavailable
 
 
@@ -20,6 +21,13 @@ def lock_account(db: Session, user: User) -> None:
     )
     if active is None:
         raise AccountUnavailable("Account unavailable")
+
+
+def update_account(db: Session, user: User, body: AccountUpdate) -> User:
+    lock_account(db, user)
+    user.timezone = body.timezone
+    db.commit()
+    return user
 
 
 def delete_account(db: Session, user: User) -> None:

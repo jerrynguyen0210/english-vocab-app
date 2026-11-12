@@ -11,6 +11,62 @@ from app.core.config import get_settings
 from app.migrate import upgrade_database
 
 
+def test_response_and_failure_migrations_preserve_existing_data(tmp_path, monkeypatch):
+    url = f"sqlite:///{tmp_path}/response-snapshots.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    config = Config("alembic.ini")
+    engine = create_engine(url)
+    try:
+        command.upgrade(config, "0013")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, password_hash) VALUES (:owner, 'legacy@example.test', 'placeholder')"
+                ),
+                {"owner": "1" * 32},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO words (id, user_id, word, normalised_word, english_explanation) "
+                    "VALUES (:word, :owner, 'hello', 'hello', 'A greeting')"
+                ),
+                {"word": "2" * 32, "owner": "1" * 32},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO review_attempts (id, word_id, user_id, typed_answer, normalised_answer, result, time_taken_ms) "
+                    "VALUES (:attempt, :word, :owner, 'Hello', 'hello', 'correct', 10)"
+                ),
+                {"attempt": "3" * 32, "word": "2" * 32, "owner": "1" * 32},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO prompt_jobs (word_id, attempts, lease_token) VALUES (:word, 3, :token)"
+                ),
+                {"word": "2" * 32, "token": "4" * 32},
+            )
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert tuple(
+                connection.execute(
+                    text(
+                        "SELECT typed_answer, result, next_due_at FROM review_attempts"
+                    )
+                ).one()
+            ) == ("Hello", "correct", None)
+            assert tuple(
+                connection.execute(
+                    text(
+                        "SELECT attempts, lease_token, failed_at, failure_category FROM prompt_jobs"
+                    )
+                ).one()
+            ) == (3, "4" * 32, None, None)
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
 def test_upgrade_and_repeated_run(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path}/deploy.db"
     monkeypatch.setenv("DATABASE_URL", url)
@@ -35,7 +91,7 @@ def test_upgrade_and_repeated_run(tmp_path, monkeypatch):
         engine = create_engine(url)
         with engine.connect() as conn:
             assert (
-                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0013"
+                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0015"
             )
             assert (
                 conn.scalar(
@@ -117,6 +173,9 @@ def test_preparation_migration_preserves_existing_schedule_and_history(
         ).one()
         assert tuple(state) == (4, "2026-12-10 12:00:00", 5, 2, 0, 0, 2.5)
         assert connection.scalar(text("SELECT count(*) FROM review_attempts")) == 1
+        assert (
+            connection.scalar(text("SELECT next_due_at FROM review_attempts")) is None
+        )
         assert "word_topics" not in inspect(connection).get_table_names()
         assert (
             connection.scalar(text("SELECT review_prompt FROM words"))

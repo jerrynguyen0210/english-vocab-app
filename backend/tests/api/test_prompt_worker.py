@@ -13,6 +13,92 @@ from app.models import ReviewState, User, Word
 from .helpers import create
 
 
+def test_failed_jobs_stop_retrying_and_can_be_monitored_and_reset(api, monkeypatch):
+    from app.llm.ollama_review import ReviewError
+    from app.models import PromptJob
+    from app.prompt_jobs import queue_status, retry_failed_job
+    from app.prompt_worker import process_one
+
+    client, db, owner, _, _ = api
+    settings = get_settings()
+    monkeypatch.setattr(settings, "prompt_job_max_attempts", 2)
+    calls = []
+
+    def unavailable(*args, **kwargs):
+        calls.append(1)
+        raise ReviewError(
+            "Private provider response must not be stored", "provider_connection"
+        )
+
+    monkeypatch.setattr("app.prompt_worker.generate_review", unavailable)
+    word_id = uuid.UUID(create(client, owner).json()["id"])
+    db.rollback()
+    engine = db.get_bind()
+    assert process_one(engine)
+    db.expire_all()
+    job = db.get(PromptJob, word_id)
+    assert job.failed_at is None
+    assert job.failure_category == "provider_connection"
+    assert queue_status(db)["waiting_retry"] == 1
+    job.available_at = datetime.now(UTC) - timedelta(seconds=1)
+    db.commit()
+    assert process_one(engine)
+    db.expire_all()
+    job = db.get(PromptJob, word_id)
+    assert job.failed_at is not None
+    assert job.attempts == 2
+    status = queue_status(db)
+    assert status["failed"] == 1
+    assert status["failures"][0]["word_id"] == word_id
+    assert "Private provider" not in str(status)
+    fallback = db.get(Word, word_id).review_prompt
+    db.rollback()
+    assert not process_one(engine)
+    assert len(calls) == 2
+    retry_failed_job(db, word_id)
+    with pytest.raises(LookupError):
+        retry_failed_job(db, word_id)  # Never reset pending or in-flight work.
+    db.rollback()
+    assert queue_status(db)["pending"] == 1
+    db.rollback()
+    monkeypatch.setattr(
+        "app.prompt_worker.generate_review",
+        lambda *args, **kwargs: {"prompt_sentence": "She said _____."},
+    )
+    assert process_one(engine)
+    db.expire_all()
+    assert db.get(PromptJob, word_id) is None
+    assert db.get(Word, word_id).review_prompt != fallback
+
+
+def test_crashed_final_attempt_becomes_failed_after_lease_expires(api, monkeypatch):
+    from app.models import PromptJob
+    from app.prompt_jobs import queue_status
+    from app.prompt_worker import claim_job, finish_job
+
+    client, db, owner, _, _ = api
+    monkeypatch.setattr(get_settings(), "prompt_job_max_attempts", 1)
+    word_id = uuid.UUID(create(client, owner).json()["id"])
+    db.rollback()
+    engine = db.get_bind()
+    claimed = claim_job(engine)
+    assert claimed is not None
+    assert queue_status(db)["in_flight"] == 1
+    job = db.get(PromptJob, word_id)
+    job.available_at = datetime.now(UTC) - timedelta(seconds=1)
+    db.commit()
+    assert claim_job(engine) is None
+    db.expire_all()
+    job = db.get(PromptJob, word_id)
+    assert job.failed_at is not None
+    assert job.failure_category == "attempts_exhausted"
+    db.rollback()
+    finish_job(engine, claimed, "Stale _____ result.")
+    db.expire_all()
+    assert db.get(PromptJob, word_id) is not None
+    assert db.get(Word, word_id).review_prompt != "Stale _____ result."
+
+
 def test_generated_prompt_is_persisted_and_reused_without_ollama(api, monkeypatch):
     from unittest.mock import Mock
 

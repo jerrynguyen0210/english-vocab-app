@@ -48,6 +48,8 @@ class ReviewAttempt(Base):
         UTCDateTime(), server_default=func.now()
     )
     time_taken_ms: Mapped[int] = mapped_column(Integer)
+    # Null only for historical attempts whose original response was not retained.
+    next_due_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
     @validates("typed_answer")
     def _set_normalised_answer(self, key: str, value: str) -> str:

@@ -12,6 +12,59 @@ from app.models import ReviewAttempt, ReviewState, User, Word
 from .helpers import create
 
 
+def test_choice_preparation_bounds_profiles_even_for_large_banks(api, monkeypatch):
+    from app.services.reviews import service
+
+    client, db, owner, _, _ = api
+    user_id = uuid.UUID(client.get("/api/v1/auth/me", headers=owner).json()["id"])
+    words = [
+        Word(
+            id=uuid.UUID(int=index + 1),
+            user_id=user_id,
+            word=f"candidate{index}",
+            english_explanation="A candidate",
+        )
+        for index in range(service.CHOICE_CANDIDATE_LIMIT + 100)
+    ]
+    targets = [
+        Word(
+            id=uuid.UUID(int=1000 + index),
+            user_id=user_id,
+            word=f"target{index}",
+            english_explanation="A target",
+        )
+        for index in range(50)
+    ]
+    db.add_all([*words, *targets])
+    db.flush()
+    db.add_all([ReviewState(word_id=word.id) for word in targets])
+    db.commit()
+    profiled = []
+
+    def parts(word):
+        profiled.append(word)
+        return frozenset()
+
+    monkeypatch.setattr(service, "review_parts", parts)
+    monkeypatch.setattr("app.services.reviews.choices.review_family", lambda word: ())
+    response = client.get("/api/v1/reviews/session?answer_mode=choice", headers=owner)
+    assert response.status_code == 200
+    assert len(response.json()) == 50
+    assert len(profiled) == service.CHOICE_CANDIDATE_LIMIT + 50
+    assert {word.word for word in targets} <= set(profiled)
+    for item in response.json():
+        assert len(set(item["choices"])) == 4
+    item = response.json()[0]
+    profiled.clear()
+    switched = client.post(
+        f"/api/v1/reviews/{item['word_id']}/choices",
+        headers=owner,
+        json={"attempt_id": item["attempt_id"], "review_token": item["review_token"]},
+    )
+    assert switched.status_code == 200
+    assert len(profiled) == service.CHOICE_CANDIDATE_LIMIT + 1
+
+
 def test_review_hints_mask_answer_before_serialization(api):
     client, _, owner, _, _ = api
     created = client.post(

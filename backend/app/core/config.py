@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     ollama_url: str = "http://192.168.0.108:11434"
     ollama_model: str = Field(default="translategemma:4b", min_length=1)
     ollama_timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
+    prompt_job_max_attempts: int = Field(default=5, ge=1, le=100)
 
 
 @lru_cache

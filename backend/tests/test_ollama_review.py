@@ -47,9 +47,10 @@ class ReviewTests(unittest.TestCase):
                     "app.llm.ollama_review.urlopen",
                     return_value=self.response(sentence),
                 ),
-                self.assertRaises(ReviewError),
+                self.assertRaises(ReviewError) as caught,
             ):
                 generate_review("go", "move", model="local-model")
+            self.assertEqual(caught.exception.category, "invalid_response")
 
     def test_phrase_and_unicode(self) -> None:
         with patch(
@@ -76,9 +77,10 @@ class ReviewTests(unittest.TestCase):
     def test_connection_failure(self) -> None:
         with (
             patch("app.llm.ollama_review.urlopen", side_effect=URLError("refused")),
-            self.assertRaisesRegex(ReviewError, "Cannot reach Ollama"),
+            self.assertRaisesRegex(ReviewError, "Cannot reach Ollama") as caught,
         ):
             generate_review("go", "move", model="local-model")
+        self.assertEqual(caught.exception.category, "provider_connection")
 
 
 if __name__ == "__main__":
