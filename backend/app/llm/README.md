@@ -23,7 +23,12 @@ The generated answer is never included in the review session response.
 Configure `OPENROUTER_API_KEY`, `OPENROUTER_URL`, `OPENROUTER_MODEL`, and
 `OPENROUTER_TIMEOUT_SECONDS` in the private backend environment. The URL defaults
 to `https://openrouter.ai/api/v1`, the model to `openai/gpt-4o-mini`, and the timeout
-to 120 seconds. Choose a text-generation model. If the provider rejects schema enforcement,
+to 120 seconds. Requests disable optional reasoning, cap output at 128 tokens,
+and prefer providers with lower latency. Use a model that supports disabling reasoning;
+models with mandatory reasoning may still think. The sentence prompt requests at most
+9 words, including the target. The standalone Ollama generator also disables thinking
+and caps output at 128 tokens.
+Choose a text-generation model. If the provider rejects schema enforcement,
 the client retries once without it and validates the returned JSON locally. Missing keys
 fail generation jobs safely while the API and fallback prompts remain usable.
 See `backend/.env.example`. Embeddings continue to use Ollama via `OLLAMA_URL`

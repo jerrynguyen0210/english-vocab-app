@@ -88,7 +88,9 @@ def generate_review(
                 },
             },
         },
-        "provider": {"require_parameters": True},
+        "reasoning": {"enabled": False},
+        "max_tokens": 128,
+        "provider": {"require_parameters": True, "sort": "latency"},
         "temperature": 0.3,
     }
     deadline = time.monotonic() + timeout

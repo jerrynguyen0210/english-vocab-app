@@ -49,6 +49,9 @@ class ReviewTests(unittest.TestCase):
         payload = json.loads(request.data)
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["model"], "test/model")
+        self.assertEqual(payload["reasoning"], {"enabled": False})
+        self.assertEqual(payload["max_tokens"], 128)
+        self.assertEqual(payload["provider"]["sort"], "latency")
         self.assertEqual(
             payload["response_format"]["json_schema"]["schema"]["required"],
             ["sentence"],
@@ -249,6 +252,8 @@ def test_schema_rejection_retries_without_schema(status):
     fallback = json.loads(second.args[0].data)
     assert "response_format" not in fallback
     assert "provider" not in fallback
+    assert fallback["reasoning"] == {"enabled": False}
+    assert fallback["max_tokens"] == 128
     assert second.kwargs["timeout"] <= first.kwargs["timeout"] <= 30
 
 
