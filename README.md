@@ -234,7 +234,8 @@ Useful backend commands from the repository root:
 ./devops/deploy_backend.sh queue-status  # Counts and failed prompt-job identifiers
 ```
 
-Configure `OLLAMA_URL` and `OLLAMA_MODEL` for a reachable Ollama server.
+Configure `OPENROUTER_API_KEY`, `OPENROUTER_URL`, and `OPENROUTER_MODEL` for
+text generation. Embeddings continue to use `OLLAMA_URL` and `EMBEDDING_MODEL`.
 `PROMPT_JOB_MAX_ATTEMPTS` defaults to 5, including for existing environment files
 without this setting. The API and worker share the same database and application
 code; the worker handles slow generation independently of HTTP requests. The
@@ -515,7 +516,7 @@ WordNet data retains its bundled Princeton license in the installed corpus; see
 ### Background review prompt generation
 
 Saving a word returns 201 after storing the word and its generation job in one
-transaction. The client does not wait for Ollama. A masked example or definition
+transaction. The client does not wait for OpenRouter. A masked example or definition
 keeps the word reviewable until the generated prompt is ready. Failures retry
 automatically up to `PROMPT_JOB_MAX_ATTEMPTS` (default 5); users do not need to
 save the word again. Permanently failed jobs retain their fallback prompts.
@@ -529,9 +530,9 @@ access while migration is in progress.
 
 For a local installation, run the normal migration command `python -m app.migrate`
 from `backend/`, then run `python -m app.prompt_worker` alongside the API using the
-same environment. The worker uses the existing `DATABASE_URL`, `OLLAMA_URL`,
-`OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` settings. No additional broker or
-credentials are required. Keep the worker running to drain the durable queue.
+same environment. The worker uses the existing `DATABASE_URL`, `OPENROUTER_URL`,
+`OPENROUTER_MODEL`, `OPENROUTER_API_KEY`, and `OPENROUTER_TIMEOUT_SECONDS`
+settings. No additional broker is required. Keep the worker running to drain the durable queue.
 See [review prompt behavior](docs/review-prompt.md) for retries and recovery.
 
 Prompt job logic lives in `backend/app/services/prompt_jobs/`: `worker.py` owns

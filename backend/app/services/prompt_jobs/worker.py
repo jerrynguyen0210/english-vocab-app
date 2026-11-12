@@ -9,7 +9,7 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.llm.ollama_review import ReviewError, generate_review
+from app.llm.openrouter_review import ReviewError, generate_review
 from app.models import PromptJob, User, Word
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ def claim_job(engine: Engine) -> ClaimedJob | None:
                 lease_token=token,
                 attempts=PromptJob.attempts + 1,
                 available_at=now
-                + timedelta(seconds=get_settings().ollama_timeout_seconds + 60),
+                + timedelta(seconds=get_settings().openrouter_timeout_seconds + 60),
             )
             .returning(PromptJob.attempts)
             .execution_options(synchronize_session=False)
@@ -136,9 +136,10 @@ def process_one(engine: Engine) -> bool:
         result = generate_review(
             claimed.word,
             claimed.meaning,
-            model=settings.ollama_model,
-            base_url=settings.ollama_url,
-            timeout=settings.ollama_timeout_seconds,
+            model=settings.openrouter_model,
+            api_key=settings.openrouter_api_key.get_secret_value(),
+            base_url=settings.openrouter_url,
+            timeout=settings.openrouter_timeout_seconds,
         )
     except (ReviewError, ValueError) as error:
         # Avoid logging user vocabulary or provider error bodies.

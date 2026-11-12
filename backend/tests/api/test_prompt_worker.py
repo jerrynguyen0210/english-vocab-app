@@ -14,7 +14,7 @@ from .helpers import create
 
 
 def test_failed_jobs_stop_retrying_and_can_be_monitored_and_reset(api, monkeypatch):
-    from app.llm.ollama_review import ReviewError
+    from app.llm.openrouter_review import ReviewError
     from app.models import PromptJob
     from app.services.prompt_jobs.management import queue_status, retry_failed_job
     from app.services.prompt_jobs.worker import process_one
@@ -99,7 +99,7 @@ def test_crashed_final_attempt_becomes_failed_after_lease_expires(api, monkeypat
     assert db.get(Word, word_id).review_prompt != "Stale _____ result."
 
 
-def test_generated_prompt_is_persisted_and_reused_without_ollama(api, monkeypatch):
+def test_generated_prompt_is_persisted_and_reused_without_openrouter(api, monkeypatch):
     from unittest.mock import Mock
 
     client, db, owner, _, _ = api
@@ -123,11 +123,12 @@ def test_generated_prompt_is_persisted_and_reused_without_ollama(api, monkeypatc
     generator.assert_called_once_with(
         "reluctant",
         "A greeting",
-        model=get_settings().ollama_model,
-        base_url=get_settings().ollama_url,
-        timeout=get_settings().ollama_timeout_seconds,
+        model=get_settings().openrouter_model,
+        api_key=get_settings().openrouter_api_key.get_secret_value(),
+        base_url=get_settings().openrouter_url,
+        timeout=get_settings().openrouter_timeout_seconds,
     )
-    generator.side_effect = AssertionError("Review reads must never call Ollama")
+    generator.side_effect = AssertionError("Review reads must never call OpenRouter")
     assert create(client, owner, "RELUCTANT").status_code == 409
     first = client.get("/api/v1/reviews/session", headers=owner).json()[0]
     second = client.get("/api/v1/reviews/session", headers=owner).json()[0]
@@ -146,7 +147,7 @@ def test_generated_prompt_is_persisted_and_reused_without_ollama(api, monkeypatc
 def test_generation_failure_keeps_word_and_retries_in_worker(api, monkeypatch):
     from unittest.mock import Mock
 
-    from app.llm.ollama_review import ReviewError
+    from app.llm.openrouter_review import ReviewError
     from app.models import PromptJob
     from app.services.prompt_jobs.worker import process_one
 

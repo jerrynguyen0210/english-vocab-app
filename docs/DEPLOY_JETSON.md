@@ -11,7 +11,7 @@ flowchart LR
     nginx -->|"/api/v1/*; preserve request path"| api["FastAPI container<br/>127.0.0.1:8001"]
     api --> db[("PostgreSQL 17<br/>Persistent existing data volume")]
     worker["Prompt worker container"] --> db
-    worker --> ollama["Configured Ollama server"]
+    worker --> openrouter["OpenRouter API"]
 ```
 
 Nginx serves the client; there is no Node web process on the board in this setup.
@@ -149,7 +149,9 @@ Relevant private configuration:
 | `COMPOSE_PROJECT_NAME` | Existing Compose project name if different from `backend` |
 | `POSTGRES_VOLUME_NAME` | Existing named PostgreSQL volume if different from the project default |
 | `MIGRATION_BACKUP_HOST_DIR` | Persistent backup directory; defaults to the user's `.local/state/english-vocab-app/migration-backups` |
-| `OLLAMA_URL`, `OLLAMA_MODEL` | Existing reachable generation service and installed model |
+| `OPENROUTER_URL`, `OPENROUTER_MODEL` | OpenRouter API base URL and text-generation model ID |
+| `OPENROUTER_API_KEY` | Private OpenRouter API key for generation |
+| `OLLAMA_URL`, `EMBEDDING_MODEL` | Reachable Ollama server and installed embedding model |
 | `PROMPT_JOB_MAX_ATTEMPTS` | Defaults to 5 |
 
 For a new database, generate URL-safe passwords and application secrets with

@@ -50,7 +50,7 @@ PY
         printf 'Created private backend configuration with a generated application secret.\n'
     fi
     printf 'Edit database, CORS, cookie and review options. API_PORT defaults to 8001.\n'
-    printf 'Set OLLAMA_URL, OLLAMA_MODEL and PROMPT_JOB_MAX_ATTEMPTS for background prompt generation.\n'
+    printf 'Set OPENROUTER_API_KEY, OPENROUTER_URL, OPENROUTER_MODEL and PROMPT_JOB_MAX_ATTEMPTS for background prompt generation.\n'
     printf 'This Compose file runs the local development stack. Database credentials must match existing data.\n'
     printf 'Preview/production migration backups require APP_ENVIRONMENT and persistent MIGRATION_BACKUP_HOST_DIR.\n'
     "${editor_command[@]}" "$BACKEND_DIR/.env" || return

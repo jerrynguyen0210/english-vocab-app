@@ -27,7 +27,7 @@ flowchart TB
     api --> backend["Database, dictionary and prompt worker<br/>Backend responsibilities"]
 ```
 
-The client does not access PostgreSQL, WordNet or Ollama directly. Product data
+The client does not access PostgreSQL, WordNet, OpenRouter or Ollama directly. Product data
 requires a server response. There is no client database, durable review cache,
 offline write queue or background synchronization service in the current source.
 

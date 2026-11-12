@@ -31,8 +31,12 @@ def test_invalid_vectors_fail_without_becoming_no_matches(vectors):
 
 
 def test_provider_contract_normalizes_batch(monkeypatch):
+    settings = embeddings.get_settings()
+    monkeypatch.setattr(settings, "ollama_url", "http://ollama.test:11434")
+    monkeypatch.setattr(settings, "openrouter_url", "https://openrouter.test/api/v1")
     def request(req, *, timeout):
-        assert req.full_url.endswith("/api/embed")
+        assert req.full_url == "http://ollama.test:11434/api/embed"
+        assert req.get_header("Authorization") is None
         payload = json.loads(req.data)
         assert payload["input"] == ["work", "hello"]
         assert payload["model"] == "embeddinggemma"

@@ -79,8 +79,8 @@ EMBEDDING_INDEX_TIMEOUT_SECONDS=120
 TOPIC_SIMILARITY_THRESHOLD=0.35
 ```
 
-The model must support `/api/embed`; it is separate from `OLLAMA_MODEL`, which
-generates review sentences. Both indexing and querying use `EMBEDDING_MODEL`.
+The model must support `/api/embed`; it is separate from `OPENROUTER_MODEL`, which
+generates review sentences through OpenRouter. Both indexing and querying use `EMBEDDING_MODEL`.
 Bump `EMBEDDING_REVISION` if weights are replaced under the same model name;
 this queues a full reindex. The cosine threshold is an initial configurable
 cutoff, not a validated confidence score; tune it with representative topics.

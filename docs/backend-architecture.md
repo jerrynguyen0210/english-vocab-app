@@ -37,7 +37,7 @@ flowchart TB
     end
 
     db[("PostgreSQL<br/>Accounts, sessions, vocabulary,<br/>review state, history and prompt jobs")]
-    ollama["Configured Ollama server<br/>Sentence generation"]
+    openrouter["OpenRouter API<br/>Sentence generation"]
     corpus[("Installed WordNet corpus<br/>Local files")]
     archive["Private export file"]
 
@@ -46,7 +46,7 @@ flowchart TB
     services <-->|"SQLAlchemy sessions and transactions"| db
     dictionary --> corpus
     jobs <-->|"Claim and completion transactions"| db
-    jobs <-->|"HTTP outside database transactions"| ollama
+    jobs <-->|"HTTP outside database transactions"| openrouter
     operator --> admin
     operator --> export
     admin <-->|"Counts, failure metadata, retry reset"| db
@@ -54,7 +54,7 @@ flowchart TB
     export --> archive
 ```
 
-The API never calls Ollama while saving a word or serving a review. Local
+The API never calls OpenRouter while saving a word or serving a review. Local
 dictionary search does not use a network service. The queue is a database table;
 there is no separate message broker. The current worker processes one job at a
 time, but multiple PostgreSQL workers can claim different jobs.
@@ -72,7 +72,7 @@ flowchart TB
     service["services/<br/>Business rules and transactions"]
     models["models/<br/>ORM records, constraints and validators"]
     core["core/<br/>Settings, database, UTC time and text normalization"]
-    llm["llm/ollama_review.py<br/>Provider request and output validation"]
+    llm["llm/openrouter_review.py<br/>Provider request and output validation"]
     entry["prompt_worker.py + prompt_jobs.py<br/>Thin command entry points"]
 
     main --> routes
@@ -124,7 +124,7 @@ backend/
       prompt_jobs/
         worker.py              Claiming, generation and completion
         management.py          Queue inspection and failed-job reset
-    llm/ollama_review.py
+    llm/openrouter_review.py
     prompt_worker.py            Continuous worker command
     prompt_jobs.py              Status/retry command
     migrate.py                  Guarded forward-only migration command
@@ -369,7 +369,7 @@ sequenceDiagram
     participant W as Worker polling loop
     participant Q as Prompt-job service
     participant D as PostgreSQL
-    participant O as Ollama
+    participant O as OpenRouter
     W->>Q: process_one
     Q->>D: Mark expired exhausted jobs failed
     Q->>D: Select eligible job FOR UPDATE SKIP LOCKED
@@ -393,7 +393,7 @@ sequenceDiagram
 
 Default automatic limit: five claims. Retry delay is
 `min(3600, 5 * 2 ** min(attempts, 10))` seconds, starting at ten seconds.
-Lease duration is `OLLAMA_TIMEOUT_SECONDS + 60` seconds. The loop sleeps one
+Lease duration is `OPENROUTER_TIMEOUT_SECONDS + 60` seconds. The loop sleeps one
 second when idle and five seconds after a database error. Lease expiry permits
 recovery; it does not prove a slow or stalled old worker has stopped, so stale
 completion protection is essential.

@@ -34,11 +34,11 @@ targets inside compounds, to avoid exposing the answer.
 
 Saving a word atomically stores the word, review state, a masked example or
 definition-based fallback prompt, and a durable `prompt_jobs` row. The API returns
-201 immediately after this database transaction, without calling Ollama. Known
+201 immediately after this database transaction, without calling OpenRouter. Known
 duplicates return 409 and do not create additional jobs.
 
 A separate process (`python -m app.prompt_worker`) claims queued words and calls
-the configured Ollama model outside any database transaction. On success, it
+the configured OpenRouter model outside any database transaction. On success, it
 replaces `words.review_prompt` and removes the job atomically. Reviews remain
 available using the fallback while generation is pending. Sessions already loaded
 by the client retain their displayed prompt; subsequent reads use the latest
@@ -56,7 +56,7 @@ workers skip jobs locked by other workers. Account erasure cascades to queued jo
 late completions cannot recreate erased data. Failed attempts log a count without
 logging vocabulary or provider response bodies.
 
-Review reads never call Ollama. Stored prompts are masked again before
+Review reads never call OpenRouter. Stored prompts are masked again before
 serialization to prevent answer leakage. Migration 0013 adds the queue without
 changing existing prompts or calling the model; only newly saved words are queued.
 
