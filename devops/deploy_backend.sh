@@ -3,6 +3,7 @@ set -uo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || exit 1
 BACKEND_DIR=$(cd -- "$SCRIPT_DIR/../backend" && pwd) || exit 1
+BACKEND_COMPOSE_FILE=${BACKEND_COMPOSE_FILE:-$BACKEND_DIR/docker-compose.yml}
 
 require_command() {
     command -v "$1" >/dev/null 2>&1 || {
@@ -23,7 +24,7 @@ compose() {
     fi
     (
         cd -- "$BACKEND_DIR" || exit 1
-        docker compose --project-directory "$BACKEND_DIR" -f "$BACKEND_DIR/docker-compose.yml" "$@"
+        docker compose --project-directory "$BACKEND_DIR" -f "$BACKEND_COMPOSE_FILE" "$@"
     )
 }
 
@@ -120,6 +121,7 @@ clean_backend() {
 usage() {
     printf 'Usage: %s [build|rebuild|start|stop|clean|configure|status|logs|queue-status|migrate|--help]\n' "$0"
     printf 'No argument opens the menu. Uses backend/docker-compose.yml (local development stack).\n'
+    printf 'BACKEND_COMPOSE_FILE can select backend/docker-compose.jetson.yml for production.\n'
     printf 'Clean retains database volumes and backups. VISUAL or EDITOR selects the configuration editor.\n'
 }
 

@@ -118,6 +118,14 @@ env examples instead. Never put secrets in `EXPO_PUBLIC_*` variables.
 
 ## Development commands
 
+For deployment on `jjnano@192.168.0.108` behind the existing
+`vocab.jerryitdev.com` domain, follow the
+[Jetson production deployment guide](docs/DEPLOY_JETSON.md).
+It uses a prebuilt SPA, preserves the working Nginx/tunnel by default, and runs
+the API, PostgreSQL and prompt worker with the standalone production Compose file.
+`devops/deploy-jetson.sh` updates the full stack;
+`devops/publish_production_web.sh` publishes only the frontend.
+
 ### Interactive deployment helpers
 
 Run either menu from any directory:
@@ -278,6 +286,10 @@ CI generates its own temporary secret key.
 - `docs/` — [Requirements](docs/requirement.txt), [decisions](docs/decisions.md),
   [planned structure](docs/file_skeleton.md), and design assets.
 - `.github/workflows/` — Client and backend CI.
+
+See the [detailed backend architecture diagrams](docs/backend-architecture.md)
+for process boundaries, request flows, authentication, review scheduling,
+database relationships, background-job recovery, and deployment ordering.
 
 ## Authentication
 

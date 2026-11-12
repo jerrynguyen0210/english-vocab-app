@@ -1,0 +1,57 @@
+# Standalone production definition. Use the same Compose project as the existing
+# backend so its postgres_data volume is retained. Do not merge with development.
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vocab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set the existing database password in backend/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-vocab}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  api:
+    image: english-vocab-backend:jetson
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment: &backend-environment
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-vocab}:${POSTGRES_PASSWORD_URLENCODED:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}@db:5432/${POSTGRES_DB:-vocab}
+      SECRET_KEY: ${SECRET_KEY:?Set a generated SECRET_KEY in backend/.env}
+      APP_ENVIRONMENT: production
+      AUTH_COOKIE_SECURE: "true"
+      CORS_ORIGINS: '["https://${PUBLIC_DOMAIN:-vocab.jerryitdev.com}"]'
+      MIGRATION_BACKUP_DIR: /var/backups/english-vocab/migrations
+      # Only the host-loopback Nginx listener and this private Compose network
+      # can reach the API. Nginx replaces forwarded headers before proxying.
+      FORWARDED_ALLOW_IPS: "*"
+    ports:
+      - "127.0.0.1:${API_PORT:-8001}:8000"
+    volumes:
+      - ${MIGRATION_BACKUP_HOST_DIR:-${HOME}/.local/state/english-vocab-app/migration-backups}:/var/backups/english-vocab/migrations
+    depends_on:
+      db:
+        condition: service_healthy
+    # No reload and no source mounts. Only the loopback Nginx origin is public.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+
+  prompt-worker:
+    image: english-vocab-backend:jetson
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment: *backend-environment
+    entrypoint: ["python", "-m", "app.prompt_worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-${COMPOSE_PROJECT_NAME:-backend}_postgres_data}
