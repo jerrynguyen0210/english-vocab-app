@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.models import CommonWordJob, CommonWordQuestion, Word
 
 # Each model call requests twenty questions. Start replenishing at half a batch.
-BANK_TARGET = 30
-REFILL_THRESHOLD = BANK_TARGET // 2
+BANK_TARGET = 20
+REFILL_THRESHOLD = BANK_TARGET // 2 + 5
 
 
 def available_questions(user_id: UUID) -> Select[CommonWordQuestion]:

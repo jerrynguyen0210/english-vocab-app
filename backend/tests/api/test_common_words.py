@@ -12,6 +12,7 @@ from app.export_user import collect_user_data
 from app.llm.openrouter_review import ReviewError
 from app.models import CommonWordJob, CommonWordQuestion, ReviewState, User, Word
 from app.schemas.common_words import GeneratedCommonWord
+from app.services.common_word_bank import REFILL_THRESHOLD
 from app.services.common_word_worker import claim_job, finish_job, process_one
 
 from .helpers import create
@@ -491,19 +492,20 @@ def seed_bank(api, count=20):
     return owner_id, questions
 
 
-def test_answer_at_half_capacity_queues_one_job_and_keeps_serving(api):
+def test_answer_at_refill_threshold_queues_one_job_and_keeps_serving(api):
     client, db, owner, _, _ = api
     owner_id, questions = seed_bank(api)
     assert client.post(URL, headers=owner, json={}).status_code == 200
     assert db.get(CommonWordJob, owner_id) is None
-    for index, question in enumerate(questions[:10]):
+    consumed = len(questions) - REFILL_THRESHOLD
+    for index, question in enumerate(questions[:consumed]):
         response = client.post(
             f"/api/v1/common-words/{question.id}/learned",
             headers=owner,
             json={"selected_index": 1},
         )
         assert response.status_code == 204
-        if index < 9:
+        if index < consumed - 1:
             assert db.get(CommonWordJob, owner_id) is None
     job = db.get(CommonWordJob, owner_id)
     assert job is not None and job.attempts == 0
@@ -522,7 +524,7 @@ def test_saving_common_word_triggers_refill_but_unrelated_saves_do_not(api):
     client, db, owner, _, _ = api
     assert create(client, owner, "hello").status_code == 201
     assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 0
-    owner_id, questions = seed_bank(api, 11)
+    owner_id, questions = seed_bank(api, REFILL_THRESHOLD + 1)
     assert create(client, owner, questions[0].word).status_code == 201
     assert db.get(CommonWordJob, owner_id) is not None
     response = client.post(URL, headers=owner, json={})
@@ -532,7 +534,7 @@ def test_saving_common_word_triggers_refill_but_unrelated_saves_do_not(api):
 
 def test_partial_refill_continues_until_above_half_and_filters_duplicates(api):
     client, db, owner, _, _ = api
-    owner_id, questions = seed_bank(api, 9)
+    owner_id, questions = seed_bank(api, REFILL_THRESHOLD - 1)
     assert create(client, owner, "warm").status_code == 201
     assert client.post(URL, headers=owner, json={}).status_code == 200
     db.rollback()
@@ -544,22 +546,28 @@ def test_partial_refill_continues_until_above_half_and_filters_duplicates(api):
         [
             candidate(questions[0].word),
             candidate("warm"),
-            candidate("careful"),
-            candidate("careful"),
+            candidate("happy"),
+            candidate("happy"),
         ],
     )
     db.expire_all()
     job = db.get(CommonWordJob, owner_id)
     assert job is not None and job.failure_category == "low_bank"
-    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 10
+    assert (
+        db.scalar(select(func.count()).select_from(CommonWordQuestion))
+        == REFILL_THRESHOLD
+    )
     job.available_at = datetime.now(UTC) - timedelta(seconds=1)
     db.commit()
     claimed = claim_job(db.get_bind())
-    assert "careful" in claimed.excluded_words
+    assert "happy" in claimed.excluded_words
     finish_job(db.get_bind(), claimed, [candidate("wise")])
     db.expire_all()
     assert db.get(CommonWordJob, owner_id) is None
-    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 11
+    assert (
+        db.scalar(select(func.count()).select_from(CommonWordQuestion))
+        == REFILL_THRESHOLD + 1
+    )
 
 
 def test_failed_background_refill_does_not_block_questions_or_answers(api):
@@ -590,3 +598,71 @@ def test_failed_background_refill_does_not_block_questions_or_answers(api):
     assert client.post(URL, headers=owner, json={}).status_code == 200
     assert db.get(CommonWordJob, owner_id).attempts == 0
     assert db.get(CommonWordJob, owner_id).failed_at is None
+
+
+def test_active_llm_generation_blocks_other_workers_and_preserves_jobs(
+    api, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    client, db, owner, other, _ = api
+    assert client.post(URL, headers=owner, json={}).status_code == 202
+    started, release = Event(), Event()
+
+    def generate_while_blocked(*_args, **_kwargs):
+        started.set()
+        assert release.wait(timeout=15)
+        return [candidate()]
+
+    generator = Mock(side_effect=generate_while_blocked)
+    monkeypatch.setattr(
+        "app.services.common_word_worker.generate_common_words", generator
+    )
+    engine = db.get_bind()
+    db.rollback()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        first = pool.submit(process_one, engine)
+        try:
+            assert started.wait(timeout=10)
+            job = db.scalar(select(CommonWordJob))
+            token = job.lease_token
+            # Even if a slow call outlives its lease, another worker must wait.
+            job.available_at = datetime.now(UTC) - timedelta(seconds=1)
+            db.commit()
+            for _ in range(3):
+                assert client.post(URL, headers=owner, json={}).status_code == 202
+            assert client.post(URL, headers=other, json={}).status_code == 202
+            db.rollback()
+            for _ in range(3):
+                assert not process_one(engine)
+            db.expire_all()
+            jobs = db.scalars(select(CommonWordJob)).all()
+            assert len(jobs) == 2
+            assert sorted(job.attempts for job in jobs) == [0, 1]
+            assert next(job for job in jobs if job.attempts == 1).lease_token == token
+            assert generator.call_count == 1
+            db.rollback()
+        finally:
+            release.set()
+        assert first.result(timeout=10)
+    # Completion releases the guard so another queued bank can refill.
+    assert process_one(engine)
+    assert generator.call_count == 2
+
+
+def test_generation_guard_is_released_after_unexpected_error(api, monkeypatch):
+    from app.services.common_word_generation_lock import generation_slot
+
+    client, db, owner, _, _ = api
+    assert client.post(URL, headers=owner, json={}).status_code == 202
+    monkeypatch.setattr(
+        "app.services.common_word_worker.generate_common_words",
+        Mock(side_effect=RuntimeError("Unexpected generator failure")),
+    )
+    engine = db.get_bind()
+    db.rollback()
+    with pytest.raises(RuntimeError, match="Unexpected generator failure"):
+        process_one(engine)
+    with generation_slot(engine) as acquired:
+        assert acquired

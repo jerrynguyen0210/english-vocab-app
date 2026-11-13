@@ -15,6 +15,7 @@ from app.llm.openrouter_review import ReviewError
 from app.models import CommonWordJob, CommonWordQuestion, User, Word
 from app.schemas.common_words import GeneratedCommonWord
 from app.services.common_word_bank import REFILL_THRESHOLD, available_count
+from app.services.common_word_generation_lock import generation_slot
 
 logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
@@ -183,6 +184,15 @@ def finish_job(
 
 
 def process_one(engine: Engine) -> bool:
+    # Acquire before claiming: a busy generator must not consume another attempt,
+    # replace an expired lease, or start a second provider request.
+    with generation_slot(engine) as acquired:
+        if not acquired:
+            return False
+        return _process_one(engine)
+
+
+def _process_one(engine: Engine) -> bool:
     claimed = claim_job(engine)
     if claimed is None:
         return False

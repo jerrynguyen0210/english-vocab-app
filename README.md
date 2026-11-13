@@ -559,6 +559,11 @@ Loading stops after five minutes, including time spent waiting for HTTP response
 and offers a manual retry. Common generation uses `COMMON_WORDS_TIMEOUT_SECONDS`
 (default 300 seconds) independently of the Review prompt timeout. Its worker lease
 includes an additional 60 seconds for finishing the job.
+Common refill workers also share a generation lock: only one Common LLM refill runs
+at a time across worker instances. Other banks wait in the durable queue without
+consuming an attempt. The lock covers generation and saving its results, even if a
+slow call outlives its job lease, and releases when the worker exits. App polling
+continues to reuse the existing job. Review prompt generation remains independent.
 Expired worker leases are recovered, stale results discarded, and failures retried
 up to three times. Partial refills that leave ten or fewer eligible questions keep
 the job queued with the same bounded retries; all candidates are checked against the
