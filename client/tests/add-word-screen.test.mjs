@@ -62,6 +62,9 @@ function harness(fetch) {
     '@/services/connectivity': { connectionMessage: (_, fallback) => fallback },
     '@/components/word-form': { WordForm: 'Form' },
     '@/components/app-screen': { AppScreen: 'Screen' },
+    '@/components/common-word-practice': {
+      CommonWordPractice: 'CommonPractice',
+    },
     '@/components/navigation-link': { NavigationLink: 'Link' },
     '@/components/themed-text': { ThemedText: 'Text' },
     '@/constants/wordwell-theme': { WordwellColors: {} },

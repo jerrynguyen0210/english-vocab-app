@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" baseProfile="full" height="8100" version="1.1" viewBox="0 0 1810 8100" width="1810" data-design-version="wordwell-search-save-review-preparation-review-modes-2026-11-10">
+<svg xmlns="http://www.w3.org/2000/svg" baseProfile="full" height="10600" version="1.1" viewBox="0 0 1810 10600" width="1810" data-design-version="wordwell-add-word-common-ui-2026-11-13">
   <defs/>
-  <rect fill="#F0F3F8" height="8100" rx="0" width="1810" x="0" y="0"/>
+  <rect fill="#F0F3F8" height="10600" rx="0" width="1810" x="0" y="0"/>
   <rect fill="#4058D9" height="63" rx="4" width="9" x="63" y="55"/>
   <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="2.3" x="92" y="79">WORDWELL</text>
   <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="43" font-weight="800" x="93" y="132">One layout. Every platform.</text>
@@ -123,100 +123,72 @@
     <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="600" x="40" y="658">Your daily progress</text>
     <text fill="#53617A" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" x="40" y="685">48 saved words · 12 ready to review</text>
   </g>
-  <g transform="translate(1399,259)" id="screen-04">
-    <defs/>
-    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0"/>
+  <g id="screen-04" transform="translate(1399,259)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
     <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
-    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19"/>
-    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19"/>
-    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22"/>
-    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47"/>
-    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111"/>
-    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62"/>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
     <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
     <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
-    <circle cx="351" cy="80" fill="#EEF0FF" r="17"/>
-    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9"/>
-    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
-    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763"/>
-    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763"/>
-    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
     <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
-    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771"/>
-    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
     <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
-    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E"/>
-    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E"/>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
     <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
-    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E"/>
-    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
     <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
-    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839"/>
-    <text x="23" y="164" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
-    <text x="23" y="190" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find word forms and save the ones you need.</text>
-    <rect x="22" y="208" width="349" height="299" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1"/>
-    <text x="40" y="237" font-family="Inter, Arial, sans-serif" font-size="12.6" font-weight="700" fill="#172943">Word to search *</text>
-    <rect x="40" y="247" width="313" height="43" rx="10" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1"/>
-    <text x="54" y="274" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#172943">create</text>
-    <circle cx="329" cy="267" r="6" stroke="#64758E" stroke-width="1.7" fill="none"/>
-    <path d="M 333.5 271.5 l 5 5" fill="none" stroke="#64758E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="40" y="301" width="15" height="15" rx="3" fill="#4058D9"/>
-    <path d="M 42.7 308.8 l 2.8 2.8 l 5.2 -5.6" fill="none" stroke="#FFFFFF" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="62" y="314.8" font-family="Inter, Arial, sans-serif" font-size="12.2" font-weight="600" fill="#172943">Include word family</text>
-    <rect x="40" y="326" width="88" height="27" rx="8" fill="#EEF0FF" stroke="#4058D9" stroke-width="0.85"/>
-    <rect x="48" y="333.0" width="13" height="13" rx="3" fill="#4058D9"/>
-    <path d="M 50.7 339.76 l 2.8 2.8 l 5.2 -5.6" fill="none" stroke="#FFFFFF" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="68" y="344.8" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9">Noun</text>
-    <rect x="135" y="326" width="80" height="27" rx="8" fill="#EEF0FF" stroke="#4058D9" stroke-width="0.85"/>
-    <rect x="143" y="333.0" width="13" height="13" rx="3" fill="#4058D9"/>
-    <path d="M 145.7 339.76 l 2.8 2.8 l 5.2 -5.6" fill="none" stroke="#FFFFFF" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="163" y="344.8" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9">Verb</text>
-    <rect x="222" y="326" width="131" height="27" rx="8" fill="#EEF0FF" stroke="#4058D9" stroke-width="0.85"/>
-    <rect x="230" y="333.0" width="13" height="13" rx="3" fill="#4058D9"/>
-    <path d="M 232.7 339.76 l 2.8 2.8 l 5.2 -5.6" fill="none" stroke="#FFFFFF" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="250" y="344.8" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9">Adjective</text>
-    <rect x="40" y="361" width="106" height="27" rx="8" fill="#EEF0FF" stroke="#4058D9" stroke-width="0.85"/>
-    <rect x="48" y="368.0" width="13" height="13" rx="3" fill="#4058D9"/>
-    <path d="M 50.7 374.76 l 2.8 2.8 l 5.2 -5.6" fill="none" stroke="#FFFFFF" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="68" y="379.8" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9">Adverb</text>
-    <rect x="153" y="361" width="92" height="27" rx="8" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="0.85"/>
-    <rect x="161" y="368.0" width="13" height="13" rx="3" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1"/>
-    <text x="181" y="379.8" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" fill="#53617A">Other</text>
-    <text x="40" y="410" font-family="Inter, Arial, sans-serif" font-size="10.4" font-weight="800" fill="#53617A" letter-spacing="0.7">VERB FORMS</text>
-    <rect x="40" y="419" width="92" height="26" rx="8" fill="#EEF0FF" stroke="#4058D9" stroke-width="0.85"/>
-    <rect x="48" y="425.5" width="13" height="13" rx="3" fill="#4058D9"/>
-    <path d="M 50.7 432.26 l 2.8 2.8 l 5.2 -5.6" fill="none" stroke="#FFFFFF" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="68" y="437.3" font-family="Inter, Arial, sans-serif" font-size="10.1" font-weight="600" fill="#4058D9">V1 · Base</text>
-    <rect x="140" y="419" width="91" height="26" rx="8" fill="#EEF0FF" stroke="#4058D9" stroke-width="0.85"/>
-    <rect x="148" y="425.5" width="13" height="13" rx="3" fill="#4058D9"/>
-    <path d="M 150.7 432.26 l 2.8 2.8 l 5.2 -5.6" fill="none" stroke="#FFFFFF" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="168" y="437.3" font-family="Inter, Arial, sans-serif" font-size="10.1" font-weight="600" fill="#4058D9">V2 · Past</text>
-    <rect x="239" y="419" width="114" height="26" rx="8" fill="#EEF0FF" stroke="#4058D9" stroke-width="0.85"/>
-    <rect x="247" y="425.5" width="13" height="13" rx="3" fill="#4058D9"/>
-    <path d="M 249.7 432.26 l 2.8 2.8 l 5.2 -5.6" fill="none" stroke="#FFFFFF" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="267" y="437.3" font-family="Inter, Arial, sans-serif" font-size="9.8" font-weight="600" fill="#4058D9">V3 · Past part.</text>
-    <rect x="40" y="458" width="313" height="39" rx="10" fill="#4058D9"/>
-    <text x="196.5" y="481.92" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">Search</text>
-    <text x="23" y="534" font-family="Inter, Arial, sans-serif" font-size="16.5" font-weight="800" fill="#172943">Search results</text>
-    <text x="359" y="534" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#53617A" text-anchor="end">5 found</text>
-    <rect x="22" y="545" width="349" height="62" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1"/>
-    <text x="38" y="568" font-family="Inter, Arial, sans-serif" font-size="15.7" font-weight="800" fill="#172943">create</text>
-    <text x="38" y="585" font-family="Inter, Arial, sans-serif" font-size="10.5" font-weight="650" fill="#4058D9">Verb · V1 (base)</text>
-    <text x="38" y="599" font-family="Inter, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#53617A">Make or produce something</text>
-    <rect x="293" y="561" width="64" height="32" rx="10" fill="#4058D9"/>
-    <text x="325.0" y="580.74" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save</text>
-    <rect x="22" y="610" width="349" height="62" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1"/>
-    <text x="38" y="633" font-family="Inter, Arial, sans-serif" font-size="15.7" font-weight="800" fill="#172943">created</text>
-    <text x="38" y="650" font-family="Inter, Arial, sans-serif" font-size="10.5" font-weight="650" fill="#4058D9">Verb · V2 / V3</text>
-    <text x="38" y="664" font-family="Inter, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#53617A">Past and past participle of create</text>
-    <rect x="293" y="626" width="64" height="32" rx="10" fill="#4058D9"/>
-    <text x="325.0" y="645.74" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save</text>
-    <rect x="22" y="675" width="349" height="62" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1"/>
-    <text x="38" y="698" font-family="Inter, Arial, sans-serif" font-size="15.7" font-weight="800" fill="#172943">creation</text>
-    <text x="38" y="715" font-family="Inter, Arial, sans-serif" font-size="10.5" font-weight="650" fill="#4058D9">Noun</text>
-    <text x="38" y="729" font-family="Inter, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#53617A">The act of making something new</text>
-    <rect x="293" y="691" width="64" height="32" rx="10" fill="#4058D9"/>
-    <text x="325.0" y="710.74" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-screen-04">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <rect x="28" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Vocab</text>
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Common</text>
+    </g>
+    <rect x="24" y="274" width="345" height="286" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="42" y="304" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#172943">Word to search *</text>
+    <rect x="42" y="319" width="309" height="46" rx="10" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="56" y="348" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="600" fill="#172943">create</text>
+    <text x="42" y="393" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">☑  Include word family</text>
+    <rect x="42" y="410" width="71" height="30" rx="8" fill="#EEF0FF" />
+    <text x="77.5" y="430" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9" text-anchor="middle">Noun</text>
+    <rect x="121" y="410" width="69" height="30" rx="8" fill="#EEF0FF" />
+    <text x="155.5" y="430" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9" text-anchor="middle">Verb</text>
+    <rect x="198" y="410" width="153" height="30" rx="8" fill="#EEF0FF" />
+    <text x="274.5" y="430" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9" text-anchor="middle">Adjective / Adverb</text>
+    <text x="42" y="465" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="700" fill="#53617A">VERB FORMS</text>
+    <text x="42" y="489" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9">☑ Base     ☑ Past     ☑ Past participle</text>
+    <g aria-label="Search">
+      <rect x="42" y="503" width="309" height="48" rx="12" fill="#4058D9" />
+      <text x="196.5" y="532" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Search</text>
+    </g>
+    <text x="24" y="592" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" fill="#172943">Search results</text>
+    <text x="369" y="592" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="500" fill="#53617A" text-anchor="end">5 found</text>
+    <rect x="24" y="607" width="345" height="64" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="40" y="632" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" fill="#172943">create</text>
+    <text x="40" y="654" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="400" fill="#53617A">Make or produce something</text>
+    <rect x="293" y="620" width="62" height="36" rx="10" fill="#4058D9" />
+    <text x="324" y="643" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save</text>
+    <rect x="24" y="680" width="345" height="64" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="40" y="705" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" fill="#172943">created</text>
+    <text x="40" y="727" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="400" fill="#53617A">Past and past participle of create</text>
+    <rect x="293" y="693" width="62" height="36" rx="10" fill="#4058D9" />
+    <text x="324" y="716" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save</text>
   </g>
   <g transform="translate(64,1239)" id="screen-05">
     <defs/>
@@ -1346,4 +1318,501 @@
     <text x="354" y="2056" fill="#53617A" font-family="Inter, Arial, sans-serif" font-size="13.7" font-weight="600">Navigation: Home → Review preparation → Review question → Review finished</text>
     <text x="354" y="2108" fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="13.5" font-weight="500">SM-2 uses each word’s due date; time filters use saved dates; topic search uses saved topic tags.</text>
   </g>
+  <text x="64" y="8265.0" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#4058D9">WORDWELL  /  ADD A WORD</text>
+  <text x="64" y="8317.0" font-family="Inter, Arial, sans-serif" font-size="40" font-weight="800" fill="#172943">Discover. Understand. Remember.</text>
+  <text x="64" y="8355.0" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="400" fill="#53617A">Vocab search + Common practice · mobile UI · sample question content</text>
+  <text x="64" y="8409.0" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#53617A">01  ADD A WORD · VOCAB</text>
+  <g id="common-flow-vocab" transform="translate(64,8429)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
+    <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-common-flow-vocab">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <rect x="28" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Vocab</text>
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Common</text>
+    </g>
+    <rect x="24" y="274" width="345" height="286" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="42" y="304" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#172943">Word to search *</text>
+    <rect x="42" y="319" width="309" height="46" rx="10" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="56" y="348" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="600" fill="#172943">create</text>
+    <text x="42" y="393" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">☑  Include word family</text>
+    <rect x="42" y="410" width="71" height="30" rx="8" fill="#EEF0FF" />
+    <text x="77.5" y="430" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9" text-anchor="middle">Noun</text>
+    <rect x="121" y="410" width="69" height="30" rx="8" fill="#EEF0FF" />
+    <text x="155.5" y="430" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9" text-anchor="middle">Verb</text>
+    <rect x="198" y="410" width="153" height="30" rx="8" fill="#EEF0FF" />
+    <text x="274.5" y="430" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9" text-anchor="middle">Adjective / Adverb</text>
+    <text x="42" y="465" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="700" fill="#53617A">VERB FORMS</text>
+    <text x="42" y="489" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="#4058D9">☑ Base     ☑ Past     ☑ Past participle</text>
+    <g aria-label="Search">
+      <rect x="42" y="503" width="309" height="48" rx="12" fill="#4058D9" />
+      <text x="196.5" y="532" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Search</text>
+    </g>
+    <text x="24" y="592" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" fill="#172943">Search results</text>
+    <text x="369" y="592" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="500" fill="#53617A" text-anchor="end">5 found</text>
+    <rect x="24" y="607" width="345" height="64" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="40" y="632" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" fill="#172943">create</text>
+    <text x="40" y="654" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="400" fill="#53617A">Make or produce something</text>
+    <rect x="293" y="620" width="62" height="36" rx="10" fill="#4058D9" />
+    <text x="324" y="643" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save</text>
+    <rect x="24" y="680" width="345" height="64" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="40" y="705" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" fill="#172943">created</text>
+    <text x="40" y="727" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="400" fill="#53617A">Past and past participle of create</text>
+    <rect x="293" y="693" width="62" height="36" rx="10" fill="#4058D9" />
+    <text x="324" y="716" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save</text>
+  </g>
+  <text x="509" y="8409.0" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#53617A">02  COMMON · FOUR ANSWERS</text>
+  <g id="common-flow-question" transform="translate(509,8429)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
+    <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-common-flow-question">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Vocab</text>
+      <rect x="197" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Common</text>
+    </g>
+    <text x="24" y="285" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#4058D9">EVERYDAY ENGLISH</text>
+    <text x="369" y="285" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#53617A" text-anchor="end">Word 1 of 10</text>
+    <rect x="24" y="299" width="345" height="5" rx="3" fill="#DCE4F0" />
+    <rect x="24" y="299" width="34.5" height="5" rx="3" fill="#4058D9" />
+    <rect x="24" y="324" width="345" height="159" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="44" y="351" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="500" fill="#53617A">Choose the closest meaning</text>
+    <text x="44" y="396" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="800" fill="#172943">reliable</text>
+    <text x="44" y="420" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#4058D9">adjective</text>
+    <text x="44" y="454" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">“She is a reliable colleague.”</text>
+    <rect x="24" y="499" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="508" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="527" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">A</text>
+    <text x="76" y="527" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Easy to forget</text>
+    <rect x="24" y="553" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="562" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="581" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">B</text>
+    <text x="76" y="581" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Able to be trusted</text>
+    <rect x="24" y="607" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="616" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="635" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">C</text>
+    <text x="76" y="635" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Very expensive</text>
+    <rect x="24" y="661" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="670" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="689" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">D</text>
+    <text x="76" y="689" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Difficult to understand</text>
+    <text x="196.5" y="741" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="500" fill="#53617A" text-anchor="middle">Tap an answer to continue</text>
+  </g>
+  <text x="954" y="8409.0" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#53617A">03  CORRECT · AUTO ADVANCE</text>
+  <g id="common-flow-correct" transform="translate(954,8429)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
+    <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-common-flow-correct">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Vocab</text>
+      <rect x="197" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Common</text>
+    </g>
+    <text x="24" y="285" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#4058D9">EVERYDAY ENGLISH</text>
+    <text x="369" y="285" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#53617A" text-anchor="end">Word 1 of 10</text>
+    <rect x="24" y="299" width="345" height="5" rx="3" fill="#DCE4F0" />
+    <rect x="24" y="299" width="34.5" height="5" rx="3" fill="#4058D9" />
+    <rect x="24" y="324" width="345" height="159" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="44" y="351" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="500" fill="#53617A">Choose the closest meaning</text>
+    <text x="44" y="396" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="800" fill="#172943">reliable</text>
+    <text x="44" y="420" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#4058D9">adjective</text>
+    <text x="44" y="454" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">“She is a reliable colleague.”</text>
+    <rect x="24" y="499" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="508" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="527" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">A</text>
+    <text x="76" y="527" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Easy to forget</text>
+    <rect x="24" y="553" width="345" height="46" rx="12" fill="#E8F7EE" stroke="#13734C" stroke-width="1" />
+    <rect x="36" y="562" width="28" height="28" rx="8" fill="#13734C" />
+    <text x="50" y="581" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">✓</text>
+    <text x="76" y="581" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#13734C">Able to be trusted</text>
+    <rect x="24" y="607" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="616" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="635" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">C</text>
+    <text x="76" y="635" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Very expensive</text>
+    <rect x="24" y="661" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="670" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="689" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">D</text>
+    <text x="76" y="689" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Difficult to understand</text>
+    <text x="196.5" y="741" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#13734C" text-anchor="middle">✓ Correct! Moving to the next word…</text>
+  </g>
+  <text x="1399" y="8409.0" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#53617A">04  COMMON · NEXT WORD</text>
+  <g id="common-flow-next" transform="translate(1399,8429)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
+    <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-common-flow-next">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Vocab</text>
+      <rect x="197" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Common</text>
+    </g>
+    <text x="24" y="285" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#4058D9">EVERYDAY ENGLISH</text>
+    <text x="369" y="285" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#53617A" text-anchor="end">Word 2 of 10</text>
+    <rect x="24" y="299" width="345" height="5" rx="3" fill="#DCE4F0" />
+    <rect x="24" y="299" width="69.0" height="5" rx="3" fill="#4058D9" />
+    <rect x="24" y="324" width="345" height="159" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="44" y="351" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="500" fill="#53617A">Choose the closest meaning</text>
+    <text x="44" y="396" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="800" fill="#172943">eager</text>
+    <text x="44" y="420" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#4058D9">adjective</text>
+    <text x="44" y="454" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">“He was eager to learn more.”</text>
+    <rect x="24" y="499" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="508" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="527" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">A</text>
+    <text x="76" y="527" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Ready and excited</text>
+    <rect x="24" y="553" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="562" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="581" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">B</text>
+    <text x="76" y="581" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Quiet and tired</text>
+    <rect x="24" y="607" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="616" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="635" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">C</text>
+    <text x="76" y="635" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Hard to find</text>
+    <rect x="24" y="661" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="36" y="670" width="28" height="28" rx="8" fill="#EEF0FF" />
+    <text x="50" y="689" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#4058D9" text-anchor="middle">D</text>
+    <text x="76" y="689" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#172943">Unwilling to help</text>
+    <text x="196.5" y="741" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="500" fill="#53617A" text-anchor="middle">Tap an answer to continue</text>
+  </g>
+  <text x="64" y="9399.0" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#53617A">05  MISSED WORD · REVEAL &amp; SAVE</text>
+  <g id="common-flow-reveal" transform="translate(64,9419)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
+    <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-common-flow-reveal">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Vocab</text>
+      <rect x="197" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Common</text>
+    </g>
+    <text x="24" y="285" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#4058D9">EVERYDAY ENGLISH</text>
+    <text x="369" y="285" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#53617A" text-anchor="end">Word 1 of 10</text>
+    <rect x="24" y="299" width="345" height="5" rx="3" fill="#DCE4F0" />
+    <rect x="24" y="299" width="34.5" height="5" rx="3" fill="#4058D9" />
+    <rect x="24" y="324" width="345" height="43" rx="12" fill="#FCEDEA" />
+    <text x="40" y="351" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#B42318">Not quite — let’s learn this one</text>
+    <rect x="24" y="383" width="345" height="193" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="44" y="410" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="700" fill="#13734C">CORRECT ANSWER</text>
+    <text x="44" y="449" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800" fill="#172943">reliable</text>
+    <text x="44" y="473" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#13734C">adjective  ·  Able to be trusted</text>
+    <text x="44" y="506" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="400" fill="#53617A">Someone or something you can depend on.</text>
+    <text x="44" y="541" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">“She is a reliable colleague.”</text>
+    <text x="24" y="609" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" fill="#172943">Save this word for later?</text>
+    <text x="24" y="635" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Add it to your bank and practise in Review.</text>
+    <g aria-label="Save word">
+      <rect x="24" y="655" width="345" height="48" rx="12" fill="#4058D9" />
+      <text x="196.5" y="684" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save word</text>
+    </g>
+    <text x="196.5" y="734" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#4058D9" text-anchor="middle">Skip · Next word</text>
+  </g>
+  <text x="509" y="9399.0" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#53617A">06  SAVED · CONTINUE</text>
+  <g id="common-flow-saved" transform="translate(509,9419)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
+    <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-common-flow-saved">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Vocab</text>
+      <rect x="197" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Common</text>
+    </g>
+    <text x="24" y="285" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#4058D9">EVERYDAY ENGLISH</text>
+    <text x="369" y="285" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#53617A" text-anchor="end">Word 1 of 10</text>
+    <rect x="24" y="299" width="345" height="5" rx="3" fill="#DCE4F0" />
+    <rect x="24" y="299" width="34.5" height="5" rx="3" fill="#4058D9" />
+    <rect x="24" y="324" width="345" height="43" rx="12" fill="#E8F7EE" />
+    <text x="40" y="351" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#13734C">✓ Word saved to your bank</text>
+    <rect x="24" y="383" width="345" height="193" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <text x="44" y="410" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="700" fill="#13734C">CORRECT ANSWER</text>
+    <text x="44" y="449" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800" fill="#172943">reliable</text>
+    <text x="44" y="473" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#13734C">adjective  ·  Able to be trusted</text>
+    <text x="44" y="506" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="400" fill="#53617A">Someone or something you can depend on.</text>
+    <text x="44" y="541" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">“She is a reliable colleague.”</text>
+    <text x="24" y="609" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" fill="#172943">Ready for another word?</text>
+    <text x="24" y="635" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">You can practise “reliable” in Review.</text>
+    <g aria-label="Next word">
+      <rect x="24" y="660" width="345" height="48" rx="12" fill="#4058D9" />
+      <text x="196.5" y="689" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Next word</text>
+    </g>
+  </g>
+  <text x="954" y="9399.0" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#53617A">07  COMMON · LOADING</text>
+  <g id="common-flow-loading" transform="translate(954,9419)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
+    <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-common-flow-loading">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Vocab</text>
+      <rect x="197" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Common</text>
+    </g>
+    <text x="24" y="285" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#4058D9">EVERYDAY ENGLISH</text>
+    <text x="369" y="285" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="600" fill="#53617A" text-anchor="end">Word 1 of 10</text>
+    <rect x="24" y="299" width="345" height="5" rx="3" fill="#DCE4F0" />
+    <rect x="24" y="299" width="34.5" height="5" rx="3" fill="#4058D9" />
+    <rect x="24" y="324" width="345" height="159" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="44" y="345" width="174" height="12" rx="6" fill="#DCE4F0" />
+    <rect x="44" y="380" width="143" height="29" rx="6" fill="#DCE4F0" />
+    <rect x="44" y="432" width="265" height="14" rx="6" fill="#DCE4F0" />
+    <rect x="24" y="499" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="44" y="515" width="225" height="12" rx="5" fill="#DCE4F0" />
+    <rect x="24" y="553" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="44" y="569" width="225" height="12" rx="5" fill="#DCE4F0" />
+    <rect x="24" y="607" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="44" y="623" width="225" height="12" rx="5" fill="#DCE4F0" />
+    <rect x="24" y="661" width="345" height="46" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="44" y="677" width="225" height="12" rx="5" fill="#DCE4F0" />
+    <text x="196.5" y="741" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="500" fill="#53617A" text-anchor="middle">Finding your next word…</text>
+  </g>
+  <text x="1399" y="9399.0" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="#53617A">08  COMMON · BATCH COMPLETE</text>
+  <g id="common-flow-complete" transform="translate(1399,9419)">
+    <defs />
+    <rect fill="#F6F8FC" height="852" rx="30" stroke="#DCE4F0" stroke-width="2" width="393" x="0" y="0" />
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" x="25" y="32">9:41</text>
+    <rect fill="#172943" height="12" rx="4" width="25" x="326" y="19" />
+    <rect fill="#172943" height="12" rx="2" width="12" x="354" y="19" />
+    <rect fill="#64758E" height="6" rx="1" width="3" x="370" y="22" />
+    <rect fill="#FFFFFF" height="65" rx="0" width="393" x="0" y="47" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="111" y2="111" />
+    <rect fill="#4058D9" height="36" rx="11" width="36" x="21" y="62" />
+    <text fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" text-anchor="middle" x="39" y="87">W</text>
+    <text fill="#172943" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" x="69" y="86">Wordwell</text>
+    <circle cx="351" cy="80" fill="#EEF0FF" r="17" />
+    <circle cx="351.0" cy="77.2" fill="none" r="3.8" stroke="#4058D9" />
+    <path d="M344.6 88.4 Q344.6 82.6 351.0 82.6 Q357.4 82.6 357.4 88.4" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <rect fill="#FFFFFF" height="89" rx="0" width="393" x="0" y="763" />
+    <line stroke="#DCE4F0" stroke-width="1.5" x1="0" x2="393" y1="763" y2="763" />
+    <path d="M41 788.66 L49.5 781 L58 788.66 V797 H41 Z" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="49" y="818">Home</text>
+    <rect fill="#EEF0FF" height="52" rx="14" width="76" x="110" y="771" />
+    <path d="M146.5 782 V797 M139 789.5 H154" fill="none" stroke="#4058D9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#4058D9" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="146" y="818">Add</text>
+    <circle cx="243.5" cy="789.5" fill="none" r="7.56" stroke="#64758E" />
+    <circle cx="243.5" cy="789.5" fill="none" r="2.52" stroke="#64758E" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="243" y="818">Review</text>
+    <circle cx="340.5" cy="785.51" fill="none" r="3.99" stroke="#64758E" />
+    <path d="M333.78 797.27 Q333.78 791.18 340.5 791.18 Q347.22 791.18 347.22 797.27" fill="none" stroke="#64758E" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+    <text fill="#64758E" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="340" y="818">Account</text>
+    <rect fill="#172943" height="4" rx="3" width="103" x="145" y="839" />
+    <text x="24" y="157" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" fill="#172943">Add a word</text>
+    <text x="24" y="184" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A">Find a word. Make it part of your everyday.</text>
+    <g id="tabs-common-flow-complete">
+      <rect x="24" y="205" width="345" height="48" rx="12" fill="#EEF0FF" />
+      <text x="112" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600" fill="#53617A" text-anchor="middle">Vocab</text>
+      <rect x="197" y="209" width="169" height="40" rx="9" fill="#4058D9" />
+      <text x="281" y="235" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Common</text>
+    </g>
+    <rect x="24" y="290" width="345" height="319" rx="16" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+    <rect x="160" y="318" width="73" height="73" rx="24" fill="#E8F7EE" />
+    <text x="196.5" y="366" font-family="Inter, Arial, sans-serif" font-size="35" font-weight="700" fill="#13734C" text-anchor="middle">✓</text>
+    <text x="196.5" y="430" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" fill="#172943" text-anchor="middle">A little practice. Big progress.</text>
+    <text x="196.5" y="462" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="400" fill="#53617A" text-anchor="middle">You explored 10 everyday words.</text>
+    <text x="196.5" y="505" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" fill="#4058D9" text-anchor="middle">8 correct  ·  2 words saved</text>
+    <text x="196.5" y="549" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="400" fill="#53617A" text-anchor="middle">Your saved words are ready in Review.</text>
+    <g aria-label="Practise more words">
+      <rect x="24" y="637" width="345" height="48" rx="12" fill="#4058D9" />
+      <text x="196.5" y="666" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Practise more words</text>
+    </g>
+    <g aria-label="Back to Vocab">
+      <rect x="24" y="698" width="345" height="48" rx="12" fill="#FFFFFF" stroke="#DCE4F0" stroke-width="1" />
+      <text x="196.5" y="727" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#4058D9" text-anchor="middle">Back to Vocab</text>
+    </g>
+  </g>
+  <text x="64" y="10345.0" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#4058D9">FLOW &amp; HANDOFF</text>
+  <text x="64" y="10380.0" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="400" fill="#53617A">Correct choice → brief success feedback → next question automatically. No save is required.</text>
+  <text x="64" y="10409.0" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="400" fill="#53617A">Incorrect choice → reveal the answer → Save word or Skip → next question. Saving shows confirmation first.</text>
+  <text x="64" y="10438.0" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="400" fill="#53617A">Selecting Vocab returns to search. Selecting Common opens a question with exactly four answer choices.</text>
+  <text x="64" y="10467.0" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="400" fill="#53617A">Design-only sample: question bank, answer validation, saved words and progress will connect to the backend later.</text>
+  <text x="64" y="10496.0" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="400" fill="#53617A">Prototype timing: 800 ms success feedback. Loading blocks repeated answers. Batch completion offers more practice.</text>
 </svg>

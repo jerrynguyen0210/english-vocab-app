@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
-import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+  type ScrollView,
+} from 'react-native';
 import { WordForm } from '@/components/word-form';
 import { AppScreen } from '@/components/app-screen';
+import { CommonWordPractice } from '@/components/common-word-practice';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 import { authenticatedFetch } from '@/services/auth';
@@ -63,6 +71,7 @@ function CheckFilter({
 }
 
 export default function AddWordScreen() {
+  const [tab, setTab] = useState<'Vocab' | 'Common'>('Vocab');
   const [word, setWord] = useState('');
   const [includeFamily, setIncludeFamily] = useState(true);
   const [selectedParts, setSelectedParts] = useState<string[]>([
@@ -82,6 +91,7 @@ export default function AddWordScreen() {
   const [saved, setSaved] = useState<string[]>([]);
   const [saving, setSaving] = useState<string[]>([]);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const pending = useRef(false);
   const pendingSaves = useRef(new Set<string>());
   const generation = useRef(0);
@@ -122,7 +132,9 @@ export default function AddWordScreen() {
       include_family: String(includeFamily),
     });
     if (includeFamily) {
-      selectedParts.forEach((part) => params.append('parts', part.toLowerCase()));
+      selectedParts.forEach((part) =>
+        params.append('parts', part.toLowerCase()),
+      );
       // The base form is always included; only V2 and V3 are optional.
       params.append('forms', 'V1');
       selectedForms.forEach((form) => params.append('forms', form));
@@ -209,240 +221,298 @@ export default function AddWordScreen() {
   }
 
   return (
-    <AppScreen selected="Add" toast={toast?.text}>
+    <AppScreen selected="Add" toast={toast?.text} scrollRef={scroll}>
       <View style={styles.content}>
         <ThemedText accessibilityRole="header" style={styles.title}>
           Add a word
         </ThemedText>
         <ThemedText style={styles.subtitle}>
-          Find word forms and save the ones you need.
+          Find a word. Make it part of your everyday.
         </ThemedText>
-        <WordForm onSubmit={search}>
-          <View style={styles.card}>
-            <ThemedText nativeID="word-search-label" style={styles.label}>
-              Word to search *
-            </ThemedText>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                ref={input}
-                accessibilityLabel="Word to search (required)"
-                accessibilityLabelledBy="word-search-label"
-                aria-required
-                aria-invalid={!!error}
-                value={word}
-                placeholder="Enter a word, e.g. create"
-                placeholderTextColor={colors.placeholder}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="search"
-                onSubmitEditing={() => {
-                  if (Platform.OS !== 'web') void search();
-                }}
-                onFocus={() => setFocused(true)}
-                onBlur={() => setFocused(false)}
-                onChangeText={(value) => {
-                  setWord(value);
-                  setError('');
-                  changed();
-                }}
-                style={[
-                  styles.input,
-                  focused && styles.focused,
-                  !!error && styles.invalid,
-                ]}
-              />
-              <View pointerEvents="none" style={styles.searchIcon}>
-                <View style={styles.searchCircle} />
-                <View style={styles.searchHandle} />
-              </View>
-            </View>
-            {!!error && (
-              <ThemedText accessibilityRole="alert" style={styles.error}>
-                {error}
-              </ThemedText>
-            )}
-            <CheckFilter
-              plain
-              label="Include word family"
-              checked={includeFamily}
-              onPress={() => {
-                setIncludeFamily(!includeFamily);
-                changed();
-              }}
-            />
-            {includeFamily && (
-              <>
-                <View style={styles.filters}>
-                  {parts.map((part) => (
-                    <CheckFilter
-                      key={part}
-                      label={part}
-                      checked={selectedParts.includes(part)}
-                      onPress={() => {
-                        setSelectedParts((current) =>
-                          current.includes(part)
-                            ? current.filter((item) => item !== part)
-                            : [...current, part],
-                        );
-                        changed();
-                      }}
-                    />
-                  ))}
-                </View>
-                {selectedParts.includes('Verb') && (
-                  <>
-                    <ThemedText style={styles.sectionLabel}>
-                      VERB FORMS
-                    </ThemedText>
-                    <View style={styles.filters}>
-                      {forms.map((form) => (
-                        <CheckFilter
-                          key={form}
-                          label={formLabels[form]}
-                          checked={selectedForms.includes(form)}
-                          onPress={() => {
-                            setSelectedForms((current) =>
-                              current.includes(form)
-                                ? current.filter((item) => item !== form)
-                                : [...current, form],
-                            );
-                            changed();
-                          }}
-                        />
-                      ))}
-                    </View>
-                  </>
-                )}
-              </>
-            )}
+        <View accessibilityRole="tablist" style={styles.tabs}>
+          {(['Vocab', 'Common'] as const).map((label) => (
             <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ disabled: searching, busy: searching }}
-              disabled={searching}
-              onPress={search}
+              key={label}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === label }}
+              onPress={() => {
+                setTab(label);
+                scroll.current?.scrollTo({ y: 0, animated: false });
+              }}
               style={({ pressed }) => [
-                styles.button,
-                styles.searchButton,
-                (pressed || searching) && styles.pressed,
+                styles.tab,
+                tab === label && styles.activeTab,
+                pressed && styles.pressed,
               ]}
             >
-              <ThemedText style={styles.buttonText}>
-                {searching ? 'Searching…' : 'Search'}
+              <ThemedText
+                style={[styles.tabText, tab === label && styles.activeTabText]}
+              >
+                {label}
               </ThemedText>
             </Pressable>
-          </View>
-        </WordForm>
-        {!!message && (
-          <ThemedText accessibilityLiveRegion="polite" style={styles.message}>
-            {message}
-          </ThemedText>
-        )}
-        {!!retry && (
-          <Pressable
-            accessibilityRole="button"
-            disabled={searching || saving.length > 0}
-            accessibilityState={{ disabled: searching || saving.length > 0 }}
-            onPress={() => (retry === 'search' ? search() : save(retry))}
-            style={styles.button}
-          >
-            <ThemedText style={styles.buttonText}>Try again</ThemedText>
-          </Pressable>
-        )}
-        {searching && results !== null && (
-          <ThemedText accessibilityLiveRegion="polite" style={styles.message}>
-            Fetching matching forms and definitions…
-          </ThemedText>
-        )}
-        {results === null ? (
-          <View style={styles.emptyCard}>
-            <ThemedText
-              accessibilityLiveRegion="polite"
-              style={styles.emptyTitle}
-            >
-              {searching ? 'Searching dictionary…' : 'No results yet'}
-            </ThemedText>
-            <ThemedText style={styles.emptyText}>
-              {searching
-                ? 'Fetching matching forms and definitions…'
-                : 'Enter a word and select Search\nto find related word forms.'}
-            </ThemedText>
-          </View>
-        ) : (
-          <View style={styles.results}>
-            <View style={styles.resultsHeader}>
-              <ThemedText accessibilityRole="header" style={styles.emptyTitle}>
-                Search results
+          ))}
+        </View>
+        <View
+          style={tab !== 'Vocab' && styles.hidden}
+          accessibilityElementsHidden={tab !== 'Vocab'}
+          importantForAccessibility={
+            tab === 'Vocab' ? 'auto' : 'no-hide-descendants'
+          }
+        >
+          <WordForm onSubmit={search}>
+            <View style={styles.card}>
+              <ThemedText nativeID="word-search-label" style={styles.label}>
+                Word to search *
               </ThemedText>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  ref={input}
+                  accessibilityLabel="Word to search (required)"
+                  accessibilityLabelledBy="word-search-label"
+                  aria-required
+                  aria-invalid={!!error}
+                  value={word}
+                  placeholder="Enter a word, e.g. create"
+                  placeholderTextColor={colors.placeholder}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  onSubmitEditing={() => {
+                    if (Platform.OS !== 'web') void search();
+                  }}
+                  onFocus={() => setFocused(true)}
+                  onBlur={() => setFocused(false)}
+                  onChangeText={(value) => {
+                    setWord(value);
+                    setError('');
+                    changed();
+                  }}
+                  style={[
+                    styles.input,
+                    focused && styles.focused,
+                    !!error && styles.invalid,
+                  ]}
+                />
+                <View pointerEvents="none" style={styles.searchIcon}>
+                  <View style={styles.searchCircle} />
+                  <View style={styles.searchHandle} />
+                </View>
+              </View>
+              {!!error && (
+                <ThemedText accessibilityRole="alert" style={styles.error}>
+                  {error}
+                </ThemedText>
+              )}
+              <CheckFilter
+                plain
+                label="Include word family"
+                checked={includeFamily}
+                onPress={() => {
+                  setIncludeFamily(!includeFamily);
+                  changed();
+                }}
+              />
+              {includeFamily && (
+                <>
+                  <View style={styles.filters}>
+                    {parts.map((part) => (
+                      <CheckFilter
+                        key={part}
+                        label={part}
+                        checked={selectedParts.includes(part)}
+                        onPress={() => {
+                          setSelectedParts((current) =>
+                            current.includes(part)
+                              ? current.filter((item) => item !== part)
+                              : [...current, part],
+                          );
+                          changed();
+                        }}
+                      />
+                    ))}
+                  </View>
+                  {selectedParts.includes('Verb') && (
+                    <>
+                      <ThemedText style={styles.sectionLabel}>
+                        VERB FORMS
+                      </ThemedText>
+                      <View style={styles.filters}>
+                        {forms.map((form) => (
+                          <CheckFilter
+                            key={form}
+                            label={formLabels[form]}
+                            checked={selectedForms.includes(form)}
+                            onPress={() => {
+                              setSelectedForms((current) =>
+                                current.includes(form)
+                                  ? current.filter((item) => item !== form)
+                                  : [...current, form],
+                              );
+                              changed();
+                            }}
+                          />
+                        ))}
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: searching, busy: searching }}
+                disabled={searching}
+                onPress={search}
+                style={({ pressed }) => [
+                  styles.button,
+                  styles.searchButton,
+                  (pressed || searching) && styles.pressed,
+                ]}
+              >
+                <ThemedText style={styles.buttonText}>
+                  {searching ? 'Searching…' : 'Search'}
+                </ThemedText>
+              </Pressable>
+            </View>
+          </WordForm>
+          {!!message && (
+            <ThemedText accessibilityLiveRegion="polite" style={styles.message}>
+              {message}
+            </ThemedText>
+          )}
+          {!!retry && (
+            <Pressable
+              accessibilityRole="button"
+              disabled={searching || saving.length > 0}
+              accessibilityState={{ disabled: searching || saving.length > 0 }}
+              onPress={() => (retry === 'search' ? search() : save(retry))}
+              style={styles.button}
+            >
+              <ThemedText style={styles.buttonText}>Try again</ThemedText>
+            </Pressable>
+          )}
+          {searching && results !== null && (
+            <ThemedText accessibilityLiveRegion="polite" style={styles.message}>
+              Fetching matching forms and definitions…
+            </ThemedText>
+          )}
+          {results === null ? (
+            <View style={styles.emptyCard}>
               <ThemedText
                 accessibilityLiveRegion="polite"
-                style={styles.subtitle}
+                style={styles.emptyTitle}
               >
-                {results.length} found
+                {searching ? 'Searching dictionary…' : 'No results yet'}
+              </ThemedText>
+              <ThemedText style={styles.emptyText}>
+                {searching
+                  ? 'Fetching matching forms and definitions…'
+                  : 'Enter a word and select Search\nto find related word forms.'}
               </ThemedText>
             </View>
-            {!results.length && (
-              <ThemedText style={styles.emptyText}>
-                No matching words found. Try another word or change your
-                filters.
-              </ThemedText>
-            )}
-            {results.map((entry) => (
-              <View
-                key={`${entry.word}:${entry.part_of_speech}`}
-                style={styles.resultCard}
-              >
-                <View style={styles.resultBody}>
-                  <ThemedText style={styles.emptyTitle}>
-                    {entry.word}
-                  </ThemedText>
-                  <ThemedText style={styles.resultType}>
-                    {entry.part_of_speech.charAt(0).toUpperCase() +
-                      entry.part_of_speech.slice(1)}
-                    {entry.verb_forms.length
-                      ? ` · ${entry.verb_forms.join('/')}`
-                      : ''}
-                  </ThemedText>
-                  <ThemedText style={styles.definition}>
-                    {entry.english_explanation}
-                  </ThemedText>
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`${saved.includes(entry.word) ? 'Saved' : 'Save'} ${entry.word}`}
-                  accessibilityState={{
-                    disabled:
-                      saved.includes(entry.word) || saving.includes(entry.word),
-                    busy: saving.includes(entry.word),
-                  }}
-                  disabled={
-                    saved.includes(entry.word) || saving.includes(entry.word)
-                  }
-                  onPress={() => save(entry)}
-                  style={({ pressed }) => [
-                    styles.button,
-                    (pressed ||
-                      saved.includes(entry.word) ||
-                      saving.includes(entry.word)) &&
-                      styles.pressed,
-                  ]}
+          ) : (
+            <View style={styles.results}>
+              <View style={styles.resultsHeader}>
+                <ThemedText
+                  accessibilityRole="header"
+                  style={styles.emptyTitle}
                 >
-                  <ThemedText style={styles.buttonText}>
-                    {saved.includes(entry.word)
-                      ? 'Saved'
-                      : saving.includes(entry.word)
-                        ? 'Saving…'
-                        : 'Save'}
-                  </ThemedText>
-                </Pressable>
+                  Search results
+                </ThemedText>
+                <ThemedText
+                  accessibilityLiveRegion="polite"
+                  style={styles.subtitle}
+                >
+                  {results.length} found
+                </ThemedText>
               </View>
-            ))}
-            <ThemedText style={styles.emptyText}>
-              Definitions: Princeton WordNet. Word-family coverage varies;
-              particles, interjections and other word types may not be
-              available.
-            </ThemedText>
-          </View>
-        )}
+              {!results.length && (
+                <ThemedText style={styles.emptyText}>
+                  No matching words found. Try another word or change your
+                  filters.
+                </ThemedText>
+              )}
+              {results.map((entry) => (
+                <View
+                  key={`${entry.word}:${entry.part_of_speech}`}
+                  style={styles.resultCard}
+                >
+                  <View style={styles.resultBody}>
+                    <ThemedText style={styles.emptyTitle}>
+                      {entry.word}
+                    </ThemedText>
+                    <ThemedText style={styles.resultType}>
+                      {entry.part_of_speech.charAt(0).toUpperCase() +
+                        entry.part_of_speech.slice(1)}
+                      {entry.verb_forms.length
+                        ? ` · ${entry.verb_forms.join('/')}`
+                        : ''}
+                    </ThemedText>
+                    <ThemedText style={styles.definition}>
+                      {entry.english_explanation}
+                    </ThemedText>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${saved.includes(entry.word) ? 'Saved' : 'Save'} ${entry.word}`}
+                    accessibilityState={{
+                      disabled:
+                        saved.includes(entry.word) ||
+                        saving.includes(entry.word),
+                      busy: saving.includes(entry.word),
+                    }}
+                    disabled={
+                      saved.includes(entry.word) || saving.includes(entry.word)
+                    }
+                    onPress={() => save(entry)}
+                    style={({ pressed }) => [
+                      styles.button,
+                      (pressed ||
+                        saved.includes(entry.word) ||
+                        saving.includes(entry.word)) &&
+                        styles.pressed,
+                    ]}
+                  >
+                    <ThemedText style={styles.buttonText}>
+                      {saved.includes(entry.word)
+                        ? 'Saved'
+                        : saving.includes(entry.word)
+                          ? 'Saving…'
+                          : 'Save'}
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              ))}
+              <ThemedText style={styles.emptyText}>
+                Definitions: Princeton WordNet. Word-family coverage varies;
+                particles, interjections and other word types may not be
+                available.
+              </ThemedText>
+            </View>
+          )}
+        </View>
+        <View
+          style={tab !== 'Common' && styles.hidden}
+          accessibilityElementsHidden={tab !== 'Common'}
+          importantForAccessibility={
+            tab === 'Common' ? 'auto' : 'no-hide-descendants'
+          }
+        >
+          <CommonWordPractice
+            active={tab === 'Common'}
+            savedWords={saved}
+            onSaved={(savedWord) =>
+              setSaved((current) => [...new Set([...current, savedWord])])
+            }
+            onBackToVocab={() => {
+              setTab('Vocab');
+              scroll.current?.scrollTo({ y: 0, animated: false });
+            }}
+            onStepChange={() =>
+              scroll.current?.scrollTo({ y: 0, animated: false })
+            }
+          />
+        </View>
       </View>
     </AppScreen>
   );
@@ -452,6 +522,25 @@ const fontFamily = Platform.select({
   default: undefined,
 });
 const styles = StyleSheet.create({
+  hidden: { display: 'none' },
+  tabs: {
+    flexDirection: 'row',
+    padding: 4,
+    marginTop: 18,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 12,
+    gap: 4,
+  },
+  tab: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeTab: { backgroundColor: colors.primary },
+  tabText: { color: colors.secondary, fontSize: 14, fontWeight: '600' },
+  activeTabText: { color: colors.surface, fontWeight: '700' },
   content: {
     width: '100%',
     maxWidth: 600,
