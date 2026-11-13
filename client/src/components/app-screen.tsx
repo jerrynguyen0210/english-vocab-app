@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type ScrollViewProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { type ComponentRef, type PropsWithChildren, type Ref } from 'react';
@@ -40,10 +41,12 @@ export function AppScreen({
   selected,
   toast,
   scrollRef,
+  onContentSizeChange,
 }: PropsWithChildren<{
   selected: 'Home' | 'Add' | 'Review' | 'Account';
   toast?: string;
   scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
+  onContentSizeChange?: ScrollViewProps['onContentSizeChange'];
 }>) {
   return (
     <KeyboardAvoidingView
@@ -78,6 +81,7 @@ export function AppScreen({
         </View>
         <ScrollView
           ref={scrollRef}
+          onContentSizeChange={onContentSizeChange}
           keyboardShouldPersistTaps="handled"
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}

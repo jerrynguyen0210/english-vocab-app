@@ -221,7 +221,15 @@ export default function AddWordScreen() {
   }
 
   return (
-    <AppScreen selected="Add" toast={toast?.text} scrollRef={scroll}>
+    <AppScreen
+      selected="Add"
+      toast={toast?.text}
+      scrollRef={scroll}
+      onContentSizeChange={() => {
+        // Wait for the new question/feedback layout before using its full height.
+        if (tab === 'Common') scroll.current?.scrollToEnd({ animated: false });
+      }}
+    >
       <View style={styles.content}>
         <ThemedText accessibilityRole="header" style={styles.title}>
           Add a word
@@ -237,7 +245,11 @@ export default function AddWordScreen() {
               accessibilityState={{ selected: tab === label }}
               onPress={() => {
                 setTab(label);
-                scroll.current?.scrollTo({ y: 0, animated: false });
+                if (label === 'Common') {
+                  scroll.current?.scrollToEnd({ animated: false });
+                } else {
+                  scroll.current?.scrollTo({ y: 0, animated: false });
+                }
               }}
               style={({ pressed }) => [
                 styles.tab,
@@ -509,7 +521,7 @@ export default function AddWordScreen() {
               scroll.current?.scrollTo({ y: 0, animated: false });
             }}
             onStepChange={() =>
-              scroll.current?.scrollTo({ y: 0, animated: false })
+              scroll.current?.scrollToEnd({ animated: false })
             }
           />
         </View>

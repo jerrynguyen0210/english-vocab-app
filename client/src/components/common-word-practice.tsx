@@ -148,8 +148,8 @@ export function CommonWordPractice({
       setPhase('correct');
     } else {
       setPhase('reveal');
-      onStepChange?.();
     }
+    onStepChange?.();
   }
 
   async function save() {
