@@ -7,9 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.text import normalise_word
-from app.models import PromptJob, ReviewState, User, Word
+from app.models import CommonWordQuestion, PromptJob, ReviewState, User, Word
 from app.schemas.words import CreateWord, WordCreated, WordSearchResult
 from app.services.accounts import lock_account
+from app.services.common_word_bank import refill_if_low
 from app.services.dictionary import (
     PartOfSpeech,
     VerbForm,
@@ -92,6 +93,16 @@ def create_word(body: CreateWord, db: Session, user: User) -> WordCreated:
         db.flush()
         db.add(ReviewState(word_id=word.id, due_at=datetime.now(UTC)))
         db.add(PromptJob(word_id=word.id))
+        if (
+            db.scalar(
+                select(CommonWordQuestion.id).where(
+                    CommonWordQuestion.user_id == user.id,
+                    CommonWordQuestion.normalised_word == word.normalised_word,
+                )
+            )
+            is not None
+        ):
+            refill_if_low(db, user.id)
         db.commit()
     except IntegrityError:
         db.rollback()

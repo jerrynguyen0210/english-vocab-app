@@ -75,7 +75,8 @@ def test_generation_is_async_persistent_and_filtered_to_current_user(api, monkey
     assert len(item["choices"]) == 4
     assert db.scalar(select(func.count()).select_from(Word)) == 2
     assert db.scalar(select(func.count()).select_from(ReviewState)) == 2
-    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 0
+    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 1
+    assert db.scalar(select(CommonWordJob)).failure_category == "low_bank"
     generator.assert_called_once()
     assert "reliable" in generator.call_args.args[0]
     assert "eager" not in generator.call_args.args[0]
@@ -141,6 +142,11 @@ def test_correct_answers_are_remembered_exported_and_excluded_across_sessions(
     monkeypatch.setattr(
         "app.services.common_word_worker.generate_common_words", generator
     )
+    # The partial first refill is retryable after its backoff.
+    db.scalar(select(CommonWordJob)).available_at = datetime.now(UTC) - timedelta(
+        seconds=1
+    )
+    db.commit()
     assert process_one(db.get_bind())
     assert generator.call_args.kwargs["learned_words"] == ["reliable"]
     db.expire_all()
@@ -203,7 +209,8 @@ def test_learned_and_saved_exclusions_are_not_limited_to_recent_500(api):
     claimed = claim_job(db.get_bind())
     assert set(claimed.learned_words) == {f"known{i}" for i in range(501)}
     assert {f"saved{i}" for i in range(501)} <= set(claimed.excluded_words)
-    assert len(claimed.excluded_words) == 1001
+    assert {f"recent{i}" for i in range(501)} <= set(claimed.excluded_words)
+    assert len(claimed.excluded_words) == 1002
 
 
 def test_saved_words_are_rechecked_before_insertion_and_before_serving(
@@ -240,7 +247,10 @@ def test_saved_word_normalization_deduplication_and_batches_do_not_repeat_loaded
             == 202
         )
     assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 1
-    db.rollback()
+    db.scalar(select(CommonWordJob)).available_at = datetime.now(UTC) - timedelta(
+        seconds=1
+    )
+    db.commit()
     claimed = claim_job(db.get_bind())
     assert set(claimed.excluded_words) == {"reliable", "eager"}
     finish_job(db.get_bind(), claimed, [candidate("patient")])
@@ -343,7 +353,10 @@ def test_account_export_and_deletion_include_bank_and_jobs_and_stale_worker_cann
     )
     owner_id = db.scalar(select(CommonWordQuestion.user_id))
     other_id = db.scalar(select(User.id).where(User.email == "other@example.com"))
-    db.add(CommonWordJob(user_id=owner_id))
+    # Answering already queued the owner's low bank refill.
+    db.get(CommonWordJob, owner_id).available_at = datetime.now(UTC) - timedelta(
+        seconds=1
+    )
     db.add(CommonWordJob(user_id=other_id))
     db.commit()
     claimed = claim_job(db.get_bind())
@@ -440,3 +453,140 @@ def test_learning_summary_counts_learned_words_without_double_counting(
     assert summary["total_count"] == 2
     other_summary = client.get(summary_url, headers=other).json()
     assert other_summary["learned_count"] == other_summary["total_count"] == 0
+
+
+def seed_bank(api, count=20):
+    client, db, owner, _, _ = api
+    owner_id = uuid.UUID(client.get("/api/v1/auth/me", headers=owner).json()["id"])
+    words = [
+        "reliable",
+        "eager",
+        "patient",
+        "kind",
+        "calm",
+        "brave",
+        "honest",
+        "bright",
+        "gentle",
+        "helpful",
+        "careful",
+        "cheerful",
+        "clever",
+        "friendly",
+        "polite",
+        "quiet",
+        "ready",
+        "safe",
+        "warm",
+        "wise",
+    ]
+    questions = []
+    for word in words[:count]:
+        question = CommonWordQuestion(
+            user_id=owner_id, normalised_word=word, **candidate(word).model_dump()
+        )
+        db.add(question)
+        questions.append(question)
+    db.commit()
+    return owner_id, questions
+
+
+def test_answer_at_half_capacity_queues_one_job_and_keeps_serving(api):
+    client, db, owner, _, _ = api
+    owner_id, questions = seed_bank(api)
+    assert client.post(URL, headers=owner, json={}).status_code == 200
+    assert db.get(CommonWordJob, owner_id) is None
+    for index, question in enumerate(questions[:10]):
+        response = client.post(
+            f"/api/v1/common-words/{question.id}/learned",
+            headers=owner,
+            json={"selected_index": 1},
+        )
+        assert response.status_code == 204
+        if index < 9:
+            assert db.get(CommonWordJob, owner_id) is None
+    job = db.get(CommonWordJob, owner_id)
+    assert job is not None and job.attempts == 0
+    db.rollback()
+    claimed = claim_job(db.get_bind())
+    for _ in range(3):
+        response = client.post(URL, headers=owner, json={})
+        assert response.status_code == 200
+        assert len(response.json()["questions"]) == 10
+    db.expire_all()
+    assert db.get(CommonWordJob, owner_id).lease_token == claimed.token
+    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 1
+
+
+def test_saving_common_word_triggers_refill_but_unrelated_saves_do_not(api):
+    client, db, owner, _, _ = api
+    assert create(client, owner, "hello").status_code == 201
+    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 0
+    owner_id, questions = seed_bank(api, 11)
+    assert create(client, owner, questions[0].word).status_code == 201
+    assert db.get(CommonWordJob, owner_id) is not None
+    response = client.post(URL, headers=owner, json={})
+    assert len(response.json()["questions"]) == 10
+    assert questions[0].word not in [q["word"] for q in response.json()["questions"]]
+
+
+def test_partial_refill_continues_until_above_half_and_filters_duplicates(api):
+    client, db, owner, _, _ = api
+    owner_id, questions = seed_bank(api, 9)
+    assert create(client, owner, "warm").status_code == 201
+    assert client.post(URL, headers=owner, json={}).status_code == 200
+    db.rollback()
+    claimed = claim_job(db.get_bind())
+    # Existing, saved and duplicate candidates cannot inflate the bank.
+    finish_job(
+        db.get_bind(),
+        claimed,
+        [
+            candidate(questions[0].word),
+            candidate("warm"),
+            candidate("careful"),
+            candidate("careful"),
+        ],
+    )
+    db.expire_all()
+    job = db.get(CommonWordJob, owner_id)
+    assert job is not None and job.failure_category == "low_bank"
+    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 10
+    job.available_at = datetime.now(UTC) - timedelta(seconds=1)
+    db.commit()
+    claimed = claim_job(db.get_bind())
+    assert "careful" in claimed.excluded_words
+    finish_job(db.get_bind(), claimed, [candidate("wise")])
+    db.expire_all()
+    assert db.get(CommonWordJob, owner_id) is None
+    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 11
+
+
+def test_failed_background_refill_does_not_block_questions_or_answers(api):
+    client, db, owner, _, _ = api
+    owner_id, questions = seed_bank(api, 10)
+    db.add(
+        CommonWordJob(
+            user_id=owner_id,
+            attempts=3,
+            failed_at=datetime.now(UTC),
+            failure_category="provider_connection",
+        )
+    )
+    db.commit()
+    assert client.post(URL, headers=owner, json={}).status_code == 200
+    assert (
+        client.post(
+            f"/api/v1/common-words/{questions[0].id}/learned",
+            headers=owner,
+            json={"selected_index": 1},
+        ).status_code
+        == 204
+    )
+    assert db.get(CommonWordJob, owner_id).attempts == 3
+    job = db.get(CommonWordJob, owner_id)
+    job.failed_at = datetime.now(UTC) - timedelta(seconds=61)
+    db.commit()
+    assert client.post(URL, headers=owner, json={}).status_code == 200
+    assert db.get(CommonWordJob, owner_id).attempts == 0
+    assert db.get(CommonWordJob, owner_id).failed_at is None

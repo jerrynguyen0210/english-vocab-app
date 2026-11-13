@@ -538,14 +538,20 @@ sessions and devices without changing scheduled Review scores or adding Review w
 Saved words are compared using the same normalization as the word bank and excluded
 both when generated questions are attached and whenever questions are served.
 Every refill prompt includes all correctly answered words as `learned_words`, plus
-all saved vocabulary and up to 500 recent unlearned generated words as `excluded_words`.
-Learned and saved vocabulary are never truncated to that recent-history limit.
+all saved vocabulary and all unlearned generated words as `excluded_words`.
+These exclusion lists are not truncated.
 Local filtering still prevents repeats if the model ignores exclusions.
 Questions, including their learned timestamps, and refill jobs are owned by,
 exported with, and erased with their account. Generation never saves words automatically.
 
-When the bank has no eligible questions, the endpoint queues one durable job per user
-and returns HTTP 202 with `{"status": "pending", "questions": []}`. The existing
+The refill baseline is 20 questions, matching the model's requested batch size.
+When ten or fewer unlearned, unsaved questions remain (50%), the server queues one
+durable refill job per user. It checks on batch fetches, correct answers, and saving
+a Common word, so replenishment starts while the user is answering. Available
+questions still return immediately while generation runs, including during a refill
+failure cooldown. If no questions match the request's exclusions, the endpoint also
+queues a job and returns HTTP 202 with `{"status": "pending", "questions": []}`.
+The existing
 `python -m app.prompt_worker` processes both review prompts and Common refills outside
 HTTP requests. The app polls every two seconds, cancels polling when hidden, and keeps
 up to 1,000 recent question IDs out of subsequent batches during that screen session.
@@ -554,8 +560,13 @@ and offers a manual retry. Common generation uses `COMMON_WORDS_TIMEOUT_SECONDS`
 (default 300 seconds) independently of the Review prompt timeout. Its worker lease
 includes an additional 60 seconds for finishing the job.
 Expired worker leases are recovered, stale results discarded, and failures retried
-up to three times. After terminal failure the API returns `status: "failed"`; another
-user retry can queue work after a 60-second cooldown. Long-running generation remains
+up to three times. Partial refills that leave ten or fewer eligible questions keep
+the job queued with the same bounded retries; all candidates are checked against the
+latest saved and generated words before insertion. The job completes once a refill
+raises the eligible bank above ten. Generation latency or provider failures can still
+allow the reserve to drop below half while the user continues answering.
+After terminal failure the API returns `status: "failed"` only when no matching
+questions remain; subsequent activity can queue work after a 60-second cooldown. Long-running generation remains
 durable if the client stops waiting. Provider error bodies are not returned or logged.
 
 Use the existing private `OPENROUTER_*` settings; no new credentials or services are

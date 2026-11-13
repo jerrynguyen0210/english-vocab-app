@@ -14,6 +14,7 @@ from app.llm.openrouter_common import generate_common_words
 from app.llm.openrouter_review import ReviewError
 from app.models import CommonWordJob, CommonWordQuestion, User, Word
 from app.schemas.common_words import GeneratedCommonWord
+from app.services.common_word_bank import REFILL_THRESHOLD, available_count
 
 logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
@@ -75,8 +76,7 @@ def claim_job(engine: Engine) -> ClaimedJob | None:
         ).scalar_one_or_none()
         if attempts is None:
             return None
-        # Include all learned and saved words, plus recent generated questions.
-        # Only generated, unlearned history is capped; learned memory is durable.
+        # Send all saved, learned and generated words to avoid repeated model output.
         learned = list(
             db.scalars(
                 select(CommonWordQuestion.normalised_word)
@@ -98,7 +98,6 @@ def claim_job(engine: Engine) -> ClaimedJob | None:
                     CommonWordQuestion.learned_at.is_(None),
                 )
                 .order_by(CommonWordQuestion.created_at.desc(), CommonWordQuestion.id)
-                .limit(500)
             )
         )
         return ClaimedJob(job.user_id, token, attempts, sorted(excluded), learned)
@@ -165,12 +164,15 @@ def finish_job(
                 )
                 excluded.add(normalised)
                 inserted += 1
-        if inserted:
+        db.flush()
+        if inserted and available_count(db, claimed.user_id) > REFILL_THRESHOLD:
             db.delete(job)
         else:
             job.lease_token = None
             job.failure_category = (
-                "no_new_words" if candidates is not None else failure_category
+                ("low_bank" if inserted else "no_new_words")
+                if candidates is not None
+                else failure_category
             )
             if claimed.attempts >= MAX_ATTEMPTS:
                 job.failed_at = datetime.now(UTC)
