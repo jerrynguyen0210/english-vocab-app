@@ -118,6 +118,7 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
                     CommonWordQuestion.correct_index,
                     CommonWordQuestion.created_at,
                     CommonWordQuestion.last_presented_at,
+                    CommonWordQuestion.learned_at,
                 )
                 .where(CommonWordQuestion.user_id == user_id)
                 .order_by(CommonWordQuestion.created_at, CommonWordQuestion.id)

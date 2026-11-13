@@ -70,15 +70,132 @@ def test_generation_is_async_persistent_and_filtered_to_current_user(api, monkey
     assert db.scalar(select(func.count()).select_from(ReviewState)) == 2
     assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 0
     generator.assert_called_once()
-    assert (
-        "reliable" not in generator.call_args.args[0]
-    )  # Saved vocabulary stays local.
+    assert "reliable" in generator.call_args.args[0]
+    assert "eager" not in generator.call_args.args[0]
+    assert generator.call_args.kwargs["learned_words"] == []
     assert client.post(URL, headers=other, json={}).json()["status"] == "pending"
     assert (
         client.post(URL, headers=owner, json={}).json()["questions"][0]["id"]
         == item["id"]
     )
     assert generator.call_count == 1
+
+
+def test_correct_answers_are_remembered_exported_and_excluded_across_sessions(
+    api, monkeypatch
+):
+    client, db, owner, other, _ = api
+    generate(api, monkeypatch)
+    questions = client.post(URL, headers=owner, json={}).json()["questions"]
+    question = next(q for q in questions if q["word"] == "reliable")
+    learned_url = f"/api/v1/common-words/{question['id']}/learned"
+    assert (
+        client.post(learned_url, headers=other, json={"selected_index": 1}).status_code
+        == 404
+    )
+    assert client.post(learned_url, json={"selected_index": 1}).status_code == 401
+    assert (
+        client.post(learned_url, headers=owner, json={"selected_index": 0}).status_code
+        == 422
+    )
+    stored = db.get(CommonWordQuestion, uuid.UUID(question["id"]))
+    assert stored.learned_at is None
+    response = client.post(learned_url, headers=owner, json={"selected_index": 1})
+    assert response.status_code == 204
+    assert response.headers["cache-control"] == "no-store"
+    db.expire_all()
+    learned_at = stored.learned_at
+    assert learned_at is not None
+    assert (
+        client.post(learned_url, headers=owner, json={"selected_index": 1}).status_code
+        == 204
+    )
+    db.expire_all()
+    assert stored.learned_at == learned_at
+    # A fresh fetch without client exclusions still remembers the correct answer.
+    assert [
+        q["word"] for q in client.post(URL, headers=owner, json={}).json()["questions"]
+    ] == ["eager"]
+    exported = collect_user_data(db, stored.user_id)["common_word_questions"]
+    assert (
+        next(q for q in exported if q["word"] == "reliable")["learned_at"] == learned_at
+    )
+    assert db.scalar(select(func.count()).select_from(Word)) == 0
+    assert db.scalar(select(func.count()).select_from(ReviewState)) == 0
+    assert (
+        client.post(
+            URL, headers=owner, json={"exclude_ids": [q["id"] for q in questions]}
+        ).status_code
+        == 202
+    )
+    db.rollback()
+    generator = Mock(return_value=[candidate(), candidate("patient")])
+    monkeypatch.setattr(
+        "app.services.common_word_worker.generate_common_words", generator
+    )
+    assert process_one(db.get_bind())
+    assert generator.call_args.kwargs["learned_words"] == ["reliable"]
+    db.expire_all()
+    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 3
+    # Another account can still learn the same word independently.
+    assert client.post(URL, headers=other, json={}).status_code == 202
+    db.rollback()
+    assert process_one(db.get_bind())
+    assert generator.call_args.kwargs["learned_words"] == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"selected_index": True},
+        {"selected_index": 4},
+        {"selected_index": "1"},
+        {"selected_index": 1, "word": "eager"},
+    ],
+)
+def test_learned_request_validation(api, monkeypatch, body):
+    client, db, owner, _, _ = api
+    generate(api, monkeypatch)
+    question = db.scalar(select(CommonWordQuestion))
+    assert (
+        client.post(
+            f"/api/v1/common-words/{question.id}/learned", headers=owner, json=body
+        ).status_code
+        == 422
+    )
+    db.expire_all()
+    assert question.learned_at is None
+
+
+def test_learned_and_saved_exclusions_are_not_limited_to_recent_500(api):
+    client, db, owner, _, _ = api
+    owner_id = uuid.UUID(client.get("/api/v1/auth/me", headers=owner).json()["id"])
+    for index in range(501):
+        for prefix, learned in [("known", True), ("recent", False)]:
+            word = f"{prefix}{index}"
+            db.add(
+                CommonWordQuestion(
+                    user_id=owner_id,
+                    normalised_word=word,
+                    **candidate().model_dump(exclude={"word"}),
+                    word=word,
+                    learned_at=datetime.now(UTC) if learned else None,
+                )
+            )
+        db.add(
+            Word(
+                user_id=owner_id,
+                word=f"saved{index}",
+                english_explanation="A saved word.",
+            )
+        )
+    db.add(CommonWordJob(user_id=owner_id))
+    db.commit()
+    claimed = claim_job(db.get_bind())
+    assert set(claimed.learned_words) == {f"known{i}" for i in range(501)}
+    assert {f"saved{i}" for i in range(501)} <= set(claimed.excluded_words)
+    assert len(claimed.excluded_words) == 1001
 
 
 def test_saved_words_are_rechecked_before_insertion_and_before_serving(
@@ -207,6 +324,15 @@ def test_account_export_and_deletion_include_bank_and_jobs_and_stale_worker_cann
 ):
     client, db, owner, other, _ = api
     generate(api, monkeypatch)
+    question = db.scalar(select(CommonWordQuestion))
+    assert (
+        client.post(
+            f"/api/v1/common-words/{question.id}/learned",
+            headers=owner,
+            json={"selected_index": question.correct_index},
+        ).status_code
+        == 204
+    )
     owner_id = db.scalar(select(CommonWordQuestion.user_id))
     other_id = db.scalar(select(User.id).where(User.email == "other@example.com"))
     db.add(CommonWordJob(user_id=owner_id))

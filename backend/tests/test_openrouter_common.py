@@ -64,6 +64,25 @@ def test_requests_native_everyday_words_and_four_unambiguous_meanings():
     assert payload["max_tokens"] >= 4000
 
 
+def test_prompt_includes_all_learned_and_saved_exclusions_without_truncation():
+    learned = [f"learned{i}" for i in range(600)]
+    excluded = [f"saved{i}" for i in range(600)]
+    with patch(
+        "app.llm.openrouter_common.urlopen", return_value=envelope([candidate()])
+    ) as request:
+        generate_common_words(
+            excluded,
+            learned_words=learned,
+            model="test/model",
+            api_key="placeholder-test-key",
+        )
+    payload = json.loads(request.call_args.args[0].data)
+    content = json.loads(payload["messages"][1]["content"])
+    assert content["learned_words"] == learned
+    assert content["excluded_words"] == excluded
+    assert "Do not include any learned word" in SYSTEM_PROMPT
+
+
 @pytest.mark.parametrize(
     "change",
     [

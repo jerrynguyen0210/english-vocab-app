@@ -8,8 +8,10 @@ from fastapi import HTTPException
 from app.services.errors import (
     AccountUnavailable,
     AuthRateLimited,
+    CommonQuestionNotFound,
     DictionaryUnavailable,
     InvalidAccessToken,
+    InvalidCommonAnswer,
     InvalidCredentials,
     InvalidSearch,
     InvalidSession,
@@ -24,6 +26,8 @@ from app.services.errors import (
 )
 
 _STATUS_CODES = {
+    CommonQuestionNotFound: 404,
+    InvalidCommonAnswer: 422,
     TopicSearchUnavailable: 503,
     TopicIndexPending: 409,
     AccountUnavailable: 401,

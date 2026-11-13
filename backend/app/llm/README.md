@@ -56,13 +56,22 @@ responses are rejected; models without schema enforcement fall back to a JSON pr
 with the same mandatory local validation.
 
 The authenticated `POST /api/v1/common-words/batch` route serves up to ten persisted
-questions per user, excluding their saved words and supplied recent question IDs.
+questions per user, excluding learned words, saved words and supplied recent question IDs.
 When none remain, it queues a refill and returns 202. `python -m app.prompt_worker`
 handles that queue alongside existing review prompt jobs. Generation does not hold
 an account lock or an HTTP request open. The worker rechecks saved words and existing
 questions under an account lock after generation, then attaches only new unsaved
-words. Saved vocabulary is not sent to the model. The app continues to save a revealed
-word only when its user explicitly chooses Save word.
+words. Prompts include all correctly answered words in `learned_words` and all saved
+vocabulary plus up to 500 recent unlearned generated words in `excluded_words`.
+Learned and saved words are not truncated. The app continues to add a revealed
+word to scheduled Review only when its user explicitly chooses Save word.
+
+`POST /api/v1/common-words/{question_id}/learned` accepts `selected_index`, verifies
+the correct answer and question ownership, and stores an idempotent `learned_at`
+timestamp. Learned questions are never served again. The client waits for this write
+before advancing and offers retry if it fails. This memory is included in account
+exports and erased with the account. Migration 0018 adds the nullable timestamp;
+past local quiz answers cannot be reconstructed.
 
 Migration 0017 adds the question bank and job tables. Refills have recoverable leases,
 three attempts with backoff, and a 60-second cooldown before a user can retry a failed

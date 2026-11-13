@@ -11,7 +11,8 @@ import {
   type CommonWordQuestion,
 } from '@/services/common-words';
 
-type Phase = 'question' | 'correct' | 'reveal' | 'saved' | 'complete';
+type Phase =
+  'question' | 'learning' | 'correct' | 'reveal' | 'saved' | 'complete';
 
 // Segments run clockwise from the top, with the middle bar last.
 const digitSegments = [
@@ -217,14 +218,46 @@ export function CommonWordPractice({
     }, [active, phase, next]),
   );
 
+  async function rememberCorrectAnswer() {
+    if (!active || !question || savePending.current) return;
+    savePending.current = true;
+    setSaving(true);
+    setSaveError('');
+    try {
+      const response = await authenticatedFetch(
+        `/common-words/${question.id}/learned`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selected_index: question.correctIndex }),
+        },
+      );
+      if (!response.ok) throw new Error('Could not remember word');
+      if (!mounted.current) return;
+      setCorrectCount((current) => current + 1);
+      setPhase('correct');
+    } catch (failure) {
+      if (mounted.current)
+        setSaveError(
+          connectionMessage(
+            failure,
+            `Could not remember “${question.word}” as learned. Please retry.`,
+          ),
+        );
+    } finally {
+      savePending.current = false;
+      if (mounted.current) setSaving(false);
+    }
+  }
+
   function choose(choice: number) {
     if (!active || !question || phase !== 'question' || answerLocked.current)
       return;
     answerLocked.current = true;
     setSelected(choice);
     if (choice === question.correctIndex) {
-      setCorrectCount((current) => current + 1);
-      setPhase('correct');
+      setPhase('learning');
+      void rememberCorrectAnswer();
     } else {
       setPhase('reveal');
     }
@@ -513,7 +546,8 @@ export function CommonWordPractice({
               >
                 {question.choices.map((choice, choiceIndex) => {
                   const correct =
-                    phase === 'correct' && selected === choiceIndex;
+                    (phase === 'correct' || phase === 'learning') &&
+                    selected === choiceIndex;
                   return (
                     <Pressable
                       key={choice}
@@ -564,8 +598,26 @@ export function CommonWordPractice({
               >
                 {phase === 'correct'
                   ? '✓ Correct! Moving to the next word…'
-                  : 'Tap an answer to continue'}
+                  : phase === 'learning'
+                    ? '✓ Correct! Remembering this word…'
+                    : 'Tap an answer to continue'}
               </ThemedText>
+              {phase === 'learning' && !!saveError && (
+                <>
+                  <ThemedText
+                    accessibilityRole="alert"
+                    style={styles.errorText}
+                  >
+                    {saveError}
+                  </ThemedText>
+                  <Action
+                    label={saving ? 'Remembering…' : 'Retry remembering word'}
+                    disabled={saving}
+                    busy={saving}
+                    onPress={() => void rememberCorrectAnswer()}
+                  />
+                </>
+              )}
             </>
           )}
         </>

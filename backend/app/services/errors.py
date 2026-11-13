@@ -29,6 +29,14 @@ class WordAlreadyExists(ServiceError):
     pass
 
 
+class CommonQuestionNotFound(ServiceError):
+    pass
+
+
+class InvalidCommonAnswer(ServiceError):
+    pass
+
+
 class ReviewNotFound(ServiceError):
     pass
 

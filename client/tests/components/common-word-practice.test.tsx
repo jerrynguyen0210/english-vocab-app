@@ -188,7 +188,7 @@ test('Vocab remains the default and switching tabs preserves search inputs and q
   await advance();
   expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
   expect(loadMock).toHaveBeenCalledTimes(1);
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
 test('shows a loading state until the question source resolves', async () => {
@@ -225,8 +225,77 @@ test('correct answers lock all choices, advance automatically, and count each an
   );
   await advance();
   expect(screen.getByText('2 correct · 0 words saved')).toBeOnTheScreen();
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    1,
+    '/common-words/reliable/learned',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selected_index: 1 }),
+    },
+  );
+  expect(fetchMock).toHaveBeenNthCalledWith(2, '/common-words/eager/learned', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selected_index: 0 }),
+  });
 });
+
+test('correct answers wait for persistent memory before advancing', async () => {
+  let resolve!: (value: Response) => void;
+  fetchMock.mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  await render(practice());
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'B. Able to be trusted' }),
+  );
+  await advance();
+  expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
+  expect(
+    screen.getByText('✓ Correct! Remembering this word…'),
+  ).toBeOnTheScreen();
+  for (const choice of screen.getAllByRole('button'))
+    expect(choice).toBeDisabled();
+  await act(async () => {
+    resolve(response(204));
+  });
+  await advance();
+  expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
+});
+
+test.each(['network', 'server'])(
+  'remembering a correct answer supports retry after %s failure',
+  async (failure) => {
+    if (failure === 'network')
+      fetchMock.mockRejectedValueOnce(new Error('offline'));
+    else fetchMock.mockResolvedValueOnce(response(503));
+    await render(practice());
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'B. Able to be trusted' }),
+    );
+    await advance();
+    expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /Could not remember|connection|offline/i,
+    );
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Retry remembering word' }),
+    );
+    await advance();
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'B. Quiet and tired' }),
+    );
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Skip · Next word' }),
+    );
+    expect(screen.getByText('1 correct · 0 words saved')).toBeOnTheScreen();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  },
+);
 
 test('a missed answer reveals the meaning and example, and Skip never saves', async () => {
   await render(practice());

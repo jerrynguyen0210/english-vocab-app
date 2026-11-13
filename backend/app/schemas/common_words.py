@@ -58,6 +58,11 @@ class CommonBatchRequest(BaseModel):
     exclude_ids: list[uuid.UUID] = Field(default_factory=list, max_length=1000)
 
 
+class CommonLearnedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    selected_index: int = Field(ge=0, le=3)
+
+
 class CommonQuestion(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     id: uuid.UUID

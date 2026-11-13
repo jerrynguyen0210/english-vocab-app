@@ -445,6 +445,7 @@ Client `authenticatedFetch` accepts v1-relative paths, such as `/words`.
 | --- | --- | --- |
 | POST | `/api/v1/words` | `word`, `english_explanation` → created word (201) |
 | POST | `/api/v1/common-words/batch` | Optional `exclude_ids` → unsaved Common questions (200), generation pending (202), or failed status (200) |
+| POST | `/api/v1/common-words/{question_id}/learned` | Correct `selected_index` → remember the word as learned (204) |
 | GET | `/api/v1/reviews/next?limit=1` | Due items; limit 1–50; empty array when none |
 | POST | `/api/v1/reviews/{word_id}/answer` | `typed_answer`, `time_taken_ms` → grading result |
 | PATCH | `/api/v1/account` | Validated IANA `timezone` → updated profile (200) |
@@ -526,12 +527,20 @@ is validated locally before storage; this validates structure, not linguistic ac
 `POST /api/v1/common-words/batch` accepts `{"exclude_ids": []}` and returns
 `{"status": "ready", "questions": [...]}` with up to ten questions. Items use `id`,
 `word`, `partOfSpeech`, `explanation`, `example`, `choices`, and `correctIndex`.
-The Common quiz checks answers locally and does not change scheduled Review scores.
+The Common quiz provides local feedback and persists correct answers through
+`POST /api/v1/common-words/{question_id}/learned` with `{"selected_index": 1}`.
+The server verifies the answer against the user's stored question and records
+`learned_at`; retries preserve the original timestamp. The app waits for persistence
+before advancing and offers retry on failure. Learned words stay excluded across
+sessions and devices without changing scheduled Review scores or adding Review words.
 Saved words are compared using the same normalization as the word bank and excluded
 both when generated questions are attached and whenever questions are served.
-Only previously generated words are sent as LLM exclusions; saved user vocabulary
-is checked locally. Questions and refill jobs are owned by, exported with, and erased
-with their account. Generation never saves words automatically.
+Every refill prompt includes all correctly answered words as `learned_words`, plus
+all saved vocabulary and up to 500 recent unlearned generated words as `excluded_words`.
+Learned and saved vocabulary are never truncated to that recent-history limit.
+Local filtering still prevents repeats if the model ignores exclusions.
+Questions, including their learned timestamps, and refill jobs are owned by,
+exported with, and erased with their account. Generation never saves words automatically.
 
 When the bank has no eligible questions, the endpoint queues one durable job per user
 and returns HTTP 202 with `{"status": "pending", "questions": []}`. The existing
@@ -544,7 +553,7 @@ user retry can queue work after a 60-second cooldown. Long-running generation re
 durable if the client stops waiting. Provider error bodies are not returned or logged.
 
 Use the existing private `OPENROUTER_*` settings; no new credentials or services are
-required. Apply forward-only migration `0017` with the normal `python -m app.migrate`
+required. Apply forward-only migrations through `0018` with the normal `python -m app.migrate`
 procedure and restart the API and prompt worker before using Common practice.
 
 ### Background review prompt generation

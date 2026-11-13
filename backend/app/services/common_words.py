@@ -1,6 +1,7 @@
 """Serve stored, unsaved Common questions; queue a durable refill when empty."""
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,6 +9,27 @@ from sqlalchemy.orm import Session
 from app.models import CommonWordJob, CommonWordQuestion, User, Word
 from app.schemas.common_words import CommonBatch, CommonBatchRequest, CommonQuestion
 from app.services.accounts import lock_account
+from app.services.errors import CommonQuestionNotFound, InvalidCommonAnswer
+
+
+def mark_learned(
+    db: Session, user: User, question_id: UUID, selected_index: int
+) -> None:
+    lock_account(db, user)
+    question = db.scalar(
+        select(CommonWordQuestion).where(
+            CommonWordQuestion.id == question_id,
+            CommonWordQuestion.user_id == user.id,
+        )
+    )
+    if question is None:
+        raise CommonQuestionNotFound("Common word question not found")
+    if selected_index != question.correct_index:
+        raise InvalidCommonAnswer("Choose the correct meaning to mark a word learned")
+    # Retrying after a lost response must preserve the original learning time.
+    if question.learned_at is None:
+        question.learned_at = datetime.now(UTC)
+    db.commit()
 
 
 def get_batch(db: Session, user: User, body: CommonBatchRequest) -> CommonBatch:
@@ -26,6 +48,7 @@ def get_batch(db: Session, user: User, body: CommonBatchRequest) -> CommonBatch:
         select(CommonWordQuestion)
         .where(
             CommonWordQuestion.user_id == user.id,
+            CommonWordQuestion.learned_at.is_(None),
             ~saved,
             CommonWordQuestion.id.not_in(body.exclude_ids),
         )

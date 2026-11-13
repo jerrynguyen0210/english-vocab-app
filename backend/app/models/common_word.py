@@ -44,6 +44,7 @@ class CommonWordQuestion(Base):
         UTCDateTime(), server_default=func.now()
     )
     last_presented_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    learned_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class CommonWordJob(Base):

@@ -12,6 +12,47 @@ from app.core.config import get_settings
 from app.migrate import upgrade_database
 
 
+def test_common_learning_migration_preserves_existing_questions(tmp_path, monkeypatch):
+    url = f"sqlite:///{tmp_path}/common-learning.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    config = Config("alembic.ini")
+    engine = create_engine(url)
+    try:
+        command.upgrade(config, "0017")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, password_hash) VALUES (:owner, 'legacy@example.test', 'placeholder')"
+                ),
+                {"owner": "1" * 32},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO common_word_questions "
+                    "(id, user_id, word, normalised_word, part_of_speech, explanation, example, choices, correct_index) "
+                    "VALUES (:question, :owner, 'hello', 'hello', 'interjection', 'A greeting', 'Say hello.', :choices, 0)"
+                ),
+                {
+                    "question": "2" * 32,
+                    "owner": "1" * 32,
+                    "choices": '["A greeting", "A colour", "A number", "A place"]',
+                },
+            )
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert tuple(
+                connection.execute(
+                    text(
+                        "SELECT word, correct_index, learned_at FROM common_word_questions"
+                    )
+                ).one()
+            ) == ("hello", 0, None)
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
 def test_response_and_failure_migrations_preserve_existing_data(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path}/response-snapshots.db"
     monkeypatch.setenv("DATABASE_URL", url)

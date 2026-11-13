@@ -25,6 +25,7 @@ class ClaimedJob:
     token: uuid.UUID
     attempts: int
     excluded_words: list[str]
+    learned_words: list[str]
 
 
 def claim_job(engine: Engine) -> ClaimedJob | None:
@@ -74,19 +75,33 @@ def claim_job(engine: Engine) -> ClaimedJob | None:
         ).scalar_one_or_none()
         if attempts is None:
             return None
-        # Only previously generated words go to the provider. Saved user vocabulary
-        # is compared locally, and is never sent to the LLM.
-        excluded = list(
+        # Include all learned and saved words, plus recent generated questions.
+        # Only generated, unlearned history is capped; learned memory is durable.
+        learned = list(
             db.scalars(
                 select(CommonWordQuestion.normalised_word)
                 .where(
                     CommonWordQuestion.user_id == job.user_id,
+                    CommonWordQuestion.learned_at.is_not(None),
+                )
+                .order_by(CommonWordQuestion.normalised_word)
+            )
+        )
+        excluded = set(
+            db.scalars(select(Word.normalised_word).where(Word.user_id == job.user_id))
+        )
+        excluded.update(
+            db.scalars(
+                select(CommonWordQuestion.normalised_word)
+                .where(
+                    CommonWordQuestion.user_id == job.user_id,
+                    CommonWordQuestion.learned_at.is_(None),
                 )
                 .order_by(CommonWordQuestion.created_at.desc(), CommonWordQuestion.id)
                 .limit(500)
             )
         )
-        return ClaimedJob(job.user_id, token, attempts, excluded)
+        return ClaimedJob(job.user_id, token, attempts, sorted(excluded), learned)
 
 
 def finish_job(
@@ -172,6 +187,7 @@ def process_one(engine: Engine) -> bool:
     try:
         candidates = generate_common_words(
             claimed.excluded_words,
+            learned_words=claimed.learned_words,
             model=settings.openrouter_model,
             api_key=settings.openrouter_api_key.get_secret_value(),
             base_url=settings.openrouter_url,
