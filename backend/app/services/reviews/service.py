@@ -30,7 +30,7 @@ from app.services.errors import (
 from app.services.reviews.answers import answer_matches
 from app.services.reviews.choices import review_options
 from app.services.reviews.prompts import mask_target
-from app.services.reviews.queries import review_totals
+from app.services.reviews.queries import learning_totals, review_totals
 from app.services.reviews.scheduling import schedule_review
 from app.services.reviews.selection import selected_words
 from app.services.reviews.tickets import issue_ticket, valid_ticket
@@ -79,7 +79,10 @@ def next_reviews(db: Session, user: User, limit: int = 1) -> list[ReviewItem]:
 
 
 def review_summary(db: Session, user: User) -> dict[str, int]:
-    return review_totals(db, user, datetime.now(UTC))
+    return {
+        **review_totals(db, user, datetime.now(UTC)),
+        **learning_totals(db, user),
+    }
 
 
 def review_preparation(

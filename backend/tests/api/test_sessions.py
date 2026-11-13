@@ -384,13 +384,21 @@ def test_review_summary_distinguishes_empty_bank_and_nothing_due(api):
     client, db, owner, other, _ = api
     response = client.get("/api/v1/reviews/summary", headers=owner)
     assert response.status_code == 200
-    assert response.json() == {"saved_count": 0, "due_count": 0, "daily_remaining": 50}
+    assert response.json() == {
+        "saved_count": 0,
+        "due_count": 0,
+        "daily_remaining": 50,
+        "learned_count": 0,
+        "total_count": 0,
+    }
     assert response.headers["cache-control"] == "no-store"
     word_id = create(client, owner).json()["id"]
     assert client.get("/api/v1/reviews/summary", headers=owner).json() == {
         "saved_count": 1,
         "due_count": 1,
         "daily_remaining": 50,
+        "learned_count": 0,
+        "total_count": 1,
     }
     assert (
         client.get("/api/v1/reviews/summary", headers=other).json()["saved_count"] == 0
@@ -404,6 +412,8 @@ def test_review_summary_distinguishes_empty_bank_and_nothing_due(api):
         "saved_count": 1,
         "due_count": 0,
         "daily_remaining": 50,
+        "learned_count": 0,
+        "total_count": 1,
     }
     db.get(ReviewState, uuid.UUID(word_id)).due_at = datetime.now(UTC) - timedelta(
         seconds=1

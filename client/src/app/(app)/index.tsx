@@ -2,7 +2,8 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { authenticatedFetch } from '@/services/auth';
 import { connectionMessage } from '@/services/connectivity';
-import { reviewEmptyKind, type ReviewSummary } from '@/services/review';
+import { reviewEmptyKind, type LearningSummary } from '@/services/review';
+import { LearningStatistics } from '@/components/learning-statistics';
 import { ReviewEmptyState } from '@/components/review-empty-state';
 import { Image } from 'expo-image';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
@@ -12,7 +13,7 @@ import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 
 export default function HomeScreen() {
-  const [summary, setSummary] = useState<ReviewSummary | null>(null);
+  const [summary, setSummary] = useState<LearningSummary | null>(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   useFocusEffect(
@@ -24,7 +25,7 @@ export default function HomeScreen() {
       void authenticatedFetch('/reviews/summary')
         .then(async (response) => {
           if (!response.ok) throw new Error();
-          const result: ReviewSummary = await response.json();
+          const result: LearningSummary = await response.json();
           if (active) setSummary(result);
         })
         .catch((failure) => {
@@ -64,39 +65,20 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         )}
-        {empty ? (
+        {summary ? (
+          <LearningStatistics summary={summary} />
+        ) : (
+          <ThemedText style={styles.loading} accessibilityLiveRegion="polite">
+            {error
+              ? 'Progress unavailable'
+              : 'Loading your learning statistics…'}
+          </ThemedText>
+        )}
+        {empty && (
           <ReviewEmptyState
             kind={reviewEmptyKind(summary)}
             showAction={summary.saved_count === 0}
           />
-        ) : (
-          <View style={styles.dueCard}>
-            <ThemedText style={styles.eyebrow}>WORDS DUE TODAY</ThemedText>
-            <ThemedText
-              style={styles.dueCount}
-              accessibilityLabel={
-                summary
-                  ? `${summary.due_count} words due today`
-                  : 'Loading words due today'
-              }
-            >
-              {summary ? summary.due_count : '…'}
-            </ThemedText>
-            <ThemedText style={styles.duePrompt}>
-              {summary
-                ? 'Ready for a quick review?'
-                : error
-                  ? 'Progress unavailable'
-                  : 'Loading your progress…'}
-            </ThemedText>
-            <View style={styles.sparkle}>
-              <Image
-                source={require('@/assets/images/wordwell/sparkle.svg')}
-                style={styles.sparkleIcon}
-                accessible={false}
-              />
-            </View>
-          </View>
         )}
         {summary?.saved_count !== 0 && (
           <>
@@ -175,52 +157,11 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     marginTop: 9,
   },
-  dueCard: {
+  loading: {
+    color: colors.secondary,
     marginTop: 30,
-    backgroundColor: colors.primary,
-    borderRadius: 18,
-    paddingHorizontal: 23,
-    paddingVertical: 24,
-    minHeight: 174,
+    textAlign: 'center',
   },
-  eyebrow: {
-    fontFamily,
-    color: colors.surface,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '600',
-    letterSpacing: 1.1,
-    paddingRight: 56,
-  },
-  dueCount: {
-    fontFamily,
-    color: colors.surface,
-    fontSize: 67,
-    lineHeight: 80,
-    fontWeight: '800',
-    marginTop: 5,
-    paddingRight: 64,
-  },
-  duePrompt: {
-    fontFamily,
-    color: colors.surface,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  sparkle: {
-    position: 'absolute',
-    top: 31,
-    right: 30,
-    width: 57,
-    height: 57,
-    borderRadius: 17,
-    backgroundColor: colors.highlight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sparkleIcon: { width: 32, height: 32 },
   sectionTitle: {
     fontFamily,
     color: colors.text,

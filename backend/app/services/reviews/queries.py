@@ -7,7 +7,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import as_utc, local_day_bounds
-from app.models import ReviewState, User, Word
+from app.models import CommonWordQuestion, ReviewState, User, Word
 
 
 def due_today(user: User, now: datetime) -> Select[ReviewState]:
@@ -46,4 +46,21 @@ def review_totals(db: Session, user: User, now: datetime) -> dict[str, int]:
         # Deprecated compatibility field for older clients; never decreases.
         # Sessions are bounded to 50 items, but daily reviews are unlimited.
         "daily_remaining": 50,
+    }
+
+
+def learning_totals(db: Session, user: User) -> dict[str, int]:
+    """Learned Common words and the distinct union with the saved word bank."""
+    learned = select(CommonWordQuestion.normalised_word).where(
+        CommonWordQuestion.user_id == user.id,
+        CommonWordQuestion.learned_at.is_not(None),
+    )
+    saved = select(Word.normalised_word).where(Word.user_id == user.id)
+    return {
+        "learned_count": db.scalar(select(func.count()).select_from(learned.subquery()))
+        or 0,
+        "total_count": db.scalar(
+            select(func.count()).select_from(saved.union(learned).subquery())
+        )
+        or 0,
     }

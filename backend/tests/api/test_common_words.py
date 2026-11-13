@@ -410,3 +410,33 @@ def test_postgres_concurrent_requests_share_one_job_and_one_worker_claim(api):
     with ThreadPoolExecutor(max_workers=2) as pool:
         claims = list(pool.map(claim_job, [engine, engine]))
     assert sum(claim is not None for claim in claims) == 1
+
+
+def test_learning_summary_counts_learned_words_without_double_counting(
+    api, monkeypatch
+):
+    client, _db, owner, other, _ = api
+    generate(api, monkeypatch)
+    questions = client.post(URL, headers=owner, json={}).json()["questions"]
+    summary_url = "/api/v1/reviews/summary"
+    assert client.get(summary_url, headers=owner).json()["total_count"] == 0
+    question = next(q for q in questions if q["word"] == "reliable")
+    learned_url = f"/api/v1/common-words/{question['id']}/learned"
+    for _ in range(2):
+        assert (
+            client.post(
+                learned_url, headers=owner, json={"selected_index": 1}
+            ).status_code
+            == 204
+        )
+    summary = client.get(summary_url, headers=owner).json()
+    assert summary["learned_count"] == summary["total_count"] == 1
+    assert summary["saved_count"] == 0
+    assert create(client, owner, " ＲELIABLE ").status_code == 201
+    assert create(client, owner, "hello").status_code == 201
+    summary = client.get(summary_url, headers=owner).json()
+    assert summary["saved_count"] == 2
+    assert summary["learned_count"] == 1
+    assert summary["total_count"] == 2
+    other_summary = client.get(summary_url, headers=other).json()
+    assert other_summary["learned_count"] == other_summary["total_count"] == 0

@@ -21,6 +21,10 @@ export type ReviewSummary = {
   due_count: number;
   daily_remaining: number;
 };
+export type LearningSummary = ReviewSummary & {
+  learned_count: number;
+  total_count: number;
+};
 export type ReviewEmptyKind = 'empty_bank' | 'nothing_due' | 'no_matches';
 export function reviewEmptyKind(
   summary: ReviewSummary,
