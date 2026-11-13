@@ -547,6 +547,10 @@ and returns HTTP 202 with `{"status": "pending", "questions": []}`. The existing
 `python -m app.prompt_worker` processes both review prompts and Common refills outside
 HTTP requests. The app polls every two seconds, cancels polling when hidden, and keeps
 up to 1,000 recent question IDs out of subsequent batches during that screen session.
+Loading stops after five minutes, including time spent waiting for HTTP responses,
+and offers a manual retry. Common generation uses `COMMON_WORDS_TIMEOUT_SECONDS`
+(default 300 seconds) independently of the Review prompt timeout. Its worker lease
+includes an additional 60 seconds for finishing the job.
 Expired worker leases are recovered, stale results discarded, and failures retried
 up to three times. After terminal failure the API returns `status: "failed"`; another
 user retry can queue work after a 60-second cooldown. Long-running generation remains

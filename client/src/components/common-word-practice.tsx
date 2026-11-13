@@ -14,29 +14,6 @@ import {
 type Phase =
   'question' | 'learning' | 'correct' | 'reveal' | 'saved' | 'complete';
 
-// Segments run clockwise from the top, with the middle bar last.
-const digitSegments = [
-  [0, 1, 2, 3, 4, 5],
-  [1, 2],
-  [0, 1, 6, 4, 3],
-  [0, 1, 6, 2, 3],
-  [5, 6, 1, 2],
-  [0, 5, 6, 2, 3],
-  [0, 5, 6, 4, 2, 3],
-  [0, 1, 2],
-  [0, 1, 2, 3, 4, 5, 6],
-  [0, 1, 2, 3, 5, 6],
-];
-const segmentPositions = [
-  { top: 0, left: 3, width: 14, height: 3 },
-  { top: 3, left: 17, width: 3, height: 14 },
-  { top: 20, left: 17, width: 3, height: 14 },
-  { top: 34, left: 3, width: 14, height: 3 },
-  { top: 20, left: 0, width: 3, height: 14 },
-  { top: 3, left: 0, width: 3, height: 14 },
-  { top: 17, left: 3, width: 14, height: 3 },
-];
-
 function QuestionTimer({ running }: { running: boolean }) {
   const [seconds, setSeconds] = useState(0);
   const elapsed = useRef(0);
@@ -64,31 +41,17 @@ function QuestionTimer({ running }: { running: boolean }) {
     <View
       accessible
       accessibilityLabel={`Time spent on this question: ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}, ${remainingSeconds} ${remainingSeconds === 1 ? 'second' : 'seconds'}`}
-      style={styles.clockFrame}
+      style={styles.timer}
     >
       <View
-        style={styles.clockFace}
+        style={styles.timerIcon}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       >
-        {time.split('').map((character, position) =>
-          character === ':' ? (
-            <View key={position} style={styles.clockColon}>
-              <View style={styles.clockDot} />
-              <View style={styles.clockDot} />
-            </View>
-          ) : (
-            <View key={position} style={styles.clockDigit}>
-              {digitSegments[Number(character)].map((segment) => (
-                <View
-                  key={segment}
-                  style={[styles.clockSegment, segmentPositions[segment]]}
-                />
-              ))}
-            </View>
-          ),
-        )}
+        <View style={styles.timerHourHand} />
+        <View style={styles.timerMinuteHand} />
       </View>
+      <ThemedText style={styles.timerText}>{time}</ThemedText>
     </View>
   );
 }
@@ -404,12 +367,18 @@ export function CommonWordPractice({
         <>
           <View style={styles.progressRow}>
             <ThemedText style={styles.eyebrow}>EVERYDAY ENGLISH</ThemedText>
-            <ThemedText
-              accessibilityLiveRegion="polite"
-              style={styles.progressLabel}
-            >
-              Word {index + 1} of {questions.length}
-            </ThemedText>
+            <View style={styles.progressDetails}>
+              <ThemedText
+                accessibilityLiveRegion="polite"
+                style={styles.progressLabel}
+              >
+                Word {index + 1} of {questions.length}
+              </ThemedText>
+              <QuestionTimer
+                key={`${index}:${question.id}`}
+                running={active && phase === 'question'}
+              />
+            </View>
           </View>
           <View
             accessibilityRole="progressbar"
@@ -521,15 +490,9 @@ export function CommonWordPractice({
           ) : (
             <>
               <View style={styles.card}>
-                <View style={styles.questionHeader}>
-                  <ThemedText style={[styles.body, styles.questionPrompt]}>
-                    Choose the closest meaning
-                  </ThemedText>
-                  <QuestionTimer
-                    key={`${index}:${question.id}`}
-                    running={active && phase === 'question'}
-                  />
-                </View>
+                <ThemedText style={styles.body}>
+                  Choose the closest meaning
+                </ThemedText>
                 <ThemedText accessibilityRole="header" style={styles.word}>
                   {question.word}
                 </ThemedText>
@@ -673,43 +636,47 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   progressLabel: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
-  questionHeader: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  questionPrompt: { flexGrow: 1, flexShrink: 1, flexBasis: 140 },
-  clockFrame: {
-    borderWidth: 3,
-    borderColor: '#9EDDD8',
-    borderRadius: 9,
-    padding: 2,
-    backgroundColor: '#FFFFFF',
-    marginLeft: 'auto',
-  },
-  clockFace: {
+  progressDetails: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
+    gap: 12,
   },
-  clockDigit: { width: 20, height: 37 },
-  clockSegment: {
+  timer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timerText: {
+    color: colors.secondary,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  timerIcon: {
+    width: 14,
+    height: 14,
+    borderWidth: 1.5,
+    borderColor: colors.secondary,
+    borderRadius: 7,
+  },
+  timerHourHand: {
     position: 'absolute',
-    backgroundColor: '#000000',
+    top: 2,
+    left: 5,
+    width: 1.5,
+    height: 4,
     borderRadius: 1,
+    backgroundColor: colors.secondary,
   },
-  clockColon: { width: 6, height: 30, justifyContent: 'space-evenly' },
-  clockDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#000000',
+  timerMinuteHand: {
+    position: 'absolute',
+    top: 5,
+    left: 5,
+    width: 4,
+    height: 1.5,
+    borderRadius: 1,
+    backgroundColor: colors.secondary,
   },
   progressTrack: {
     height: 5,

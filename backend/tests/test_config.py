@@ -32,12 +32,25 @@ def test_cors_allows_configured_origin_only():
             ("http://localhost:8081", 200),
             ("https://untrusted.example.com", 400),
         ]:
-            response = client.options("/health", headers={
-                "Origin": origin,
-                "Access-Control-Request-Method": "GET",
-                "Access-Control-Request-Headers": "authorization",
-            })
+            response = client.options(
+                "/health",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "authorization",
+                },
+            )
             assert response.status_code == expected_status
             assert response.headers.get("access-control-allow-origin") == (
                 origin if expected_status == 200 else None
             )
+
+
+def test_common_timeout_defaults_to_five_minutes_and_is_independent(monkeypatch):
+    monkeypatch.delenv("COMMON_WORDS_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.setenv("OPENROUTER_TIMEOUT_SECONDS", "45")
+    settings = Settings(_env_file=None)
+    assert settings.common_words_timeout_seconds == 300
+    assert settings.openrouter_timeout_seconds == 45
+    monkeypatch.setenv("COMMON_WORDS_TIMEOUT_SECONDS", "180")
+    assert Settings(_env_file=None).common_words_timeout_seconds == 180

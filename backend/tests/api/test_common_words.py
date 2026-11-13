@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 from sqlalchemy import func, select
 
+from app.core.config import get_settings
 from app.export_user import collect_user_data
 from app.llm.openrouter_review import ReviewError
 from app.models import CommonWordJob, CommonWordQuestion, ReviewState, User, Word
@@ -45,6 +46,10 @@ def generate(api, monkeypatch, items=None):
     assert client.post(URL, headers=owner, json={}).status_code == 202
     db.rollback()
     assert process_one(db.get_bind())
+    assert (
+        generator.call_args.kwargs["timeout"]
+        == get_settings().common_words_timeout_seconds
+    )
     db.expire_all()
     return generator
 

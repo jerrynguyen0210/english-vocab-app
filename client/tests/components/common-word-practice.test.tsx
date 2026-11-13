@@ -111,7 +111,11 @@ test.each(['correct', 'incorrect'])(
       await act(async () => {
         jest.advanceTimersByTime(5000);
       });
-      expect(screen.queryByLabelText(/Time spent on this question/)).toBeNull();
+      expect(
+        screen.getByLabelText(
+          'Time spent on this question: 0 minutes, 2 seconds',
+        ),
+      ).toBeOnTheScreen();
       await fireEvent.press(
         screen.getByRole('button', { name: 'Skip · Next word' }),
       );

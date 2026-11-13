@@ -61,8 +61,40 @@ export async function loadCommonWords(
   excludeIds: readonly string[] = [],
   signal?: AbortSignal,
 ): Promise<readonly CommonWordQuestion[]> {
+  if (signal?.aborted) throw new Error('Request cancelled');
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  signal?.addEventListener('abort', cancel, { once: true });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      pollCommonWords(excludeIds, controller.signal),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => {
+            reject(
+              new CommonWordsError(
+                'Words are still being prepared. Please try again shortly.',
+              ),
+            );
+            controller.abort();
+          },
+          5 * 60 * 1000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
+  }
+}
+
+async function pollCommonWords(
+  excludeIds: readonly string[],
+  signal: AbortSignal,
+): Promise<readonly CommonWordQuestion[]> {
   const body = JSON.stringify({ exclude_ids: excludeIds.slice(-1000) });
-  for (let attempt = 0; attempt < 240; attempt += 1) {
+  while (true) {
     if (signal?.aborted) throw new Error('Request cancelled');
     const response = await authenticatedFetch('/common-words/batch', {
       method: 'POST',
@@ -101,7 +133,4 @@ export async function loadCommonWords(
       );
     await waitForGeneration(signal);
   }
-  throw new CommonWordsError(
-    'Words are still being prepared. Please try again shortly.',
-  );
 }

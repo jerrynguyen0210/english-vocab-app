@@ -40,7 +40,7 @@ def generate_common_words(
     model: str,
     api_key: str,
     base_url: str = OPENROUTER_URL,
-    timeout: float = 600,
+    timeout: float = 300,
 ) -> list[GeneratedCommonWord]:
     if (
         not api_key.strip()

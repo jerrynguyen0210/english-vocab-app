@@ -20,6 +20,14 @@ const question = {
 };
 function loader(fetch) {
   const exports = {};
+  let now = 0;
+  const timers = new Set();
+  const advance = (milliseconds) => {
+    now += milliseconds;
+    for (const timer of [...timers]) {
+      if (timer.at <= now && timers.delete(timer)) timer.callback();
+    }
+  };
   const source = readFileSync(
     new URL('../src/services/common-words.ts', import.meta.url),
     'utf8',
@@ -34,11 +42,25 @@ function loader(fetch) {
     {
       exports,
       require: () => ({ authenticatedFetch: fetch }),
-      setTimeout: (callback) => setImmediate(callback),
-      clearTimeout: clearImmediate,
+      AbortController,
+      setTimeout: (callback, delay) => {
+        const timer = { callback, at: now + delay };
+        timers.add(timer);
+        // Polling advances a virtual clock; the overall deadline does not
+        // advance it itself, so normal requests can finish first.
+        if (delay < 300000)
+          timer.immediate = setImmediate(() => advance(delay));
+        return timer;
+      },
+      clearTimeout: (timer) => {
+        if (timer) {
+          timers.delete(timer);
+          clearImmediate(timer.immediate);
+        }
+      },
     },
   );
-  return exports.loadCommonWords;
+  return Object.assign(exports.loadCommonWords, { advance });
 }
 const response = (body, status = 200) => Response.json(body, { status });
 
@@ -59,7 +81,8 @@ test('Common fetch polls a durable job and keeps exclusions and cancellation on 
     assert.deepEqual(JSON.parse(options.body), {
       exclude_ids: ['previous-id'],
     });
-    assert.equal(options.signal, controller.signal);
+    assert.equal(options.signal, calls[0].options.signal);
+    assert.equal(options.signal.aborted, false);
   }
 });
 
@@ -118,7 +141,21 @@ test('pending generation has a bounded wait and can be retried by the user', asy
     return response({ status: 'pending' }, 202);
   });
   await assert.rejects(load(), /still being prepared/);
-  assert.equal(calls, 240);
+  assert.equal(calls, 150);
+});
+
+test('the five-minute deadline includes a stalled request and aborts it', async () => {
+  let signal;
+  const load = loader(async (_, options) => {
+    signal = options.signal;
+    return new Promise(() => {});
+  });
+  const pending = load();
+  load.advance(299999);
+  assert.equal(signal.aborted, false);
+  load.advance(1);
+  await assert.rejects(pending, /still being prepared/);
+  assert.equal(signal.aborted, true);
 });
 
 for (const invalid of [

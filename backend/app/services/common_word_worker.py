@@ -68,7 +68,7 @@ def claim_job(engine: Engine) -> ClaimedJob | None:
                 lease_token=token,
                 attempts=CommonWordJob.attempts + 1,
                 available_at=now
-                + timedelta(seconds=get_settings().openrouter_timeout_seconds + 60),
+                + timedelta(seconds=get_settings().common_words_timeout_seconds + 60),
             )
             .returning(CommonWordJob.attempts)
             .execution_options(synchronize_session=False)
@@ -191,7 +191,7 @@ def process_one(engine: Engine) -> bool:
             model=settings.openrouter_model,
             api_key=settings.openrouter_api_key.get_secret_value(),
             base_url=settings.openrouter_url,
-            timeout=settings.openrouter_timeout_seconds,
+            timeout=settings.common_words_timeout_seconds,
         )
     except (ReviewError, ValueError) as error:
         logger.warning("Common word generation failed (attempt %s)", claimed.attempts)
