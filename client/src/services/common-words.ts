@@ -6,6 +6,7 @@ export class CommonWordsError extends Error {}
 export type CommonWordQuestion = {
   id: string;
   word: string;
+  ipa?: string | null;
   partOfSpeech: string;
   explanation: string;
   example: string;
@@ -22,6 +23,10 @@ function isQuestion(value: unknown): value is CommonWordQuestion {
         typeof question[field] === 'string' &&
         question[field].trim().length > 0,
     ) &&
+    (question.ipa == null ||
+      (typeof question.ipa === 'string' &&
+        question.ipa.length <= 120 &&
+        /^\/[^/\r\n]+\/$/.test(question.ipa))) &&
     Array.isArray(question.choices) &&
     question.choices.length === 4 &&
     question.choices.every(

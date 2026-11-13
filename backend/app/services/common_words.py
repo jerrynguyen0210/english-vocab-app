@@ -65,6 +65,7 @@ def get_batch(db: Session, user: User, body: CommonBatchRequest) -> CommonBatch:
             CommonQuestion(
                 id=item.id,
                 word=item.word,
+                ipa=item.ipa,
                 part_of_speech=item.part_of_speech,
                 explanation=item.explanation,
                 example=item.example,

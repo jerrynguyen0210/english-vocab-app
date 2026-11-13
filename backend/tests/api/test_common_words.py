@@ -22,6 +22,7 @@ URL = "/api/v1/common-words/batch"
 def candidate(word="reliable"):
     return GeneratedCommonWord(
         word=word,
+        ipa="/ˈiːɡə/" if word == "eager" else "/rɪˈlaɪəbl/",
         part_of_speech="adjective",
         explanation="Able to be trusted.",
         example=f"She is {word} today.",
@@ -70,6 +71,7 @@ def test_generation_is_async_persistent_and_filtered_to_current_user(api, monkey
     item = response.json()["questions"][0]
     assert item["word"] == "eager"  # Other accounts' saved words must not exclude mine.
     assert item["correctIndex"] == 1 and item["partOfSpeech"] == "adjective"
+    assert item["ipa"] == "/ˈiːɡə/"
     assert len(item["choices"]) == 4
     assert db.scalar(select(func.count()).select_from(Word)) == 2
     assert db.scalar(select(func.count()).select_from(ReviewState)) == 2
@@ -122,6 +124,7 @@ def test_correct_answers_are_remembered_exported_and_excluded_across_sessions(
         q["word"] for q in client.post(URL, headers=owner, json={}).json()["questions"]
     ] == ["eager"]
     exported = collect_user_data(db, stored.user_id)["common_word_questions"]
+    assert next(q for q in exported if q["word"] == "reliable")["ipa"] == "/rɪˈlaɪəbl/"
     assert (
         next(q for q in exported if q["word"] == "reliable")["learned_at"] == learned_at
     )

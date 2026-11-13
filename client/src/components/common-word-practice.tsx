@@ -14,6 +14,24 @@ import {
 type Phase =
   'question' | 'learning' | 'correct' | 'reveal' | 'saved' | 'complete';
 
+function WordHeading({ question }: { question: CommonWordQuestion }) {
+  return (
+    <View style={styles.wordRow}>
+      <ThemedText accessibilityRole="header" style={styles.word}>
+        {question.word}
+      </ThemedText>
+      {!!question.ipa && (
+        <ThemedText
+          accessibilityLabel={`IPA pronunciation: ${question.ipa}`}
+          style={styles.ipa}
+        >
+          {question.ipa}
+        </ThemedText>
+      )}
+    </View>
+  );
+}
+
 function QuestionTimer({ running }: { running: boolean }) {
   const [seconds, setSeconds] = useState(0);
   const elapsed = useRef(0);
@@ -424,9 +442,7 @@ export function CommonWordPractice({
                 <ThemedText style={[styles.eyebrow, styles.successText]}>
                   CORRECT ANSWER
                 </ThemedText>
-                <ThemedText accessibilityRole="header" style={styles.word}>
-                  {question.word}
-                </ThemedText>
+                <WordHeading question={question} />
                 <ThemedText style={[styles.meaning, styles.successText]}>
                   {question.partOfSpeech} ·{' '}
                   {question.choices[question.correctIndex]}
@@ -493,9 +509,7 @@ export function CommonWordPractice({
                 <ThemedText style={styles.body}>
                   Choose the closest meaning
                 </ThemedText>
-                <ThemedText accessibilityRole="header" style={styles.word}>
-                  {question.word}
-                </ThemedText>
+                <WordHeading question={question} />
                 <ThemedText style={styles.partOfSpeech}>
                   {question.partOfSpeech}
                 </ThemedText>
@@ -614,6 +628,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   word: { color: colors.text, fontSize: 32, lineHeight: 40, fontWeight: '800' },
+  wordRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 10,
+    rowGap: 4,
+  },
+  ipa: { color: colors.secondary, fontSize: 18, lineHeight: 28, flexShrink: 1 },
   meaning: { fontSize: 14, lineHeight: 22, fontWeight: '600' },
   partOfSpeech: {
     color: colors.primary,

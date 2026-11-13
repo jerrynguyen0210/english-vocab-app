@@ -34,6 +34,7 @@ class CommonWordQuestion(Base):
         ForeignKey("users.id", ondelete="CASCADE")
     )
     word: Mapped[str] = mapped_column(Text)
+    ipa: Mapped[str | None] = mapped_column(String(120))
     normalised_word: Mapped[str] = mapped_column(Text)
     part_of_speech: Mapped[str] = mapped_column(String(32))
     explanation: Mapped[str] = mapped_column(Text)

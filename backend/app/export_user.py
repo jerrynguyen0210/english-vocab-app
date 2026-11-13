@@ -111,6 +111,7 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
                 select(
                     CommonWordQuestion.id,
                     CommonWordQuestion.word,
+                    CommonWordQuestion.ipa,
                     CommonWordQuestion.part_of_speech,
                     CommonWordQuestion.explanation,
                     CommonWordQuestion.example,

@@ -154,6 +154,7 @@ def finish_job(
                     CommonWordQuestion(
                         user_id=claimed.user_id,
                         word=candidate.word,
+                        ipa=candidate.ipa,
                         normalised_word=normalised,
                         part_of_speech=candidate.part_of_speech,
                         explanation=candidate.explanation,

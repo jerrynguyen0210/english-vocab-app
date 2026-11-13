@@ -526,7 +526,9 @@ is validated locally before storage; this validates structure, not linguistic ac
 
 `POST /api/v1/common-words/batch` accepts `{"exclude_ids": []}` and returns
 `{"status": "ready", "questions": [...]}` with up to ten questions. Items use `id`,
-`word`, `partOfSpeech`, `explanation`, `example`, `choices`, and `correctIndex`.
+`word`, `ipa`, `partOfSpeech`, `explanation`, `example`, `choices`, and `correctIndex`.
+New questions include a British English IPA transcription displayed beside the
+word. Older questions can return `ipa: null` and remain usable without pronunciation.
 The Common quiz provides local feedback and persists correct answers through
 `POST /api/v1/common-words/{question_id}/learned` with `{"selected_index": 1}`.
 The server verifies the answer against the user's stored question and records

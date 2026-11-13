@@ -7,6 +7,7 @@ import ts from 'typescript';
 const question = {
   id: '19be59ac-9db2-405f-a789-1e7509b90cd8',
   word: 'reliable',
+  ipa: '/rɪˈlaɪəbl/',
   partOfSpeech: 'adjective',
   explanation: 'Able to be trusted.',
   example: 'She is a reliable colleague.',
@@ -165,6 +166,8 @@ for (const invalid of [
   { status: 'ready' },
   { status: 'ready', questions: [{ ...question, correctIndex: 4 }] },
   { status: 'ready', questions: [{ ...question, correctIndex: true }] },
+  { status: 'ready', questions: [{ ...question, ipa: 123 }] },
+  { status: 'ready', questions: [{ ...question, ipa: 'not IPA notation' }] },
   {
     status: 'ready',
     questions: [{ ...question, choices: ['One', 'Two', 'Three'] }],

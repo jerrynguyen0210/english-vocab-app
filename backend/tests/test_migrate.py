@@ -44,10 +44,10 @@ def test_common_learning_migration_preserves_existing_questions(tmp_path, monkey
             assert tuple(
                 connection.execute(
                     text(
-                        "SELECT word, correct_index, learned_at FROM common_word_questions"
+                        "SELECT word, correct_index, learned_at, ipa FROM common_word_questions"
                     )
                 ).one()
-            ) == ("hello", 0, None)
+            ) == ("hello", 0, None, None)
     finally:
         engine.dispose()
         get_settings.cache_clear()

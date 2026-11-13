@@ -15,6 +15,7 @@ class GeneratedCommonWord(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
 
     word: str = Field(min_length=1, max_length=80)
+    ipa: str = Field(min_length=3, max_length=120, pattern=r"^/[^/\r\n]+/$")
     part_of_speech: Literal[
         "noun",
         "verb",
@@ -67,6 +68,7 @@ class CommonQuestion(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     id: uuid.UUID
     word: str
+    ipa: str | None = None
     part_of_speech: str = Field(serialization_alias="partOfSpeech")
     explanation: str
     example: str

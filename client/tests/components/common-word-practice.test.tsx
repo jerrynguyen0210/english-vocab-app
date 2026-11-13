@@ -19,6 +19,7 @@ const questions: readonly CommonWordQuestion[] = [
   {
     id: 'reliable',
     word: 'reliable',
+    ipa: '/rɪˈlaɪəbl/',
     partOfSpeech: 'adjective',
     explanation: 'Someone or something you can depend on.',
     example: 'She is a reliable colleague.',
@@ -73,6 +74,24 @@ beforeEach(() => {
   onBackToVocab.mockClear();
 });
 afterEach(() => jest.useRealTimers());
+
+test('shows IPA beside the word in the question and revealed answer', async () => {
+  await render(practice());
+  expect(
+    screen.getByLabelText('IPA pronunciation: /rɪˈlaɪəbl/'),
+  ).toBeOnTheScreen();
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'A. Easy to forget' }),
+  );
+  expect(
+    screen.getByLabelText('IPA pronunciation: /rɪˈlaɪəbl/'),
+  ).toBeOnTheScreen();
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Skip · Next word' }),
+  );
+  expect(screen.getByText('eager')).toBeOnTheScreen();
+  expect(screen.queryByLabelText(/IPA pronunciation/)).toBeNull();
+});
 
 test.each(['correct', 'incorrect'])(
   'the question timer stops after a %s answer and resets for the next word',

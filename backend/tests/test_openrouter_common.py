@@ -14,6 +14,7 @@ from app.llm.openrouter_review import ReviewError
 def candidate(**overrides):
     return dict(
         word="reliable",
+        ipa="/rɪˈlaɪəbl/",
         part_of_speech="adjective",
         explanation="Able to be trusted.",
         example="She is a reliable colleague.",
@@ -55,6 +56,7 @@ def test_requests_native_everyday_words_and_four_unambiguous_meanings():
     ) as request:
         items = generate()
     assert items[0].word == "reliable" and items[0].correct_index == 1
+    assert items[0].ipa == "/rɪˈlaɪəbl/"
     payload = json.loads(request.call_args.args[0].data)
     assert "native English speakers" in SYSTEM_PROMPT
     assert "everyday conversation" in SYSTEM_PROMPT
@@ -92,6 +94,11 @@ def test_prompt_includes_all_learned_and_saved_exclusions_without_truncation():
         {"choices": ["One", "Two", "Three", 4]},
         {"correct_index": 4},
         {"correct_index": True},
+        {"ipa": None},
+        {"ipa": ""},
+        {"ipa": "not slash-delimited"},
+        {"ipa": "/bad\npronunciation/"},
+        {"ipa": "/" + "a" * 120 + "/"},
         {"word": "not a word"},
         {"example": "She is a colleague."},
         {"explanation": " "},
