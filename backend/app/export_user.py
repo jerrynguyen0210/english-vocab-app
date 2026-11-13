@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
-from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
+from app.models import (
+    AuthSession,
+    CommonWordQuestion,
+    ReviewAttempt,
+    ReviewState,
+    User,
+    Word,
+)
 
 
 def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
@@ -98,6 +105,24 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
         "review_states": [dict(row) for row in states],
         "review_attempts": [dict(row) for row in attempts],
         "session_metadata": [dict(row) for row in sessions],
+        "common_word_questions": [
+            dict(row)
+            for row in db.execute(
+                select(
+                    CommonWordQuestion.id,
+                    CommonWordQuestion.word,
+                    CommonWordQuestion.part_of_speech,
+                    CommonWordQuestion.explanation,
+                    CommonWordQuestion.example,
+                    CommonWordQuestion.choices,
+                    CommonWordQuestion.correct_index,
+                    CommonWordQuestion.created_at,
+                    CommonWordQuestion.last_presented_at,
+                )
+                .where(CommonWordQuestion.user_id == user_id)
+                .order_by(CommonWordQuestion.created_at, CommonWordQuestion.id)
+            ).mappings()
+        ],
         "excluded": [
             "password hashes",
             "access/refresh tokens and their hashes",

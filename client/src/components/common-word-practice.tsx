@@ -7,6 +7,7 @@ import { authenticatedFetch } from '@/services/auth';
 import { connectionMessage } from '@/services/connectivity';
 import {
   loadCommonWords,
+  CommonWordsError,
   type CommonWordQuestion,
 } from '@/services/common-words';
 
@@ -73,6 +74,7 @@ export function CommonWordPractice({
   const answerLocked = useRef(false);
   const savePending = useRef(false);
   const mounted = useRef(true);
+  const loadedQuestionIds = useRef(new Set<string>());
   const question = questions?.[index];
 
   useEffect(() => {
@@ -85,25 +87,30 @@ export function CommonWordPractice({
   useEffect(() => {
     if (!active || questions !== null) return;
     let cancelled = false;
-    loadCommonWords().then(
+    const controller = new AbortController();
+    loadCommonWords([...loadedQuestionIds.current], controller.signal).then(
       (items) => {
         if (!cancelled) {
           setLoadError('');
+          items.forEach((item) => loadedQuestionIds.current.add(item.id));
           setQuestions(items);
         }
       },
       (failure) => {
         if (!cancelled)
           setLoadError(
-            connectionMessage(
-              failure,
-              'Could not load words. Please try again.',
-            ),
+            failure instanceof CommonWordsError
+              ? failure.message
+              : connectionMessage(
+                  failure,
+                  'Could not load words. Please try again.',
+                ),
           );
       },
     );
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [active, questions, loadAttempt]);
 
@@ -154,7 +161,7 @@ export function CommonWordPractice({
     try {
       let exists = savedWords.includes(question.word);
       if (!exists) {
-        // Reuse the working word-bank endpoint; no question-bank API yet.
+        // Saving is explicit; generated questions do not change the word bank.
         const response = await authenticatedFetch('/words', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -285,9 +292,7 @@ export function CommonWordPractice({
       ) : question ? (
         <>
           <View style={styles.progressRow}>
-            <ThemedText style={styles.eyebrow}>
-              EVERYDAY ENGLISH · SAMPLE
-            </ThemedText>
+            <ThemedText style={styles.eyebrow}>EVERYDAY ENGLISH</ThemedText>
             <ThemedText
               accessibilityLiveRegion="polite"
               style={styles.progressLabel}

@@ -28,6 +28,12 @@ and prefer providers with lower latency. Use a model that supports disabling rea
 models with mandatory reasoning may still think. The sentence prompt requests at most
 9 words, including the target. The standalone Ollama generator also disables thinking
 and caps output at 128 tokens.
+Models that require reasoning are retried without the request to disable it;
+models that support the control still receive `reasoning.enabled: false`.
+Mandatory-reasoning retries allow 16,000 completion tokens for Common batches and
+4,096 for review sentences, because reasoning shares the budget with the final
+JSON. Ordinary requests retain their smaller budgets. Truncated responses are
+still rejected and never inserted into the question bank.
 Choose a text-generation model. If the provider rejects schema enforcement,
 the client retries once without it and validates the returned JSON locally. Missing keys
 fail generation jobs safely while the API and fallback prompts remain usable.
@@ -39,6 +45,29 @@ Revision 0012 adds the stored prompt and backfills existing words with their
 previous example/definition prompts, without network calls or changing schedules.
 Revision 0013 adds the durable job queue. Old words keep their prompts; only newly added words use OpenRouter generation.
 Direct database inserts that bypass the word service receive a blank placeholder.
+
+## Common word questions
+
+`openrouter_common.py` uses the same private OpenRouter settings to request batches
+of 20 words commonly used by native English speakers in everyday conversation. Each
+candidate must include a simple explanation, a natural example using the target,
+four distinct meaning choices, and a valid correct-answer index. Invalid or truncated
+responses are rejected; models without schema enforcement fall back to a JSON prompt
+with the same mandatory local validation.
+
+The authenticated `POST /api/v1/common-words/batch` route serves up to ten persisted
+questions per user, excluding their saved words and supplied recent question IDs.
+When none remain, it queues a refill and returns 202. `python -m app.prompt_worker`
+handles that queue alongside existing review prompt jobs. Generation does not hold
+an account lock or an HTTP request open. The worker rechecks saved words and existing
+questions under an account lock after generation, then attaches only new unsaved
+words. Saved vocabulary is not sent to the model. The app continues to save a revealed
+word only when its user explicitly chooses Save word.
+
+Migration 0017 adds the question bank and job tables. Refills have recoverable leases,
+three attempts with backoff, and a 60-second cooldown before a user can retry a failed
+job. The Common answer index is returned for local practice feedback; this is separate
+from authenticated, server-graded scheduled Review attempts.
 
 ## Direct testing
 

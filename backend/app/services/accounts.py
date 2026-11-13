@@ -5,7 +5,15 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import AuthSession, ReviewAttempt, ReviewState, User, Word
+from app.models import (
+    AuthSession,
+    CommonWordJob,
+    CommonWordQuestion,
+    ReviewAttempt,
+    ReviewState,
+    User,
+    Word,
+)
 from app.schemas.account import AccountUpdate
 from app.services.errors import AccountUnavailable
 
@@ -37,6 +45,8 @@ def delete_account(db: Session, user: User) -> None:
     db.flush()
     word_ids = select(Word.id).where(Word.user_id == user.id)
     db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+    db.execute(delete(CommonWordJob).where(CommonWordJob.user_id == user.id))
+    db.execute(delete(CommonWordQuestion).where(CommonWordQuestion.user_id == user.id))
     db.execute(delete(ReviewAttempt).where(ReviewAttempt.user_id == user.id))
     db.execute(delete(ReviewState).where(ReviewState.word_id.in_(word_ids)))
     db.execute(delete(Word).where(Word.user_id == user.id))

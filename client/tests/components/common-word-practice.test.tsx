@@ -5,10 +5,14 @@ import { CommonWordPractice } from '@/components/common-word-practice';
 import { authenticatedFetch } from '@/services/auth';
 import {
   loadCommonWords,
+  CommonWordsError,
   type CommonWordQuestion,
 } from '@/services/common-words';
 
-jest.mock('@/services/common-words', () => ({ loadCommonWords: jest.fn() }));
+jest.mock('@/services/common-words', () => ({
+  ...jest.requireActual('@/services/common-words'),
+  loadCommonWords: jest.fn(),
+}));
 const loadMock = jest.mocked(loadCommonWords);
 const fetchMock = jest.mocked(authenticatedFetch);
 const questions: readonly CommonWordQuestion[] = [
@@ -69,6 +73,18 @@ beforeEach(() => {
   onBackToVocab.mockClear();
 });
 afterEach(() => jest.useRealTimers());
+
+test('shows the safe generation failure message instead of a generic load error', async () => {
+  loadMock.mockRejectedValueOnce(
+    new CommonWordsError(
+      'Could not prepare new words. Please try again shortly.',
+    ),
+  );
+  await render(practice());
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Could not prepare new words. Please try again shortly.',
+  );
+});
 
 test('Vocab remains the default and switching tabs preserves search inputs and quiz progress', async () => {
   await render(<AddWordScreen />);
@@ -201,6 +217,7 @@ test('saving posts the revealed word once, blocks Skip while pending, and shows 
   expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
   expect(screen.getAllByRole('button')).toHaveLength(4);
   expect(loadMock).toHaveBeenCalledTimes(2);
+  expect(loadMock.mock.calls[1][0]).toEqual(['reliable', 'eager']);
 });
 
 test.each(['network', 'server'])(
@@ -276,24 +293,11 @@ test('late question loads are discarded after the Common tab is hidden', async (
   );
   const view = await render(practice());
   await view.rerender(practice(false));
+  expect(loadMock.mock.calls[0][1]?.aborted).toBe(true);
   await act(async () => {
     resolve(questions);
   });
   expect(screen.queryByText('Word 1 of 2')).toBeNull();
   await view.rerender(practice());
   expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
-});
-
-test('sample bank has ten unique words with four distinct choices and a valid answer', async () => {
-  const actual = jest.requireActual<typeof import('@/services/common-words')>(
-    '@/services/common-words',
-  );
-  const items = await actual.loadCommonWords();
-  expect(items).toHaveLength(10);
-  expect(new Set(items.map((item) => item.id)).size).toBe(10);
-  for (const item of items) {
-    expect(new Set(item.choices).size).toBe(4);
-    expect(item.correctIndex).toBeGreaterThanOrEqual(0);
-    expect(item.correctIndex).toBeLessThan(4);
-  }
 });

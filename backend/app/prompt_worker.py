@@ -6,6 +6,7 @@ import time
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import get_engine
+from app.services.common_word_worker import process_one as process_common_words
 from app.services.prompt_jobs.worker import process_one
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,9 @@ def main() -> None:
     try:
         while True:
             try:
-                if not process_one(engine):
+                reviewed = process_one(engine)
+                common = process_common_words(engine)
+                if not reviewed and not common:
                     time.sleep(1)
             except SQLAlchemyError:
                 # Crashed/incomplete jobs become claimable when their lease expires.

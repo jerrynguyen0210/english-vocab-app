@@ -444,6 +444,7 @@ Client `authenticatedFetch` accepts v1-relative paths, such as `/words`.
 | Method | Path | Contract |
 | --- | --- | --- |
 | POST | `/api/v1/words` | `word`, `english_explanation` → created word (201) |
+| POST | `/api/v1/common-words/batch` | Optional `exclude_ids` → unsaved Common questions (200), generation pending (202), or failed status (200) |
 | GET | `/api/v1/reviews/next?limit=1` | Due items; limit 1–50; empty array when none |
 | POST | `/api/v1/reviews/{word_id}/answer` | `typed_answer`, `time_taken_ms` → grading result |
 | PATCH | `/api/v1/account` | Validated IANA `timezone` → updated profile (200) |
@@ -473,8 +474,8 @@ legacy behavior of returning the current due date. Items not yet due return 409
 without another attempt. Missing items and another account's items both return
 404. Invalid input returns 422. Protected responses disable caching.
 
-Account deletion permanently removes the user, all sessions, words, review states
-and attempts in one transaction. Migration `0008` permits history erasure only
+Account deletion permanently removes the user, all sessions, words, review states,
+attempts, Common questions and generation jobs in one transaction. Migration `0008` permits history erasure only
 when its owner is marked for deletion; ordinary history updates and deletes remain
 blocked. Other accounts are untouched. Infrastructure logs/backups follow the
 deployment's retention policy. Web sessions from the earlier unversioned API must
@@ -512,6 +513,39 @@ returns a retryable 503 response. Rebuild the backend image after this change.
 WordNet data retains its bundled Princeton license in the installed corpus; see
 [WordNet’s license](https://wordnet.princeton.edu/license-and-commercial-use).
 
+
+### Common word practice
+
+The Add screen's Common tab loads authenticated backend questions instead of sample
+data. OpenRouter is asked for common, contemporary words that native English speakers
+use in everyday conversation, mainly A2–B2 vocabulary across home, work, shopping,
+friends and travel. Each question includes a simple explanation, a natural example,
+and four distinct meaning choices with exactly one correct answer. Generated output
+is validated locally before storage; this validates structure, not linguistic accuracy.
+
+`POST /api/v1/common-words/batch` accepts `{"exclude_ids": []}` and returns
+`{"status": "ready", "questions": [...]}` with up to ten questions. Items use `id`,
+`word`, `partOfSpeech`, `explanation`, `example`, `choices`, and `correctIndex`.
+The Common quiz checks answers locally and does not change scheduled Review scores.
+Saved words are compared using the same normalization as the word bank and excluded
+both when generated questions are attached and whenever questions are served.
+Only previously generated words are sent as LLM exclusions; saved user vocabulary
+is checked locally. Questions and refill jobs are owned by, exported with, and erased
+with their account. Generation never saves words automatically.
+
+When the bank has no eligible questions, the endpoint queues one durable job per user
+and returns HTTP 202 with `{"status": "pending", "questions": []}`. The existing
+`python -m app.prompt_worker` processes both review prompts and Common refills outside
+HTTP requests. The app polls every two seconds, cancels polling when hidden, and keeps
+up to 1,000 recent question IDs out of subsequent batches during that screen session.
+Expired worker leases are recovered, stale results discarded, and failures retried
+up to three times. After terminal failure the API returns `status: "failed"`; another
+user retry can queue work after a 60-second cooldown. Long-running generation remains
+durable if the client stops waiting. Provider error bodies are not returned or logged.
+
+Use the existing private `OPENROUTER_*` settings; no new credentials or services are
+required. Apply forward-only migration `0017` with the normal `python -m app.migrate`
+procedure and restart the API and prompt worker before using Common practice.
 
 ### Background review prompt generation
 

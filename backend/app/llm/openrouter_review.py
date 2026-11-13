@@ -94,7 +94,7 @@ def generate_review(
         "temperature": 0.3,
     }
     deadline = time.monotonic() + timeout
-    for attempt in range(2):
+    for _ in range(3):
         request = Request(
             f"{base_url.rstrip('/')}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -133,7 +133,21 @@ def generate_review(
                     "not support",
                 )
             )
-            if attempt == 0 and unsupported:
+            mandatory_reasoning = (
+                exc.code == 400
+                and "reasoning" in message
+                and any(
+                    marker in message
+                    for marker in ("mandatory", "cannot be disabled", "required")
+                )
+            )
+            if mandatory_reasoning and "reasoning" in payload:
+                payload.pop("reasoning")
+                # The ordinary 128-token sentence budget cannot fit mandatory
+                # reasoning plus the final JSON sentence.
+                payload["max_tokens"] = 4096
+                continue
+            if unsupported and "response_format" in payload:
                 # Some text models lack JSON-schema support. Ask for JSON in the
                 # prompt and retain all local output validation below.
                 payload.pop("response_format", None)

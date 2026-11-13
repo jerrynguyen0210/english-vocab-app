@@ -5,6 +5,7 @@ import subprocess
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 from app.core.config import get_settings
@@ -91,7 +92,8 @@ def test_upgrade_and_repeated_run(tmp_path, monkeypatch):
         engine = create_engine(url)
         with engine.connect() as conn:
             assert (
-                conn.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
+                conn.scalar(text("SELECT version_num FROM alembic_version"))
+                == ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
             )
             assert (
                 conn.scalar(
