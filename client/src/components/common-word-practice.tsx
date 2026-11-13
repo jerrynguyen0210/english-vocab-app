@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 import { authenticatedFetch } from '@/services/auth';
@@ -230,20 +230,19 @@ export function CommonWordPractice({
         <View
           accessibilityLabel="Loading common words"
           accessibilityState={{ busy: true }}
-          style={styles.stack}
+          style={styles.loadingStatus}
         >
-          <View style={[styles.card, styles.loadingCard]} accessible={false}>
-            <View style={[styles.skeleton, styles.skeletonLabel]} />
-            <View style={[styles.skeleton, styles.skeletonWord]} />
-            <View style={styles.skeleton} />
+          <View style={styles.loadingStatusRow}>
+            <ActivityIndicator color={colors.primary} accessible={false} />
+            <ThemedText
+              accessibilityLiveRegion="polite"
+              style={styles.loadingTitle}
+            >
+              Loading words…
+            </ThemedText>
           </View>
-          {[0, 1, 2, 3].map((item) => (
-            <View key={item} style={styles.loadingChoice} accessible={false}>
-              <View style={styles.skeleton} />
-            </View>
-          ))}
-          <ThemedText accessibilityLiveRegion="polite" style={styles.hint}>
-            Finding your next word…
+          <ThemedText style={[styles.body, styles.center]}>
+            Preparing your next questions. This may take a moment.
           </ThemedText>
         </View>
       ) : questions.length === 0 ? (
@@ -492,7 +491,6 @@ export function CommonWordPractice({
 
 const styles = StyleSheet.create({
   content: { gap: 12, paddingTop: 20 },
-  stack: { gap: 10 },
   revealCard: { gap: 8 },
   savePrompt: { gap: 6 },
   card: {
@@ -662,22 +660,12 @@ const styles = StyleSheet.create({
     lineHeight: 43,
     fontWeight: '700',
   },
-  loadingCard: { minHeight: 159, justifyContent: 'space-around' },
-  loadingChoice: {
-    minHeight: 48,
-    justifyContent: 'center',
-    padding: 16,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
+  loadingStatus: { alignItems: 'center', gap: 8, paddingVertical: 16 },
+  loadingStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  loadingTitle: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: '700',
   },
-  skeleton: {
-    height: 12,
-    width: '80%',
-    borderRadius: 6,
-    backgroundColor: colors.border,
-  },
-  skeletonLabel: { width: '55%' },
-  skeletonWord: { width: '45%', height: 29 },
 });
