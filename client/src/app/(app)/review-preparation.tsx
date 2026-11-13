@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingVertical: 12,
     color: colors.text,
-    fontSize: 13,
+    fontSize: 16,
   },
   topicBadge: {
     color: colors.secondary,

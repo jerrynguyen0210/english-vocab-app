@@ -1,3 +1,4 @@
+import { KeyboardScrollView } from '@/components/keyboard-scroll-view';
 import { connectionMessage } from '@/services/connectivity';
 import { Link } from 'expo-router';
 import { useEffect, useId, useRef, useState, type ComponentRef } from 'react';
@@ -6,7 +7,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
@@ -147,7 +147,7 @@ export function AuthForm({
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <KeyboardScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
@@ -413,7 +413,7 @@ export function AuthForm({
               </View>
             </AuthFormShell>
           </View>
-        </ScrollView>
+        </KeyboardScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    fontSize: 14,
+    fontSize: 16,
   },
   focused: { borderColor: colors.primary },
   invalid: {

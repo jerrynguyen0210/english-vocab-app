@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
   input: {
     fontFamily,
     color: colors.text,
-    fontSize: 14,
+    fontSize: 16,
     lineHeight: 20,
     minHeight: 44,
     paddingLeft: 13,

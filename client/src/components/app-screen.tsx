@@ -1,8 +1,9 @@
+import { KeyboardScrollView } from '@/components/keyboard-scroll-view';
 import { Image } from 'expo-image';
 import {
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  type ScrollView,
   StyleSheet,
   View,
   type ScrollViewProps,
@@ -79,7 +80,7 @@ export function AppScreen({
             </NavigationLink>
           </View>
         </View>
-        <ScrollView
+        <KeyboardScrollView
           ref={scrollRef}
           onContentSizeChange={onContentSizeChange}
           keyboardShouldPersistTaps="handled"
@@ -87,7 +88,7 @@ export function AppScreen({
           contentContainerStyle={styles.scrollContent}
         >
           {children}
-        </ScrollView>
+        </KeyboardScrollView>
         {!!toast && (
           <View pointerEvents="none" style={styles.toast}>
             <ThemedText

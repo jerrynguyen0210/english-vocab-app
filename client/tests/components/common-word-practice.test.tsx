@@ -74,6 +74,81 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
+test.each(['correct', 'incorrect'])(
+  'the question timer stops after a %s answer and resets for the next word',
+  async (answer) => {
+    await render(practice());
+    expect(
+      screen.getByLabelText(
+        'Time spent on this question: 0 minutes, 0 seconds',
+      ),
+    ).toBeOnTheScreen();
+    await act(async () => {
+      jest.advanceTimersByTime(2250);
+    });
+    expect(
+      screen.getByLabelText(
+        'Time spent on this question: 0 minutes, 2 seconds',
+      ),
+    ).toBeOnTheScreen();
+    await fireEvent.press(
+      screen.getByRole('button', {
+        name:
+          answer === 'correct' ? 'B. Able to be trusted' : 'A. Easy to forget',
+      }),
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    if (answer === 'correct') {
+      expect(
+        screen.getByLabelText(
+          'Time spent on this question: 0 minutes, 2 seconds',
+        ),
+      ).toBeOnTheScreen();
+      await advance();
+    } else {
+      await act(async () => {
+        jest.advanceTimersByTime(5000);
+      });
+      expect(screen.queryByLabelText(/Time spent on this question/)).toBeNull();
+      await fireEvent.press(
+        screen.getByRole('button', { name: 'Skip · Next word' }),
+      );
+    }
+    expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
+    expect(
+      screen.getByLabelText(
+        'Time spent on this question: 0 minutes, 0 seconds',
+      ),
+    ).toBeOnTheScreen();
+  },
+);
+
+test('the timer preserves elapsed time while Common is hidden and formats minutes', async () => {
+  const view = await render(practice());
+  await act(async () => {
+    jest.advanceTimersByTime(1500);
+  });
+  await view.rerender(practice(false));
+  await act(async () => {
+    jest.advanceTimersByTime(10000);
+  });
+  expect(
+    screen.getByLabelText('Time spent on this question: 0 minutes, 1 second'),
+  ).toBeOnTheScreen();
+  await view.rerender(practice());
+  await act(async () => {
+    jest.advanceTimersByTime(59500);
+  });
+  expect(
+    screen.getByLabelText('Time spent on this question: 1 minute, 1 second'),
+  ).toBeOnTheScreen();
+  expect(
+    screen.getByLabelText('Time spent on this question: 1 minute, 1 second'),
+  ).toBeOnTheScreen();
+});
+
 test('shows the safe generation failure message instead of a generic load error', async () => {
   loadMock.mockRejectedValueOnce(
     new CommonWordsError(
