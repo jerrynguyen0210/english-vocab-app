@@ -110,6 +110,7 @@ function harness(fetch, params = {}, screen = 'review', platform = 'web') {
     '@/services/auth': { authenticatedFetch: fetch, AuthError },
     '@/services/connectivity': { connectionMessage: (_, fallback) => fallback },
     '@/components/app-screen': { AppScreen: 'Screen' },
+    '@/components/learning-statistics': { LearningStatistics: 'Statistics' },
     '@/components/navigation-link': { NavigationLink: 'Link' },
     '@/components/themed-text': { ThemedText: 'Text' },
     '@/constants/wordwell-theme': { WordwellColors: {} },

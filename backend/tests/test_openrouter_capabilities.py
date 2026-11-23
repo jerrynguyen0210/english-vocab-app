@@ -32,6 +32,7 @@ def completed(kind):
             "words": [
                 {
                     "word": "reliable",
+                    "ipa": "/rɪˈlaɪəbl/",
                     "part_of_speech": "adjective",
                     "explanation": "Able to be trusted.",
                     "example": "She is a reliable colleague.",
