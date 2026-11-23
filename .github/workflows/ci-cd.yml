@@ -78,6 +78,11 @@ jobs:
         with:
           name: jetson-web-${{ github.sha }}
           path: ${{ runner.temp }}/jetson-web
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+         authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+         ping: ${{ vars.JETSON_HOST }}
       - name: Deploy tested commit over verified SSH
         env:
           JETSON_HOST: ${{ vars.JETSON_HOST }}
