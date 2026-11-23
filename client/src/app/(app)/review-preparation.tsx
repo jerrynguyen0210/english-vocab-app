@@ -131,9 +131,19 @@ export default function ReviewPreparationScreen() {
             <Pressable
               key={key}
               accessibilityRole="radio"
-              accessibilityState={{ checked: source === key }}
-              onPress={() => setSource(key)}
-              style={[styles.source, source === key && styles.selected]}
+              accessibilityState={{
+                checked: source === key,
+                disabled: key === 'topic',
+              }}
+              disabled={key === 'topic'}
+              onPress={() => {
+                if (key !== 'topic') setSource(key);
+              }}
+              style={[
+                styles.source,
+                source === key && styles.selected,
+                key === 'topic' && styles.disabled,
+              ]}
             >
               <View
                 style={[styles.icon, source === key && styles.selectedIcon]}
