@@ -392,157 +392,54 @@ test('preparation loads live counts, rejects stale responses and passes selected
   assert.ok(paths.some((path) => path.includes('include_overdue=false')));
 });
 
-test('topic searches only on submit and passes the searched topic into review', async () => {
-  let fail = true;
+test('topic selection is disabled and preserves time and recall selections', async () => {
   const paths = [];
   const h = harness(
     async (path) => {
       paths.push(path);
-      if (fail) throw new Error('offline');
-      return Response.json({ count: 2, matching_count: 2, saved_count: 12 });
+      return Response.json({ count: 2, matching_count: 2 });
     },
     {},
     'review-preparation',
   );
+  await h.advance();
+  assert.equal(h.radio('By topic').props.disabled, true);
+  assert.equal(h.radio('By topic').props.accessibilityState.disabled, true);
+  for (const source of ['By time', 'SM-2 recall']) {
+    assert.equal(h.radio(source).props.disabled, false);
+    h.radio(source).props.onPress();
+    await h.flush();
+    await h.advance();
+    const requests = paths.length;
+    h.radio('By topic').props.onPress();
+    await h.flush();
+    await h.advance();
+    assert.equal(paths.length, requests);
+    assert.equal(h.radio(source).props.accessibilityState.checked, true);
+    assert.equal(h.radio('By topic').props.accessibilityState.checked, false);
+    assert.equal(h.input(), undefined);
+    assert.equal(
+      h.link().props.href.params.source,
+      source === 'By time' ? 'time' : 'recall',
+    );
+  }
+});
+
+test('preparation retries failed counts and refreshes on focus', async () => {
+  let reply = () => Response.json({}, { status: 503 });
+  const h = harness(async () => reply(), {}, 'review-preparation');
   await h.advance();
   assert.match(h.text(), /Could not load ready words/);
   assert.equal(h.link(), undefined);
-  fail = false;
+  reply = () => Response.json({ count: 3, matching_count: 3 });
   h.button('Try again').props.onPress();
   await h.flush();
   await h.advance();
-  assert.match(h.text(), /2 words ready/);
-  const requestsBeforeTopic = paths.length;
-  h.radio('By topic').props.onPress();
-  await h.flush();
-  await h.advance();
-  assert.equal(h.link(), undefined);
-  h.input().props.onChangeText('Workplace communication');
-  await h.flush();
-  await h.advance();
-  assert.equal(h.input().props.value, 'Workplace communication');
-  assert.match(h.text(), /Search your saved words by meaning/);
-  assert.match(h.text(), /12 words in your word bank/);
-  assert.equal(h.button('Search a topic to begin').props.disabled, true);
-  assert.equal(paths.length, requestsBeforeTopic + 1);
-  assert.equal(paths.at(-1), '/reviews/summary');
-  h.input().props.onSubmitEditing();
-  await h.flush();
-  assert.equal(h.link(), undefined);
-  await h.advance();
-  assert.match(h.text(), /2 matching words/);
-  assert.equal(h.link().props.href.params.topic, 'Workplace communication');
-  assert.equal(
-    new URLSearchParams(paths.at(-1).split('?')[1]).get('topic'),
-    'Workplace communication',
-  );
-  h.input().props.onChangeText('A different topic');
-  await h.flush();
-  assert.equal(h.link(), undefined);
-  h.radio('By time').props.onPress();
-  await h.flush();
-  h.radio('By topic').props.onPress();
-  await h.flush();
-  assert.equal(h.input().props.value, 'A different topic');
-});
-
-test('topic summary retries, refreshes on focus and ignores responses after switching sources', async () => {
-  let summaryReply = () => Response.json({}, { status: 503 });
-  const h = harness(
-    async (path) =>
-      path === '/reviews/summary'
-        ? summaryReply()
-        : Response.json({ count: 3, matching_count: 3 }),
-    {},
-    'review-preparation',
-  );
-  h.radio('By topic').props.onPress();
-  await h.flush();
-  assert.match(h.text(), /Loading word bank/);
-  assert.equal(h.button('Search a topic to begin').props.disabled, true);
-  await h.advance();
-  assert.match(h.text(), /Could not load topic matches/);
-  assert.doesNotMatch(h.text(), /0 words in your word bank/);
-  summaryReply = () => Response.json({ saved_count: 0 });
-  h.button('Try again').props.onPress();
-  await h.flush();
-  await h.advance();
-  assert.match(h.text(), /0 words in your word bank/);
-  assert.equal(h.link(), undefined);
-  summaryReply = () => Response.json({ saved_count: 7 });
-  h.refocus();
-  await h.advance();
-  assert.match(h.text(), /7 words in your word bank/);
-  let resolveSummary;
-  summaryReply = () => new Promise((resolve) => (resolveSummary = resolve));
-  h.refocus();
-  await h.advance();
-  h.radio('By time').props.onPress();
-  await h.flush();
-  await h.advance();
-  resolveSummary(Response.json({ saved_count: 99 }));
-  await h.flush();
   assert.match(h.text(), /3 words ready/);
-  assert.doesNotMatch(h.text(), /99 words/);
-  assert.ok(h.link());
-});
-
-test('topic search handles pending indexing, retry, no matches and stale responses', async () => {
-  const paths = [];
-  let reply = () => Response.json({}, { status: 409 });
-  const h = harness(
-    async (path) => {
-      paths.push(path);
-      return path === '/reviews/summary'
-        ? Response.json({ saved_count: 5 })
-        : reply();
-    },
-    {},
-    'review-preparation',
-  );
-  h.radio('By topic').props.onPress();
-  await h.flush();
+  reply = () => Response.json({ count: 7, matching_count: 7 });
+  h.refocus();
   await h.advance();
-  h.input().props.onChangeText('   ');
-  await h.flush();
-  h.input().props.onSubmitEditing();
-  await h.flush();
-  await h.advance();
-  assert.equal(paths.filter((path) => path.includes('source=topic')).length, 0);
-  h.input().props.onChangeText('work');
-  await h.flush();
-  h.button('Search').props.onPress();
-  await h.flush();
-  await h.advance();
-  assert.match(h.text(), /being prepared/);
-  assert.equal(h.link(), undefined);
-  reply = () =>
-    Response.json({
-      count: 0,
-      matching_count: 0,
-      saved_count: 5,
-      due_count: 0,
-    });
-  h.button('Try again').props.onPress();
-  await h.flush();
-  await h.advance();
-  assert.match(h.text(), /No words match this review/);
-  assert.doesNotMatch(h.text(), /Nothing due/);
-  let resolveOld;
-  reply = () =>
-    new Promise((resolve) => {
-      resolveOld = resolve;
-    });
-  h.input().props.onSubmitEditing();
-  await h.flush();
-  await h.advance();
-  h.input().props.onChangeText('travel');
-  await h.flush();
-  resolveOld(Response.json({ count: 10, matching_count: 10, saved_count: 5 }));
-  await h.flush();
-  await h.advance();
-  assert.equal(h.link(), undefined);
-  assert.doesNotMatch(h.text(), /10 matching words/);
+  assert.match(h.text(), /7 words ready/);
 });
 
 test('multiple choice renders exactly the server options in order and submits the selection', async () => {

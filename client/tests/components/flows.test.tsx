@@ -72,7 +72,7 @@ test('searches word forms, saves the selected form, and prevents duplicate saves
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
-test('prepares time, SM-2 and submitted topic selections', async () => {
+test('prepares time and SM-2 selections while topic selection is disabled', async () => {
   fetchMock.mockImplementation(() =>
     reply({
       count: 2,
@@ -106,34 +106,13 @@ test('prepares time, SM-2 and submitted topic selections', async () => {
   );
   await screen.findByLabelText('Start review · 2 words');
   const calls = fetchMock.mock.calls.length;
-  await fireEvent.press(screen.getByText('By topic'));
-  expect(
-    screen.getByText('Search your saved words by meaning.'),
-  ).toBeOnTheScreen();
-  expect(screen.queryByLabelText('Start review · 2 words')).toBeNull();
-  expect(
-    screen.getByRole('button', { name: 'Search a topic to begin' }),
-  ).toBeDisabled();
-  await screen.findByText('2 words in your word bank');
-  expect(fetchMock).toHaveBeenCalledTimes(calls + 1);
-  expect(fetchMock).toHaveBeenLastCalledWith('/reviews/summary');
-  await fireEvent.changeText(
-    screen.getByLabelText('Topic search'),
-    'Workplace communication',
-  );
-  expect(screen.getByLabelText('Topic search')).toHaveDisplayValue(
-    'Workplace communication',
-  );
-  expect(fetchMock).toHaveBeenCalledTimes(calls + 1);
-  await fireEvent.press(screen.getByRole('button', { name: 'Search topic' }));
-  await screen.findByLabelText('Start review · 2 words');
-  const topicQuery = new URLSearchParams(
-    String(fetchMock.mock.lastCall?.[0]).split('?')[1],
-  );
-  expect(topicQuery.get('source')).toBe('topic');
-  expect(topicQuery.get('topic')).toBe('Workplace communication');
-  await fireEvent.changeText(screen.getByLabelText('Topic search'), 'Travel');
-  expect(screen.queryByLabelText('Start review · 2 words')).toBeNull();
+  const topic = screen.getByRole('radio', { name: /By topic/ });
+  expect(topic).toBeDisabled();
+  await fireEvent.press(topic);
+  expect(screen.getByRole('radio', { name: /SM-2 recall/ })).toBeChecked();
+  expect(screen.queryByLabelText('Topic search')).toBeNull();
+  expect(screen.getByLabelText('Start review · 2 words')).toBeOnTheScreen();
+  expect(fetchMock).toHaveBeenCalledTimes(calls);
 });
 
 test.each(['typing', 'choice'] as const)(
