@@ -16,6 +16,10 @@ and Android; FastAPI, PostgreSQL, and Alembic for the backend. Web designs use F
 
 ## Local setup
 
+For automatic deployment after pushes to `main`, see
+[GitHub Actions CD to Jetson Nano](docs/CD_JETSON.md). Initial board setup is in
+[the Jetson deployment guide](docs/DEPLOY_JETSON.md).
+
 Requires Node.js 24, Python 3.12+ (CI uses 3.13), Docker with Compose, and Expo Go
 on your phone. Run commands from the repository root unless stated otherwise.
 

@@ -1,0 +1,94 @@
+name: CI and Jetson deployment
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    uses: ./.github/workflows/backend.yml
+  client:
+    uses: ./.github/workflows/client.yml
+
+  deployment-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n devops/cd-jetson.sh devops/cd-jetson-remote.sh
+      - run: shellcheck devops/cd-jetson.sh devops/cd-jetson-remote.sh
+      - run: python3 -m unittest discover -s devops/tests -v
+
+  build-web:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [backend, client, deployment-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PUBLIC_DOMAIN: ${{ vars.JETSON_PUBLIC_DOMAIN || 'vocab.jerryitdev.com' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Build production SPA
+        working-directory: client
+        env:
+          EXPO_NO_DOTENV: "1"
+          WORDRECALL_WEB_OUTPUT: single
+          EXPO_PUBLIC_API_BASE_URL: https://${{ env.PUBLIC_DOMAIN }}
+          EXPO_PUBLIC_WEB_API_BASE_URL: https://${{ env.PUBLIC_DOMAIN }}
+        run: |
+          npm ci --include=dev --no-audit --no-fund
+          node node_modules/expo/bin/cli export --platform web --output-dir dist
+          test -s dist/index.html
+          test ! -d dist/server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jetson-web-${{ github.sha }}
+          path: client/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: jetson-production
+      url: https://${{ vars.JETSON_PUBLIC_DOMAIN || 'vocab.jerryitdev.com' }}
+    # Never cancel an active migration/deployment when another commit arrives.
+    concurrency:
+      group: jetson-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: jetson-web-${{ github.sha }}
+          path: ${{ runner.temp }}/jetson-web
+      - name: Deploy tested commit over verified SSH
+        env:
+          JETSON_HOST: ${{ vars.JETSON_HOST }}
+          JETSON_USER: ${{ vars.JETSON_USER }}
+          JETSON_SSH_PORT: ${{ vars.JETSON_SSH_PORT || '22' }}
+          JETSON_REPO_PATH: ${{ vars.JETSON_REPO_PATH }}
+          JETSON_PUBLIC_DOMAIN: ${{ vars.JETSON_PUBLIC_DOMAIN || 'vocab.jerryitdev.com' }}
+          JETSON_WEB_PORT: ${{ vars.JETSON_WEB_PORT || '8088' }}
+          JETSON_API_PORT: ${{ vars.JETSON_API_PORT || '8001' }}
+          JETSON_RELEASE_ROOT: ${{ vars.JETSON_RELEASE_ROOT || '/srv/english-vocab-app' }}
+          JETSON_SKIP_PUBLIC_CHECK: ${{ vars.JETSON_SKIP_PUBLIC_CHECK || 'false' }}
+          JETSON_SSH_PRIVATE_KEY: ${{ secrets.JETSON_SSH_PRIVATE_KEY }}
+          JETSON_SSH_KNOWN_HOSTS: ${{ secrets.JETSON_SSH_KNOWN_HOSTS }}
+        run: bash devops/cd-jetson.sh "$GITHUB_SHA" "$RUNNER_TEMP/jetson-web"

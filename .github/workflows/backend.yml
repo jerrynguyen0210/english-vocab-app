@@ -1,6 +1,7 @@
 name: Backend
 
-on: [push, pull_request]
+on:
+  workflow_call:
 
 permissions:
   contents: read
