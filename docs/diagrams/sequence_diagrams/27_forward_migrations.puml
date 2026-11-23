@@ -1,0 +1,68 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Startup migration with verified snapshot and forward-only upgrade
+
+' Sources relative to repository root:
+' backend/entrypoint.sh
+' backend/app/migrate.py
+' backend/app/migration_backup.py
+' backend/migrations/env.py
+
+actor "Service runner / operator" as Operator
+participant "Entrypoint / app.migrate" as Migrate
+participant Alembic
+database PostgreSQL as DB
+participant "pg_dump / pg_restore" as Tools
+participant "Persistent backup directory" as Disk
+Operator -> Migrate : Start API container / python -m app.migrate
+Migrate -> Alembic : Inspect version graph
+break Migration graph does not have exactly one head
+  Migrate --> Operator : Fail; API command is not started
+end
+Migrate -> DB : Connect; acquire application session advisory lock; COMMIT
+note right of DB : Serializes PostgreSQL deployment migrations.\nNon-PostgreSQL development skips this advisory lock.
+alt Environment is preview or production
+  Migrate -> Migrate : Require absolute persistent backup path and PostgreSQL
+  Migrate -> Disk : Create / secure backup directory (0700) and partial file
+  Migrate -> Tools : pg_dump custom archive; password through environment only
+  Tools -> DB : Read consistent database snapshot
+  DB --> Tools : Database contents
+  Tools -> Disk : Write archive; flush and fsync
+  Migrate -> Tools : pg_restore --list partial archive (validation only)
+  Tools --> Migrate : Archive validation result
+  break Snapshot or verification fails
+    Migrate -> Disk : Remove partial file
+    Migrate -> DB : Release advisory lock in finally; dispose engine
+    Migrate --> Operator : Fail; schema changes blocked; API not started
+  end
+  Migrate -> Disk : SHA-256; atomically publish verified archive\nWrite checksum sidecar (0600); fsync directory
+  Migrate -> Disk : Remove older snapshots past 30 days
+  Migrate -> Alembic : Set backup_verified=true and supply locked connection
+else Development or test
+  Migrate -> Alembic : Supply connection; backup not required
+end
+Migrate -> Alembic : upgrade(head)
+Alembic -> Alembic : Enforce preview / production backup guard
+Alembic -> DB : Run pending versioned upgrades in migration transaction
+DB --> Alembic : Success or failure
+Alembic --> Migrate : Migration result
+Migrate -> DB : Release advisory lock in finally; dispose engine
+alt Migration succeeded
+  Migrate --> Operator : Success
+  opt Called from container entrypoint
+    Migrate -> Migrate : exec configured API command
+  end
+else Migration failed
+  Migrate --> Operator : Nonzero exit; API command not started
+end
+note over Migrate : Shipped revisions are immutable. Deployment only upgrades forward.\npg_restore --list inspects the archive; it does not restore a database.
+@enduml

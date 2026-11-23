@@ -1,0 +1,50 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Build typing or multiple-choice review session
+
+' Sources relative to repository root:
+' backend/app/api/routes/reviews.py
+' backend/app/services/reviews/service.py
+' backend/app/services/reviews/selection.py
+' backend/app/services/reviews/tickets.py
+' backend/app/services/reviews/choices.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+Client -> API : GET /api/v1/reviews/session (selection, answer_mode)
+API -> S : review_session(db, user, selection)
+alt source = topic
+  ref over S, DB : 18_topic_search: at most 10 ranked rows or 409 / 503
+else recall / time selection
+  S -> DB : Read owner-scoped selected Words + ReviewStates (limit 50)
+  DB --> S : Rows in selection order
+end
+opt Rows exist and answer_mode = choice
+  S -> DB : Load up to 200 saved-word candidates
+  S -> S : Infer local dictionary parts of speech for candidates + targets
+end
+loop Each selected word (zero iterations for empty selection)
+  S -> S : Generate attempt UUID; HMAC-sign 24-hour review ticket\nbound to user, word, attempt, last_reviewed_at and due_at
+  S -> S : Mask target in prompt, explanation and optional example
+  opt answer_mode = choice
+    ref over S, DB : 19_choice_generation: four unique shuffled word options
+  end
+end
+S --> API : Session items with attempt_id and review_token
+API --> Client : 200 items (possibly empty); Cache-Control: no-store
+note over S, DB : Session generation does not advance scheduling or persist attempts.\nTickets authorize unchanged snapshots, including selected future-due words.
+@enduml

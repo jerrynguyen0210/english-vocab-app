@@ -1,0 +1,48 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Sign in with password
+
+' Sources relative to repository root:
+' backend/app/api/routes/auth.py
+' backend/app/services/auth.py
+' backend/app/api/auth_transport.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+
+Client -> API : POST /api/v1/auth/sign-in (email, password)
+ref over Client, DB : 01_auth_request_guard; validate body
+API -> S : sign_in(body, db, native_request)
+S -> DB : Find User by lowercased email
+DB --> S : User or none
+S -> S : Verify Argon2 hash; use dummy hash if account / hash missing
+alt Invalid password, missing password account, disabled or deleted user
+  S --> API : InvalidCredentials
+  API --> Client : 401 Invalid email or password
+else Valid active account
+  opt Argon2 settings changed
+    S -> S : Rehash password
+  end
+  S -> S : Generate new opaque token pair and digests
+  S -> DB : INSERT new AuthSession + optional password update; COMMIT
+  note right of DB : Existing sessions remain valid.
+  S --> API : IssuedTokens
+  alt Native transport
+    API --> Client : 200 access and refresh tokens in JSON
+  else Browser transport
+    API --> Client : 200 access token in JSON + HttpOnly refresh cookie
+  end
+  note over API : Cache-Control: no-store
+end
+@enduml

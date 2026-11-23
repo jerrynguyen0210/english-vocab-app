@@ -1,0 +1,42 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Atomically erase account and owned data
+
+' Sources relative to repository root:
+' backend/app/api/routes/account.py
+' backend/app/services/accounts.py
+' backend/app/models/common_word.py
+' backend/app/models/prompt_job.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+Client -> API : DELETE /api/v1/account
+API -> S : delete_account(db, user)
+S -> DB : Lock active User FOR UPDATE; recheck status
+break Account unavailable
+  S --> API : AccountUnavailable
+  API --> Client : 401
+end
+S -> DB : Set deleted_at; FLUSH erasure marker
+S -> DB : DELETE AuthSessions, CommonWordJobs, CommonWordQuestions
+S -> DB : DELETE ReviewAttempts, ReviewStates and Words
+note right of DB : Word deletion cascades to its PromptJob.\nThe erasure marker satisfies deletion protection triggers.
+S -> DB : DELETE User; COMMIT all erasure changes
+S --> API : Done
+API --> Client : 204; delete refresh cookie; Cache-Control: no-store
+note over S, DB : Concurrent account mutations serialize on the User lock.\nWorkers recheck account and lease before persisting generated data.
+@enduml

@@ -1,0 +1,68 @@
+@startuml backend_context
+title WordRecall - Backend System Context
+
+' Source paths are relative to the repository root.
+' API boundary: backend/app/main.py, backend/app/api/router.py,
+'   backend/app/api/routes/{auth,account,words,reviews,common_words,health}.py
+' Persistence: backend/app/core/database.py, backend/app/models/*.py
+' Generation: backend/app/prompt_worker.py,
+'   backend/app/services/prompt_jobs/worker.py,
+'   backend/app/services/common_word_worker.py,
+'   backend/app/llm/{openrouter_review,openrouter_common}.py
+' Embeddings: backend/app/embedding_worker.py,
+'   backend/app/services/embeddings.py, backend/app/services/reviews/topics.py
+' Dictionary: backend/app/services/dictionary.py
+' Operations: backend/app/{migrate,export_user}.py
+' Client platforms and database deployment: README.md, backend/docker-compose.yml
+' Uses standard PlantUML only; no remote includes or credentials are required.
+
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam roundcorner 12
+skinparam nodesep 55
+skinparam ranksep 70
+skinparam ArrowColor #355777
+skinparam rectangle {
+  BackgroundColor #EEF4FB
+  BorderColor #355777
+}
+skinparam database {
+  BackgroundColor #F4F1FA
+  BorderColor #685181
+}
+
+actor "Learner" as learner
+rectangle "WordRecall client\n[External software system]\n\nExpo / React Native\nWeb, iOS and Android" as client
+
+rectangle "WordRecall backend\n[System in scope]\n\nAccounts and authentication\nDictionary lookup and saved words\nScheduled reviews and topic search\nCommon-word practice\n\nFastAPI API + background workers" as backend #DCEEDC
+
+database "PostgreSQL\n[External data store]\n\nAccounts and token hashes\nWords and embedding vectors\nReview schedules and attempts\nQuestion bank, learning progress\nand persistent generation jobs" as postgres
+
+rectangle "OpenRouter\n[External software system]\n\nLanguage-model gateway\nReview sentence generation\nCommon-word question generation" as openrouter
+
+rectangle "Ollama\n[External software system]\n\nEmbedding model server\nSaved-word and topic vectors" as ollama
+
+actor "Operator / deployment automation" as operator
+
+learner --> client : Registers, saves words,\npractises and manages account
+client --> backend : JSON over HTTP(S): /api/v1\nAuth, account, words, reviews, common words\nBearer access token; browser refresh cookie\nor native refresh token
+backend --> postgres : Reads and writes application data\nClaims jobs and stores generated results\nSQL via SQLAlchemy / psycopg
+backend --> openrouter : Sends word + meaning or word exclusions;\nreceives generated sentences / questions\nHTTPS JSON: POST /chat/completions\nBackground prompt worker
+backend --> ollama : Sends saved-word text / topic query;\nreceives embedding vectors\nHTTP(S) JSON: POST /api/embed\nAPI topic search + embedding worker
+operator --> backend : Runs migration / export CLIs;\nchecks GET /health over HTTP(S)
+
+note bottom of backend
+  Local dictionary: WordNet corpus + LemmInflect.
+  Authentication is implemented by the backend.
+  Workers belong to this system; jobs persist in PostgreSQL.
+end note
+
+legend bottom
+  Scope: the implemented backend and its direct environment, not a deployment topology.
+  Arrows identify the caller; labels describe request and response data.
+  PostgreSQL and model servers sit outside the backend application boundary.
+  Ollama review generation also exists as a standalone CLI; the prompt worker uses OpenRouter.
+  /health reports API liveness without checking database or provider connectivity.
+endlegend
+@enduml

@@ -1,0 +1,53 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Semantic topic selection shared by preparation and session
+
+' Sources relative to repository root:
+' backend/app/services/reviews/topics.py
+' backend/app/services/embeddings.py
+
+participant "Review preparation / session" as Caller
+participant "Topic selection" as Topic
+database PostgreSQL as DB
+participant "Embedding service" as Embed
+participant Ollama
+Caller -> Topic : topic_words(db, user, topic)
+Topic -> DB : Read all owned Words + ReviewStates ordered by word ID
+DB --> Topic : Rows with persisted embeddings
+alt No saved words
+  Topic --> Caller : Empty rows; matching_count=0
+else Saved words exist
+  Topic -> Topic : Check every vector's model@revision and text hash
+  alt Any missing or stale embedding
+    Topic --> Caller : TopicIndexPending -> HTTP 409
+  else Index current
+    Topic -> Embed : Validate stored vector shape, finite values and nonzero norms
+    break Invalid stored vectors
+      Embed --> Topic : TopicSearchUnavailable
+      Topic --> Caller : HTTP 503
+    end
+    Topic -> Embed : embed_texts([topic])
+    Embed -> Ollama : POST /api/embed (configured model, topic)
+    Ollama --> Embed : Vector response or provider / parse error
+    Embed -> Embed : Validate count, dimensions, finite values and nonzero norm\nNormalize vector
+    alt Failed query embedding or dimension mismatch
+      Embed --> Topic : TopicSearchUnavailable (or Topic detects mismatch)
+      Topic --> Caller : HTTP 503
+    else Valid vectors with compatible dimensions
+      Embed --> Topic : Normalized topic vector
+      Topic -> Topic : Cosine scores using NumPy; stable descending ranking\nKeep scores >= threshold; take top 10
+      Topic --> Caller : Top rows and total threshold-match count
+    end
+  end
+end
+note over Topic, DB : Ranking runs in the backend over stored JSON vectors.\nThis path does not call the language-model question generator.
+@enduml

@@ -1,0 +1,49 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Build four distinct multiple-choice options
+
+' Sources relative to repository root:
+' backend/app/services/reviews/service.py
+' backend/app/services/reviews/choices.py
+' backend/app/services/dictionary.py
+
+participant "Review service" as Review
+database PostgreSQL as DB
+participant "Local dictionary" as Dict
+participant "Choice generator" as Choices
+Review -> DB : Read up to 200 saved words ordered by normalized spelling
+DB --> Review : Candidate words
+loop Unique candidates and session targets
+  Review -> Dict : review_parts(word)
+  Dict --> Review : POS set; empty if corpus unavailable
+end
+Review -> Choices : review_options(target, saved_parts)
+Choices -> Choices : Exclude normalized target; create deduplication set
+Choices -> Choices : Tier 1: shuffled saved words sharing target POS
+opt Fewer than three distractors
+  Choices -> Dict : review_family(target)
+  Dict --> Choices : Family / inflection words (or empty)
+  Choices -> Choices : Tier 2: add unique shuffled family candidates
+end
+opt Still fewer than three
+  Choices -> Choices : Tier 3: any saved words
+end
+opt Still fewer than three
+  Choices -> Choices : Tier 4: general vocabulary matching POS
+end
+opt Still fewer than three
+  Choices -> Choices : Tier 5: all general vocabulary
+end
+Choices -> Choices : Combine target + three distractors; securely shuffle
+Choices --> Review : Four distinct nonblank options
+note over Review : Used by choice-mode sessions and explicit choices endpoint.\nNo correct index is included in saved-word review options.
+@enduml

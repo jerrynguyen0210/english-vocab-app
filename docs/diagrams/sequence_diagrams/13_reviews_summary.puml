@@ -1,0 +1,36 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Read review and learning totals
+
+' Sources relative to repository root:
+' backend/app/api/routes/reviews.py
+' backend/app/services/reviews/service.py
+' backend/app/services/reviews/queries.py
+' backend/app/core/time.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+Client -> API : GET /api/v1/reviews/summary
+API -> S : review_summary(db, user)
+S -> S : Resolve next local midnight using user timezone
+S -> DB : Count saved words; count reviews due before next local midnight
+S -> DB : Count learned Common words\nCount distinct union of learned and saved normalized words
+DB --> S : Counts
+S --> API : saved_count, due_count, daily_remaining=50, learned_count, total_count
+API --> Client : 200; Cache-Control: no-store
+note over S : due_count includes overdue and later-today reviews.\ndaily_remaining is a compatibility constant, not a quota.
+@enduml

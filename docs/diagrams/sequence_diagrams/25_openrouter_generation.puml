@@ -1,0 +1,59 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title OpenRouter generation with capability fallback and validation
+
+' Sources relative to repository root:
+' backend/app/llm/openrouter_review.py
+' backend/app/llm/openrouter_common.py
+' backend/app/schemas/common_words.py
+
+participant "Prompt worker / Common worker / review CLI" as Caller
+participant "OpenRouter adapter" as Adapter
+participant OpenRouter
+Caller -> Adapter : generate_review(...) or generate_common_words(...)
+Adapter -> Adapter : Validate required inputs and timeout; build JSON-schema request
+break Invalid input or missing API key
+  Adapter --> Caller : ReviewError(category=invalid_input)
+end
+Adapter -> Adapter : Start one total timeout deadline
+loop At most 3 HTTP requests; stop on success or non-capability error
+  Adapter -> OpenRouter : POST /chat/completions\nConfigured model, system instructions, input data; bearer provider key
+  alt Provider requires reasoning enabled
+    OpenRouter --> Adapter : HTTP capability rejection
+    Adapter -> Adapter : Remove reasoning control once\nRaise max_tokens to 4096 (review) / 16000 (Common)
+  else Structured output unsupported
+    OpenRouter --> Adapter : HTTP capability rejection
+    Adapter -> Adapter : Remove response_format and provider preferences once\nRetain prompt instructions and local validation
+  else Other HTTP error (auth, quota, rate limit, server error, etc.)
+    OpenRouter --> Adapter : HTTP error
+    Adapter --> Caller : ReviewError(category=provider_http); no immediate retry
+    note over Adapter : Review fallback recognizes specific HTTP 400 / 404 responses.\nCommon fallback uses the provider capability message.
+  else Transport / timeout error
+    OpenRouter --> Adapter : Connection failure or timeout
+    Adapter --> Caller : ReviewError(category=provider_connection)
+  else Successful response
+    OpenRouter --> Adapter : Completion envelope
+    Adapter -> Adapter : Parse JSON; require completed choice with finish_reason=stop
+    alt Review sentence
+      Adapter -> Adapter : Require nonempty sentence; normalize Unicode\nRequire exact target once at word boundaries; reject existing blank\nMask target locally as _____
+    else Common-word questions
+      Adapter -> Adapter : Limit raw response to 256 KiB\nValidate GeneratedCommonWords schema and question constraints
+    end
+    alt Invalid / incomplete / malformed output
+      Adapter --> Caller : ReviewError(category=invalid_response)
+    else Validated output
+      Adapter --> Caller : Masked review sentence + answer, or Common candidates
+    end
+  end
+end
+note over Caller : Worker-level retries are separate durable jobs (22 / 23).\nThe review CLI prints JSON on success or an error with exit code 1.
+@enduml

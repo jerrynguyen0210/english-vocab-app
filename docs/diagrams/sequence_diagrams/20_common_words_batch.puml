@@ -1,0 +1,56 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Serve Common-word bank and queue refill
+
+' Sources relative to repository root:
+' backend/app/api/routes/common_words.py
+' backend/app/services/common_words.py
+' backend/app/services/common_word_bank.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+Client -> API : POST /api/v1/common-words/batch (exclude_ids)
+API -> S : get_batch(db, user, body)
+S -> DB : Lock and recheck active User FOR UPDATE
+break Account unavailable
+  S --> API : AccountUnavailable
+  API --> Client : 401
+end
+S -> DB : Count unlearned questions excluding currently saved words
+opt Available count <= 15
+  S -> DB : queue_refill: create missing job or reset failed job after 60s cooldown
+  note right of DB : Preserve active leases and failures still in cooldown.\nOne CommonWordJob per user.
+end
+S -> DB : Select up to 10 available questions excluding exclude_ids\nOrder least recently presented (null first), creation time, ID
+DB --> S : Questions
+alt Questions available
+  S -> DB : Set last_presented_at; COMMIT
+  S --> API : status=ready + question content, IPA, choices, correct_index
+  API --> Client : 200; Cache-Control: no-store
+else No eligible questions
+  S -> DB : queue_refill; COMMIT
+  alt Job queued or already pending / leased
+    S --> API : status=pending
+    API --> Client : 202; Retry-After: 2; Cache-Control: no-store
+  else Failed job still in cooldown
+    S --> API : status=failed
+    API --> Client : 200 status=failed; Cache-Control: no-store
+  end
+end
+ref over S, DB : 23_common_words_worker replenishes asynchronously
+note over S : Fetching Common questions does not create saved words or review schedules.
+@enduml

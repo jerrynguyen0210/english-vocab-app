@@ -1,0 +1,50 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Search local dictionary and annotate saved words
+
+' Sources relative to repository root:
+' backend/app/api/routes/words.py
+' backend/app/services/words.py
+' backend/app/services/dictionary.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+participant "Local WordNet + LemmInflect" as Lexicon
+Client -> API : GET /api/v1/words/search?q=...&include_family=...&parts=...&forms=...
+API -> S : find_words(user, db, query, filters)
+S -> S : Normalize query
+break Query blank after normalization
+  S --> API : InvalidSearch
+  API --> Client : 422
+end
+S -> Lexicon : search_dictionary(query, include_family, parts, forms)
+Lexicon -> Lexicon : Locked cached lookup; resolve inflections\nOptionally traverse lexical family and apply filters; limit 60
+alt Corpus unavailable
+  Lexicon --> S : LookupError
+  S --> API : DictionaryUnavailable
+  API --> Client : 503
+else Entries available (possibly empty)
+  Lexicon --> S : Sorted dictionary entries
+  opt Entries not empty
+    S -> DB : Read user's matching normalized saved words
+    DB --> S : Saved word spellings
+  end
+  S -> S : Annotate each entry with saved flag
+  S --> API : WordSearchResult list
+  API --> Client : 200 results; Cache-Control: no-store
+end
+@enduml

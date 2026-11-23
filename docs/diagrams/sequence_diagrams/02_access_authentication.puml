@@ -1,0 +1,44 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Protected request: bearer access authentication
+
+' Sources relative to repository root:
+' backend/app/api/dependencies.py
+' backend/app/services/auth.py
+' backend/app/api/errors.py
+' backend/app/core/database.py
+
+actor Client
+participant "FastAPI dependency" as API
+participant "Auth service" as Auth
+database PostgreSQL as DB
+Client -> API : Protected HTTP request with Authorization header
+API -> API : Extract token only for Bearer scheme (case insensitive)
+API -> Auth : get_current_user(token or None, db)
+opt Token supplied
+  Auth -> Auth : SHA-256 token digest
+  Auth -> DB : Find AuthSession by access_hash
+  DB --> Auth : Session or none
+  opt Session found
+    Auth -> DB : Load session owner
+    DB --> Auth : User or none
+  end
+end
+alt Missing / unknown / expired access token or inactive / missing owner
+  Auth --> API : InvalidAccessToken
+  API --> Client : 401 + WWW-Authenticate: Bearer
+else Active session and owner
+  Auth --> API : CurrentUser
+  API -> API : Continue protected route
+  note over API, DB : Request-scoped SQLAlchemy session closes on completion or error;\nuncommitted transactions roll back. Services map known errors to HTTP statuses.
+end
+@enduml

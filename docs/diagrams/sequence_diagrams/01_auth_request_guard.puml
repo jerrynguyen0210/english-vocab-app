@@ -1,0 +1,47 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Authentication mutation guard and rate limit
+
+' Sources relative to repository root:
+' backend/app/api/dependencies.py
+' backend/app/services/auth.py
+' backend/app/api/errors.py
+' backend/app/main.py
+
+actor Client
+participant "FastAPI / guard" as API
+participant "Auth service" as Auth
+database PostgreSQL as DB
+Client -> API : POST /api/v1/auth/{register,sign-in,refresh,logout}
+note over API : Malformed JSON may be rejected with 422 before guard execution.\nCORS middleware handles preflight requests separately.
+alt Origin present and not allowed
+  API --> Client : 403 Origin not allowed
+else Refresh cookie present without Origin
+  API --> Client : 403 Origin required for cookie authentication
+else Origin policy accepted
+  API -> Auth : enforce_rate_limit(client address or unknown)
+  Auth -> Auth : HMAC address + fixed time window using secret_key
+  Auth -> DB : Delete expired buckets; insert bucket in savepoint
+  note right of DB : Existing bucket conflict rolls back savepoint only.
+  Auth -> DB : Atomically increment if count below limit; COMMIT
+  DB --> Auth : Increment accepted or limit reached
+  alt Limit reached
+    Auth --> API : AuthRateLimited
+    API --> Client : 429 + Retry-After: auth_rate_window_seconds
+  else Accepted
+    Auth --> API : Guard passed
+    API -> API : Validate body and run endpoint
+    note over API : Invalid body returns 422; the attempt was already counted.\nNative transport requires X-Auth-Platform: native AND no Origin.\nA platform header never bypasses the Origin policy.
+    ref over Client, DB : Continue with diagrams 03-06
+  end
+end
+@enduml

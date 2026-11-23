@@ -1,0 +1,48 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Operator-only consistent user-data export
+
+' Sources relative to repository root:
+' backend/app/export_user.py
+
+actor Operator
+participant "app.export_user" as Export
+database PostgreSQL as DB
+participant "Private output file" as File
+Operator -> Export : python -m app.export_user --user-id UUID --output NEW_PATH
+Export -> DB : Connect; REPEATABLE READ; BEGIN; SET TRANSACTION READ ONLY
+note right of DB : PostgreSQL uses one consistent read-only snapshot.\nOther dialects use their normal transaction behavior.
+Export -> DB : Select account by ID using explicit export fields
+break User missing
+  DB --> Export : No account
+  Export --> Operator : Exit 1; no export file created
+end
+Export -> DB : Read words, review states, attempts, session metadata\nand Common questions (including learning progress)
+DB --> Export : User-scoped records from same snapshot
+Export -> Export : Serialize versioned JSON; UUIDs and UTC timestamps\nExclude password hashes, tokens and token hashes, rate buckets
+Export -> DB : End read transaction; close connection
+Export -> File : Exclusive create with O_EXCL, permissions 0600
+alt Existing destination / symlink
+  File --> Export : FileExistsError
+  Export --> Operator : Exit 1; existing path unchanged
+else New file
+  Export -> File : Write JSON; flush and fsync; close
+  alt Write fails
+    Export -> File : Remove incomplete new file
+    Export --> Operator : Propagate failure
+  else Write succeeds
+    Export --> Operator : Success message; user data is not printed to stdout
+  end
+end
+Export -> DB : Dispose engine in finally
+note over Export : This is a CLI; there is no HTTP user-export endpoint.
+@enduml

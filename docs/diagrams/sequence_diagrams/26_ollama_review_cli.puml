@@ -1,0 +1,40 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Standalone Ollama review-sentence generation
+
+' Sources relative to repository root:
+' backend/app/llm/ollama_review.py
+
+actor Operator
+participant "Ollama review CLI / adapter" as CLI
+participant Ollama
+Operator -> CLI : python -m app.llm.ollama_review\n--word ... --meaning ... --model ... [--url ... --timeout ...]
+CLI -> CLI : Validate nonblank inputs and positive finite timeout
+break Invalid input
+  CLI --> Operator : Error on stderr; exit 1
+end
+CLI -> Ollama : POST /api/generate\nModel, instructions, word + meaning; stream=false; JSON format
+alt HTTP / transport / malformed response error
+  Ollama --> CLI : Error or invalid envelope
+  CLI --> Operator : ReviewError; stderr; exit 1
+else Response received
+  Ollama --> CLI : done=true; response containing JSON sentence
+  CLI -> CLI : Validate nonempty sentence; normalize Unicode\nRequire target exactly once at word boundaries; reject existing blank
+  alt Validation fails
+    CLI --> Operator : ReviewError(category=invalid_response); exit 1
+  else Sentence valid
+    CLI -> CLI : Mask target locally
+    CLI --> Operator : JSON prompt_sentence + answer; exit 0
+  end
+end
+note over CLI : Standalone utility. Current application prompt jobs use OpenRouter.\nOllama /api/embed is used separately for semantic topic search.
+@enduml

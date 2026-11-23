@@ -1,0 +1,50 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Rotate access and refresh tokens
+
+' Sources relative to repository root:
+' backend/app/api/routes/auth.py
+' backend/app/services/auth.py
+' backend/app/api/auth_transport.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+
+Client -> API : POST /api/v1/auth/refresh
+ref over Client, DB : 01_auth_request_guard; validate RefreshInput
+API -> API : Native: body.refresh_token; browser: refresh cookie
+API -> S : refresh(token, native_request, db)
+break Token missing
+  S --> API : InvalidSession
+  API --> Client : 401 Invalid or expired session
+end
+S -> DB : SELECT session by refresh digest and native flag FOR UPDATE
+DB --> S : Locked session or none
+break Missing session or refresh expiry reached
+  S --> API : InvalidSession
+  API --> Client : 401 Invalid or expired session
+end
+S -> DB : Load session owner
+DB --> S : User
+alt Missing / disabled / deleted owner
+  S --> API : InvalidSession
+  API --> Client : 401 Invalid or expired session
+else Active owner
+  S -> S : Generate replacement token pair
+  S -> DB : Replace both token hashes; update access expiry; COMMIT
+  note right of DB : Original refresh expiry is preserved.\nLock is held until commit; old tokens cease matching.
+  S --> API : IssuedTokens
+  API --> Client : 200 replacement access token + platform-specific refresh transport\nCache-Control: no-store
+end
+@enduml

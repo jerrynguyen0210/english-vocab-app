@@ -1,0 +1,24 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Unauthenticated process liveness check
+
+' Sources relative to repository root:
+' backend/app/main.py
+' backend/app/api/routes/health.py
+
+actor "Monitor / deployment helper" as Monitor
+participant "FastAPI / health route" as API
+Monitor -> API : GET /health
+API -> API : Return constant status
+API --> Monitor : 200 {"status": "ok"}
+note over API : No authentication, database query or provider call.\nSuccess confirms process availability; it does not confirm schema currency,\ndatabase connectivity or worker readiness.
+@enduml

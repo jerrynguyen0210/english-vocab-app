@@ -1,0 +1,64 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Generate Common questions with global lock and durable lease
+
+' Sources relative to repository root:
+' backend/app/services/common_word_worker.py
+' backend/app/services/common_word_generation_lock.py
+' backend/app/services/common_word_bank.py
+' backend/app/llm/openrouter_common.py
+
+participant "Prompt worker loop" as Loop
+participant "Common refill worker" as Worker
+database PostgreSQL as DB
+participant "OpenRouter adapter" as LLM
+Loop -> Worker : process_one(engine)
+Worker -> DB : Try session advisory lock for Common generation; COMMIT
+alt Global lock busy
+  Worker --> Loop : false (no job claimed or attempt consumed)
+else Global lock acquired
+  Worker -> DB : BEGIN; mark expired jobs with >= 3 attempts terminal\nSELECT eligible job FOR UPDATE SKIP LOCKED
+  DB --> Worker : Job or none
+  opt Job found and conditional claim succeeds
+    Worker -> DB : Set lease UUID; increment attempts; lease until timeout + 60s\nSnapshot saved / unlearned exclusions and learned words; COMMIT
+    Worker -> LLM : generate_common_words(excluded_words, learned_words, settings)
+    ref over Worker, LLM : 25_openrouter_generation
+    LLM --> Worker : Validated candidates or provider error
+    note over Worker, DB : Session advisory lock remains held during generation;\nno database transaction is held.
+    Worker -> DB : BEGIN; lock account; lock job with matching lease token
+    alt Owner missing / inactive or job deleted / lease replaced
+      Worker -> DB : End transaction without applying result
+    else Owner and lease valid
+      opt Candidates returned
+        Worker -> DB : Re-read saved and all generated / learned words
+        Worker -> Worker : Normalize; exclude concurrent saves and duplicate candidates
+        Worker -> DB : INSERT eligible questions; FLUSH
+      end
+      Worker -> DB : Count available bank
+      alt At least one insert and available count > 15
+        Worker -> DB : DELETE job
+      else Failure / no new words / still low bank
+        Worker -> DB : Clear lease; set provider category / no_new_words / low_bank
+        alt Third attempt
+          Worker -> DB : Set failed_at=now
+        else Attempts remain
+          Worker -> DB : available_at = now + 5 * 2^attempts seconds
+        end
+      end
+      Worker -> DB : COMMIT
+    end
+  end
+  Worker -> DB : Release advisory lock in finally; COMMIT\nInvalidate connection if unlock fails
+  Worker --> Loop : true if claimed; otherwise false
+end
+note over Worker : File-backed SQLite uses a nonblocking OS file lock instead.\nBank requests can reset failed jobs after a 60-second cooldown.
+@enduml

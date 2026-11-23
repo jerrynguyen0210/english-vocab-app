@@ -1,0 +1,56 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Index saved words with restartable Ollama embeddings
+
+' Sources relative to repository root:
+' backend/app/embedding_worker.py
+' backend/app/services/embeddings.py
+
+actor "Operator / service runner" as Operator
+participant "Embedding worker" as Worker
+database PostgreSQL as DB
+participant "Embedding service" as Embed
+participant Ollama
+Operator -> Worker : python -m app.embedding_worker [--once]
+loop Until --once drains pending rows or interrupted
+  Worker -> DB : Select up to 32 words with missing vector / model / hash\nor changed model@revision; order creation time and ID
+  DB --> Worker : Snapshot IDs, word content and embedding text
+  Worker -> DB : Close read session before provider request
+  alt No pending rows
+    alt One-shot mode (--once)
+      Worker --> Operator : Exit successfully
+    else Continuous mode
+      Worker -> Worker : Wait 5 seconds
+    end
+  else Rows pending
+    Worker -> Embed : embed_texts(texts, embedding_index_timeout_seconds)
+    Embed -> Ollama : POST /api/embed (configured model and texts)
+    Ollama --> Embed : Embeddings or transport / parse error
+    Embed -> Embed : Validate shape / count, finite values, nonzero norms; normalize
+    alt Embeddings valid
+      Embed --> Worker : Normalized vectors
+      Worker -> DB : BEGIN; conditional UPDATE each Word only if snapshot content matches\nStore vector + model@revision + SHA-256 text hash; COMMIT
+      note right of DB : Deleted / edited rows are not recreated or overwritten.
+    else Provider / vector error
+      Embed --> Worker : TopicSearchUnavailable
+    end
+  end
+  opt SQLAlchemyError or TopicSearchUnavailable
+    alt One-shot mode (--once)
+      Worker --> Operator : Exit with failure
+    else Continuous mode
+      Worker -> Worker : Log fixed warning; wait 10 seconds
+    end
+  end
+end
+Worker -> DB : Dispose engine on exit
+@enduml

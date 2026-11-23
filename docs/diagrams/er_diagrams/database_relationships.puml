@@ -1,0 +1,170 @@
+@startuml
+title English Vocabulary - Database Relationships
+
+' Based on backend/app/models/*.py and migrations through revision 0019.
+' Represents the current declared schema, not an inspected deployed database.
+hide circle
+skinparam shadowing false
+skinparam entity {
+  BackgroundColor #EEF4FB
+  BorderColor #355777
+}
+skinparam defaultFontName SansSerif
+
+entity "users" as users {
+  * id : UUID <<PK>>
+  name : VARCHAR(100)
+  * email : VARCHAR(320) <<UK>>
+  password_hash : VARCHAR(1024)
+  auth_provider_id : VARCHAR(512) <<UK>>
+  * timezone : VARCHAR(255)
+  * created_at : TIMESTAMP (UTC)
+  disabled_at : TIMESTAMP (UTC)
+  deleted_at : TIMESTAMP (UTC)
+}
+
+entity "auth_sessions" as auth_sessions {
+  * id : UUID <<PK>>
+  * user_id : UUID <<FK>>
+  * access_hash : VARCHAR(64) <<UK>>
+  * refresh_hash : VARCHAR(64) <<UK>>
+  * access_expires_at : TIMESTAMP (UTC)
+  * refresh_expires_at : TIMESTAMP (UTC)
+  * native : BOOLEAN
+}
+
+entity "auth_rate_buckets" as auth_rate_buckets {
+  * key : VARCHAR(64) <<PK>>
+  * count : INTEGER
+  * expires_at : TIMESTAMP (UTC)
+}
+
+entity "words" as words {
+  * id : UUID <<PK>>
+  * user_id : UUID <<FK>>
+  * word : TEXT
+  * normalised_word : TEXT
+  * english_explanation : TEXT
+  example_sentence : TEXT
+  * review_prompt : TEXT
+  embedding_vector : JSON
+  embedding_model : TEXT
+  embedding_hash : TEXT
+  * created_at : TIMESTAMP (UTC)
+  .. Composite unique keys ..
+  UNIQUE (id, user_id)
+  UNIQUE (user_id, normalised_word)
+}
+
+entity "review_states" as review_states {
+  * word_id : UUID <<PK, FK>>
+  * level : INTEGER
+  * due_at : TIMESTAMP (UTC)
+  * correct_count : INTEGER
+  * incorrect_count : INTEGER
+  last_reviewed_at : TIMESTAMP (UTC)
+  * repetitions : INTEGER
+  * interval_days : INTEGER
+  * ease_factor : FLOAT
+}
+
+entity "review_attempts" as review_attempts {
+  * id : UUID <<PK>>
+  * word_id : UUID <<FK>>
+  * user_id : UUID <<FK>>
+  * typed_answer : TEXT
+  * normalised_answer : TEXT
+  * result : VARCHAR(9)
+  * reviewed_at : TIMESTAMP (UTC)
+  * time_taken_ms : INTEGER
+  next_due_at : TIMESTAMP (UTC)
+}
+
+entity "prompt_jobs" as prompt_jobs {
+  * word_id : UUID <<PK, FK>>
+  * available_at : TIMESTAMP (UTC)
+  * attempts : INTEGER
+  lease_token : UUID
+  failed_at : TIMESTAMP (UTC)
+  failure_category : VARCHAR(32)
+}
+
+entity "common_word_questions" as common_word_questions {
+  * id : UUID <<PK>>
+  * user_id : UUID <<FK>>
+  * word : TEXT
+  ipa : VARCHAR(120)
+  * normalised_word : TEXT
+  * part_of_speech : VARCHAR(32)
+  * explanation : TEXT
+  * example : TEXT
+  * choices : JSON
+  * correct_index : INTEGER
+  * created_at : TIMESTAMP (UTC)
+  last_presented_at : TIMESTAMP (UTC)
+  learned_at : TIMESTAMP (UTC)
+  .. Composite unique keys ..
+  UNIQUE (user_id, normalised_word)
+}
+
+entity "common_word_jobs" as common_word_jobs {
+  * user_id : UUID <<PK, FK>>
+  * available_at : TIMESTAMP (UTC)
+  * attempts : INTEGER
+  lease_token : UUID
+  failed_at : TIMESTAMP (UTC)
+  failure_category : VARCHAR(32)
+}
+
+users ||--o{ words : "id -> user_id"
+users ||--o{ auth_sessions : "id -> user_id / CASCADE"
+users ||--o{ common_word_questions : "id -> user_id / CASCADE"
+users ||--o| common_word_jobs : "id -> user_id / CASCADE"
+words ||--o| review_states : "id -> word_id / CASCADE"
+words ||--o| prompt_jobs : "id -> word_id / CASCADE"
+words ||--o{ review_attempts : "(id, user_id) -> (word_id, user_id)"
+
+note right of users
+  password_hash OR auth_provider_id must be present.
+  Email and non-null authentication identifiers
+  must not be blank.
+end note
+
+note right of review_states
+  level, correct_count, incorrect_count,
+  repetitions, interval_days >= 0
+  ease_factor >= 1.3
+  The schema permits zero or one state per word.
+end note
+
+note right of review_attempts
+  result IN ('correct', 'incorrect')
+  time_taken_ms >= 0
+  Composite FK enforces the word owner;
+  user_id has no separate FK to users.
+  History is append-only; migration 0008 permits
+  database deletion for accounts marked deleted.
+end note
+
+note right of common_word_questions
+  correct_index BETWEEN 0 AND 3
+  No FK links a generated question to words;
+  matching word text is not a database relationship.
+end note
+
+note bottom of auth_rate_buckets
+  Independent shared rate-limit storage.
+  No user or session foreign key.
+end note
+
+legend bottom
+  * = NOT NULL; unmarked fields are nullable
+  PK = primary key; FK = foreign key; UK = single-column unique key
+  || = exactly one; o| = zero or one; o{ = zero or many
+  CASCADE = ON DELETE CASCADE; other links have no explicit ON DELETE action
+  UUID = SQLAlchemy Uuid (native UUID or CHAR(32), depending on database)
+  TIMESTAMP (UTC) = application UTCDateTime, backed by a timezone-aware DateTime type
+  words.word, normalised_word and english_explanation must not be blank
+  Application tables only; Alembic migration bookkeeping is omitted
+endlegend
+@enduml

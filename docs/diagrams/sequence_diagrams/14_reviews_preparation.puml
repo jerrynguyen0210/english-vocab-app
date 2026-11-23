@@ -1,0 +1,42 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Count selected reviews before starting
+
+' Sources relative to repository root:
+' backend/app/api/routes/reviews.py
+' backend/app/services/reviews/service.py
+' backend/app/services/reviews/selection.py
+' backend/app/services/reviews/topics.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+Client -> API : GET /api/v1/reviews/preparation (selection)
+API -> S : review_preparation(db, user, selection)
+alt source = topic
+  ref over S, DB : 18_topic_search: rank topic matches or return 409 / 503
+  S -> S : count = returned rows (at most 10); matching_count = all threshold matches
+else source = recall or time
+  S -> S : Build owner-scoped selection\nRecall: due before local midnight, optional overdue\nTime: Yesterday / Weekly / Monthly creation window
+  S -> DB : COUNT matching selection
+  DB --> S : matching_count
+  S -> S : count = min(matching_count, 50)
+end
+S -> DB : Read saved_count and local-day due_count
+DB --> S : Totals
+S --> API : Totals + count + matching_count; daily_remaining=50
+API --> Client : 200; Cache-Control: no-store
+@enduml

@@ -1,0 +1,34 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Read next immediately due reviews
+
+' Sources relative to repository root:
+' backend/app/api/routes/reviews.py
+' backend/app/services/reviews/service.py
+' backend/app/services/reviews/prompts.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+Client -> API : GET /api/v1/reviews/next?limit=1..50
+API -> S : next_reviews(db, user, limit)
+S -> DB : Join owned Words and ReviewStates\ndue_at <= now; order due_at, word ID; bounded limit
+DB --> S : Review rows
+S -> S : Mask target in explanation and optional example
+S --> API : ReviewItem list (empty when nothing due)
+API --> Client : 200; Cache-Control: no-store
+note over API : This legacy endpoint returns hints, not session tickets or choices.
+@enduml

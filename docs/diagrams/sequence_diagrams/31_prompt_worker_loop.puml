@@ -1,0 +1,44 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Background prompt-worker orchestration and recovery
+
+' Sources relative to repository root:
+' backend/app/prompt_worker.py
+' backend/app/services/prompt_jobs/worker.py
+' backend/app/services/common_word_worker.py
+
+actor "Service runner / operator" as Operator
+participant "app.prompt_worker" as Loop
+participant "Saved-word prompt jobs" as Prompt
+participant "Common refill jobs" as Common
+database PostgreSQL as DB
+Operator -> Loop : python -m app.prompt_worker
+Loop -> DB : Obtain configured engine
+loop Until KeyboardInterrupt
+  Loop -> Prompt : process_one(engine)
+  ref over Prompt, DB : 22_prompt_generation_worker
+  Prompt --> Loop : reviewed flag
+  Loop -> Common : process_one(engine) if prompt call did not raise SQLAlchemyError
+  ref over Common, DB : 23_common_words_worker
+  Common --> Loop : common flag
+  opt Neither service claimed work
+    Loop -> Loop : Wait 1 second
+  end
+  opt SQLAlchemyError during either call
+    Loop -> Loop : Log fixed error; wait 5 seconds; continue next iteration
+    note over Loop, DB : Crashed / incomplete jobs become claimable when leases expire.
+  end
+end
+Operator -> Loop : KeyboardInterrupt
+Loop -> DB : Dispose engine in finally
+note over Loop : Within each iteration, prompt and Common work run sequentially.\nProvider errors are converted into job retry states inside each service.
+@enduml

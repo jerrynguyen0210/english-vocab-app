@@ -1,0 +1,29 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Read current account identity
+
+' Sources relative to repository root:
+' backend/app/api/routes/auth.py
+' backend/app/api/dependencies.py
+' backend/app/services/auth.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+Client -> API : GET /api/v1/auth/me
+API -> API : Serialize authenticated User
+API --> Client : 200 id, email, name, timezone\nCache-Control: no-store
+@enduml

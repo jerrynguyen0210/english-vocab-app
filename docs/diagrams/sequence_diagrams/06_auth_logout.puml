@@ -1,0 +1,41 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Revoke session and clear refresh cookie
+
+' Sources relative to repository root:
+' backend/app/api/routes/auth.py
+' backend/app/services/auth.py
+' backend/app/api/auth_transport.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+
+Client -> API : POST /api/v1/auth/logout
+ref over Client, DB : 01_auth_request_guard; validate RefreshInput
+API -> API : Select refresh token from native body or browser cookie
+API -> S : logout(token, native_request, db)
+opt Token present
+  S -> DB : SELECT matching platform session FOR UPDATE
+  DB --> S : Session or none
+end
+alt Missing / unknown / expired refresh session
+  S --> API : InvalidSession
+  API --> Client : 401 Invalid or expired session
+else Valid refresh session
+  S -> DB : DELETE AuthSession; COMMIT
+  S --> API : Done
+  API --> Client : 204; delete refresh cookie; Cache-Control: no-store
+end
+note over API : Logout does not require a bearer access token.\nA disabled owner's refresh session may still be revoked.
+@enduml

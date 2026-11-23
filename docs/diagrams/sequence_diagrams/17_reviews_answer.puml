@@ -1,0 +1,74 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 240
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+skinparam ActorBorderColor #355777
+skinparam ArrowColor #355777
+hide footbox
+autonumber
+title Submit answer with idempotency and atomic scheduling
+
+' Sources relative to repository root:
+' backend/app/api/routes/reviews.py
+' backend/app/services/reviews/service.py
+' backend/app/services/reviews/answers.py
+' backend/app/services/reviews/scheduling.py
+' backend/app/services/reviews/tickets.py
+
+actor Client
+participant "FastAPI route" as API
+participant "Service" as S
+database PostgreSQL as DB
+ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
+note over API : Invalid request parameters / body return 422 before service execution.
+
+Client -> API : POST /api/v1/reviews/{word_id}/answer\n(typed_answer, time_taken_ms, optional attempt_id / review_token)
+API -> S : submit_answer(word_id, body, db, user)
+S -> DB : Lock and recheck active User FOR UPDATE
+break Account unavailable
+  S --> API : AccountUnavailable
+  API --> Client : 401
+end
+S -> DB : SELECT owned Word + ReviewState FOR UPDATE
+break Item not found
+  S --> API : ReviewNotFound
+  API --> Client : 404
+end
+opt attempt_id supplied
+  S -> DB : Load previous ReviewAttempt by attempt_id
+  DB --> S : Previous attempt or none
+end
+alt Previous attempt exists
+  alt Different owner / word or changed answer / timing
+    S --> API : ReviewConflict
+    API --> Client : 409 identifier unavailable or payload changed
+  else Exact replay
+    S --> API : Previous result + recorded next_due_at (or state fallback)
+    API --> Client : 200 original outcome; Cache-Control: no-store
+    note over S : Replay is checked before ticket expiry; no rescheduling.
+  end
+else New attempt
+  alt Token supplied
+    S -> S : Verify signature, 24-hour expiry and unchanged state / bindings
+  else No token (legacy request)
+    S -> S : Require due_at <= now
+  end
+  alt Ticket invalid or unticketed item not due
+    S --> API : ReviewConflict
+    API --> Client : 409
+  else Submission authorized
+    S -> S : Normalize Unicode, case and whitespace; compare exact spelling
+    alt Correct
+      S -> S : Increment correct count / level; update SM-2 ease\nIntervals: 1 day, 6 days, then ceil(previous interval * previous ease)
+    else Incorrect
+      S -> S : Increment incorrect count; reset level / repetitions / interval\nSchedule relearning in 10 minutes; update ease
+    end
+    S -> DB : UPDATE ReviewState; INSERT ReviewAttempt\nStore result, time taken, reviewed_at and next_due_at; COMMIT
+    S --> API : Result + correct_word + next_due_at + attempt_id
+    API --> Client : 200; Cache-Control: no-store
+  end
+end
+@enduml

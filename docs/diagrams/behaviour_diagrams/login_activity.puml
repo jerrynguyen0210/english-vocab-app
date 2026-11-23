@@ -1,0 +1,113 @@
+@startuml
+title Login behavior - POST /api/v1/auth/sign-in
+
+' Source paths are relative to the repository root.
+' backend/app/main.py
+' backend/app/api/routes/auth.py
+' backend/app/api/dependencies.py
+' backend/app/api/auth_transport.py
+' backend/app/api/errors.py
+' backend/app/schemas/auth.py
+' backend/app/services/auth.py
+' backend/app/models/auth.py
+' Behavior cross-checked against backend/tests/test_auth.py.
+
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #EEF4FB
+  BorderColor #355777
+  DiamondBackgroundColor #FFF4D6
+  DiamondBorderColor #8A6D3B
+}
+
+|Client|
+start
+:Submit email and password as JSON;
+
+|FastAPI / request guard|
+:Receive POST /api/v1/auth/sign-in;
+if (Malformed JSON?) then (yes)
+  :Return HTTP 422\nJSON decoding error;
+  stop
+endif
+if (Origin header present and\nnot in configured cors_origins?) then (yes)
+  :Return HTTP 403\n"Origin not allowed";
+  stop
+endif
+if (wordrecall_refresh cookie present\nand Origin header absent?) then (yes)
+  :Return HTTP 403\n"Origin required for cookie authentication";
+  stop
+endif
+
+|Auth service / database|
+:enforce_rate_limit(db, client address)\nUse "unknown" when client address is unavailable;
+:Delete expired rate buckets;\nFind or create HMAC-keyed address/time-window bucket;\nAtomically increment only below configured limit;\nCommit rate-limit transaction;
+note right
+  Shared across authentication routes and workers.
+  The attempt counts before credential validation.
+end note
+if (Rate-limit increment accepted?) then (no)
+  |FastAPI / request guard|
+  :Return HTTP 429\n"Too many authentication attempts"\nRetry-After = auth_rate_window_seconds;
+  stop
+endif
+
+|FastAPI / request guard|
+:Validate Credentials body\nRequired valid email (max 320 characters)\nRequired password (12-128 characters)\nReject additional fields;
+if (Body valid?) then (no)
+  :Return HTTP 422\nRequest validation errors;
+  stop
+endif
+:native = X-Auth-Platform equals "native"\nAND Origin header is absent;
+
+|Auth service / database|
+:sign_in(body, db, native)\nFind User by lowercased validated email;
+if (User exists and has password_hash?) then (yes)
+  :Select user's password hash;
+else (no)
+  :Select DUMMY_HASH;
+endif
+:Verify supplied password with Argon2;
+note right
+  VerificationError or InvalidHashError means invalid.
+  Dummy verification also runs for an unknown user
+  or a user without a password hash.
+end note
+if (Password valid AND user exists\nAND password hash present\nAND neither disabled_at nor deleted_at is set?) then (no)
+  |FastAPI / request guard|
+  :Map InvalidCredentials to HTTP 401\n"Invalid email or password";
+  stop
+endif
+
+|Auth service / database|
+if (Password hash needs rehash?) then (yes)
+  :Update user's password hash with Argon2;
+endif
+:issue(db, user, native)\nGenerate random opaque access and refresh tokens\nusing token_urlsafe(32) and token_urlsafe(48);
+:Create new AuthSession with user_id and native flag;\nStore SHA-256 access_hash and refresh_hash;\nSet access and refresh expiry using configured lifetimes;
+:Commit new session and any password rehash;
+note right
+  Only token digests are stored in the database.
+  Each sign-in creates a new session;
+  existing sessions remain valid.
+end note
+
+|HTTP token transport|
+:Set Cache-Control: no-store;\nBuild JSON with access_token,\ntoken_type = "bearer", expires_in;
+if (Native request?) then (yes)
+  :Include refresh_token in JSON;
+else (no)
+  :Set wordrecall_refresh cookie\nHttpOnly; SameSite=Strict\nSecure = auth_cookie_secure\nPath=/api/v1/auth\nMax-Age = remaining refresh lifetime;
+endif
+:Return HTTP 200 with token response;
+
+|Client|
+:Receive access token and\nplatform-specific refresh token transport;
+stop
+
+legend bottom
+  Scope: login and its expected rejection paths, as implemented in the backend.
+  Registration, refresh, logout, and subsequent authenticated requests are separate flows.
+  Unexpected infrastructure failures are outside this diagram's scope.
+endlegend
+@enduml
