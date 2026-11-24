@@ -517,7 +517,6 @@ export function CommonWordPractice({
           ) : (
             <>
               <View style={styles.card}>
-                <ThemedText style={styles.body}>{question.question}</ThemedText>
                 <WordHeading question={question} />
                 <ThemedText style={styles.partOfSpeech}>
                   {question.partOfSpeech}

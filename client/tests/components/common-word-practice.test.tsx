@@ -102,15 +102,15 @@ test('Common button triggers loading; Vocab stays default and inputs persist acr
     'create',
   );
   await fireEvent.press(screen.getByRole('tab', { name: 'Common' }));
-  expect(screen.getByText('What does reliable mean?')).toBeOnTheScreen();
+  expect(screen.getByText('reliable')).toBeOnTheScreen();
   expect(loadMock).toHaveBeenCalledTimes(1);
   await fireEvent.press(screen.getByRole('tab', { name: 'Vocab' }));
   expect(screen.getByDisplayValue('create')).toBeOnTheScreen();
 });
 
-test('shows generated question and IPA without revealing the explanation before answering', async () => {
+test('shows the word and IPA without revealing the explanation before answering', async () => {
   await render(practice());
-  expect(screen.getByText('What does reliable mean?')).toBeOnTheScreen();
+  expect(screen.getByText('reliable')).toBeOnTheScreen();
   expect(
     screen.getByLabelText('IPA pronunciation: /rɪˈlaɪəbl/'),
   ).toBeOnTheScreen();
