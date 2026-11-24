@@ -66,7 +66,7 @@ def test_independent_capability_fallbacks_are_bounded_and_preserve_validation(
     assert payloads[0]["reasoning"] == {"enabled": False}
     assert request.call_count == len(capabilities) + 1
     final = payloads[-1]
-    assert "reasoning" not in final
+    assert final["reasoning"] == {"effort": "low"}
     assert final["max_tokens"] == 4096
     if "schema" in capabilities:
         assert "response_format" not in final

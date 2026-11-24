@@ -28,16 +28,31 @@ and prefer providers with lower latency. Use a model that supports disabling rea
 models with mandatory reasoning may still think. The sentence prompt requests at most
 9 words, including the target. The standalone Ollama generator also disables thinking
 and caps output at 128 tokens.
-Models that require reasoning are retried without the request to disable it;
+Models that reject disabling reasoning are retried with `reasoning.effort: low`;
 models that support the control still receive `reasoning.enabled: false`.
+GPT-OSS 20B and 120B (including routing variants) use low effort from the first
+request, avoiding a known-incompatible attempt to disable reasoning.
 Mandatory-reasoning retries allow 4,096 completion tokens for review sentences,
-because reasoning shares the budget with the final JSON. Ordinary requests retain their smaller budgets. Truncated responses are
+and 16,000 for Common questions and bank generation. Known GPT-OSS requests use
+these same budgets from the first attempt. Reasoning shares the budget with the
+final JSON. Ordinary requests retain their smaller budgets. Truncated responses are
 still rejected and never stored as review prompts.
 Choose a text-generation model. If the provider rejects schema enforcement,
 the client retries once without it and validates the returned JSON locally. Missing keys
 fail generation jobs safely while the API and fallback prompts remain usable.
 See `backend/.env.example`. Embeddings continue to use Ollama via `OLLAMA_URL`
 and `EMBEDDING_MODEL`; no embedding reindex is needed for this change.
+
+### Provider recovery
+
+HTTP 502/503/504, equivalent error envelopes, and completion-level `error`
+responses receive one provider retry within the original deadline. When a failed
+response identifies Groq or CoreWeave, that provider is excluded on the retry.
+Otherwise routing is delegated to OpenRouter and a different provider is not
+guaranteed. Authentication, credit, rate-limit, malformed output, and repeated
+provider failures still fail safely. Up to four requests accommodate two
+independent capability fallbacks and one provider retry; partial output is never
+stored. Schema fallback preserves any failed-provider exclusion.
 
 Run the normal deployment migration command from `backend`: `python -m app.migrate`.
 Revision 0012 adds the stored prompt and backfills existing words with their
@@ -52,7 +67,7 @@ The Common button triggers selection from the operator-populated shared bank bef
 call; generation never invents bank words. The structured JSON must contain
 exactly one question, four distinct choices, and one integer answer index per
 supplied bank ID. Partial, duplicate, extra-ID, oversized and truncated responses
-are rejected as a whole. Capability fallback is bounded to three HTTP requests
+are rejected as a whole. Capability fallback and provider retry are bounded to four HTTP requests
 within the remaining Common timeout. Provider error bodies are not exposed.
 
 Questions and answer keys are persisted per user. Batch responses omit the keys;

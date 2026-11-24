@@ -7,7 +7,14 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from app.llm.openrouter_review import ReviewError
+from app.llm.openrouter_review import (
+    ReviewError,
+    configure_known_reasoning_model,
+    prepare_provider_retry,
+    provider_failed,
+    remove_schema_enforcement,
+    use_low_reasoning,
+)
 from app.schemas.common_words import (
     BankWord,
     GeneratedCommonBatch,
@@ -95,13 +102,19 @@ def generate_common_questions(
 
 
 def request_common_json(
-    payload: dict[str, Any], *, api_key: str, base_url: str, timeout: float
+    payload: dict[str, Any],
+    *,
+    api_key: str,
+    base_url: str,
+    timeout: float,
 ) -> str:
     """Bounded Common-provider transport shared by quiz and operator generation."""
     if not api_key.strip() or not math.isfinite(timeout) or timeout <= 0:
         raise ReviewError("Common generation is not configured.", "invalid_input")
+    configure_known_reasoning_model(payload, 16000)
     deadline = time.monotonic() + timeout
-    for _ in range(3):
+    provider_retried = False
+    for _ in range(4):
         request = Request(
             f"{base_url.rstrip('/')}/chat/completions",
             data=json.dumps(payload).encode(),
@@ -120,6 +133,10 @@ def request_common_json(
             if len(raw) > 262144:
                 raise ValueError("Response too large")
             envelope = json.loads(raw)
+            if provider_failed(envelope) and not provider_retried:
+                prepare_provider_retry(payload, envelope)
+                provider_retried = True
+                continue
             if "error" in envelope:
                 raise ValueError("Provider error")
             choice = envelope["choices"][0]
@@ -130,6 +147,10 @@ def request_common_json(
                 raise TypeError("Missing JSON content")
             return content
         except HTTPError as exc:
+            if exc.code in (502, 503, 504) and not provider_retried:
+                prepare_provider_retry(payload)
+                provider_retried = True
+                continue
             # Provider bodies may contain private input. Use only to select capability fallback.
             message = ""
             try:
@@ -145,10 +166,9 @@ def request_common_json(
                     marker in message
                     for marker in ("mandatory", "cannot be disabled", "required")
                 )
-                and "reasoning" in payload
+                and payload.get("reasoning") == {"enabled": False}
             ):
-                payload.pop("reasoning")
-                payload["max_tokens"] = 16000
+                use_low_reasoning(payload, 16000)
                 continue
             if (
                 exc.code in (400, 404)
@@ -165,8 +185,7 @@ def request_common_json(
                 )
                 and "response_format" in payload
             ):
-                payload.pop("response_format")
-                payload.pop("provider", None)
+                remove_schema_enforcement(payload)
                 continue
             raise ReviewError(
                 "Common question provider request failed.", "provider_http"

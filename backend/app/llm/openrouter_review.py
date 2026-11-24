@@ -9,7 +9,7 @@ import sys
 import time
 import unicodedata
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -35,6 +35,55 @@ class ReviewError(Exception):
 
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
+
+
+def use_low_reasoning(payload: dict[str, Any], budget: int) -> None:
+    """Mandatory reasoning must be constrained rather than left at its default."""
+    payload["reasoning"] = {"effort": "low"}
+    payload["max_tokens"] = budget
+
+
+def configure_known_reasoning_model(payload: dict[str, Any], budget: int) -> None:
+    model = str(payload.get("model", "")).partition(":")[0]
+    if model in ("openai/gpt-oss-20b", "openai/gpt-oss-120b"):
+        use_low_reasoning(payload, budget)
+
+
+def provider_failed(envelope: Any) -> bool:
+    if not isinstance(envelope, dict):
+        return False
+    error = envelope.get("error")
+    if isinstance(error, dict) and error.get("code") in (502, 503, 504):
+        return True
+    choices = envelope.get("choices")
+    return (
+        isinstance(choices, list)
+        and bool(choices)
+        and isinstance(choices[0], dict)
+        and choices[0].get("finish_reason") == "error"
+    )
+
+
+def prepare_provider_retry(payload: dict[str, Any], envelope: Any = None) -> None:
+    """Allow one new route, excluding the failed provider when its slug is known."""
+    provider = payload.setdefault("provider", {})
+    provider["allow_fallbacks"] = True
+    failed = envelope.get("provider") if isinstance(envelope, dict) else None
+    # These observed display names map directly to OpenRouter provider slugs.
+    slug = {"Groq": "groq", "CoreWeave": "coreweave"}.get(failed) if isinstance(failed, str) else None
+    if slug is not None:
+        ignored = provider.setdefault("ignore", [])
+        if slug not in ignored:
+            ignored.append(slug)
+
+
+def remove_schema_enforcement(payload: dict[str, Any]) -> None:
+    payload.pop("response_format", None)
+    provider = payload.pop("provider", {})
+    # Schema fallback must not undo an earlier failed-provider exclusion.
+    if provider.get("allow_fallbacks") or provider.get("ignore"):
+        provider.pop("require_parameters", None)
+        payload["provider"] = provider
 
 
 def generate_review(
@@ -93,8 +142,10 @@ def generate_review(
         "provider": {"require_parameters": True, "sort": "latency"},
         "temperature": 0.3,
     }
+    configure_known_reasoning_model(payload, 4096)
     deadline = time.monotonic() + timeout
-    for _ in range(3):
+    provider_retried = False
+    for _ in range(4):
         request = Request(
             f"{base_url.rstrip('/')}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -110,8 +161,16 @@ def generate_review(
                 raise TimeoutError("Generation timeout exceeded")
             with urlopen(request, timeout=remaining) as response:
                 envelope = json.load(response)
+            if provider_failed(envelope) and not provider_retried:
+                prepare_provider_retry(payload, envelope)
+                provider_retried = True
+                continue
             break
         except HTTPError as exc:
+            if exc.code in (502, 503, 504) and not provider_retried:
+                prepare_provider_retry(payload)
+                provider_retried = True
+                continue
             # Inspect bounded error text only to select a fixed, safe diagnostic.
             # Never include provider bodies (which may echo inputs) in errors/logs.
             message = ""
@@ -141,17 +200,15 @@ def generate_review(
                     for marker in ("mandatory", "cannot be disabled", "required")
                 )
             )
-            if mandatory_reasoning and "reasoning" in payload:
-                payload.pop("reasoning")
+            if mandatory_reasoning and payload.get("reasoning") == {"enabled": False}:
                 # The ordinary 128-token sentence budget cannot fit mandatory
                 # reasoning plus the final JSON sentence.
-                payload["max_tokens"] = 4096
+                use_low_reasoning(payload, 4096)
                 continue
             if unsupported and "response_format" in payload:
                 # Some text models lack JSON-schema support. Ask for JSON in the
                 # prompt and retain all local output validation below.
-                payload.pop("response_format", None)
-                payload.pop("provider", None)
+                remove_schema_enforcement(payload)
                 continue
             if unsupported:
                 hint = "The model does not support this request. Choose a text-generation model."

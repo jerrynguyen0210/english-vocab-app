@@ -143,7 +143,8 @@ def test_capability_fallbacks_are_independent_and_bounded(capabilities):
     if "schema" in capabilities:
         assert "response_format" not in payload
     if "reasoning" in capabilities:
-        assert "reasoning" not in payload and payload["max_tokens"] == 16000
+        assert payload["reasoning"] == {"effort": "low"}
+        assert payload["max_tokens"] == 16000
 
 
 @pytest.mark.parametrize("status", [401, 402, 429, 500])
