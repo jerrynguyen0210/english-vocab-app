@@ -1,0 +1,88 @@
+@startuml common_words_architecture
+title Common Words - Operator Content Generation and Learner Practice
+
+' Based on backend/app/{generate_common_words,migrate}.py,
+' backend/app/services/{common_word_bank,common_words,words}.py,
+' backend/app/llm/{openrouter_common_bank,openrouter_common}.py,
+' backend/app/models/common_word.py and client/src/components/common-word-practice.tsx.
+' Logical source architecture; does not assert deployment or database migration state.
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam componentStyle rectangle
+skinparam ArrowColor #355777
+skinparam component {
+  BackgroundColor #EEF4FB
+  BorderColor #355777
+}
+
+actor Operator
+actor Learner
+
+package "Backend operator commands" {
+  component "Forward-only migrations\npython -m app.migrate" as Migrate
+  component "Vocabulary generation CLI\npython -m app.generate_common_words\n--count N / interactive input" as CLI
+  component "Bank population service\nBatch size 1-20; default 20\nValidate, normalize, deduplicate\nCommit each completed batch" as Populate
+}
+
+package "Learner application" {
+  component "Add a word / Common screen\nQuestion choices and feedback\nExplicit Save for recall" as UI
+  component "Authenticated Common API\nSelect up to 10 unlearned words\nGenerate and persist questions\nGrade submitted answers" as Practice
+  component "Existing saved-word service\nCreate Word, ReviewState, PromptJob" as Recall
+  component "Saved-word prompt worker" as Worker
+}
+
+component "OpenRouter LLM\nHTTPS JSON completions\nConfigured text-generation model" as LLM #F4F1FA
+
+database "SQL database\nPostgreSQL / local SQLite" {
+  component "common_words\nShared vocabulary and meanings\nUnique normalised_word\nOperator-selected bank size" as Bank
+  component "user_common_word_progress\nOne row per user + bank word\nlearned_at / last_presented_at" as Progress
+  component "common_practice_questions\nOwned generated questions\nFour choices, private answer key\nFirst submitted answer" as Questions
+  component "words / review_states / prompt_jobs\nExisting per-user scheduled recall" as Saved
+}
+
+Operator --> Migrate : Apply schema/content revisions
+Migrate --> Bank : 0021 creates schema; 0022 removes legacy seed
+Migrate --> Progress : 0022 removes progress for legacy seed IDs
+Migrate --> Questions : 0022 removes questions for legacy seed IDs
+Operator --> CLI : Enter positive N new words
+CLI --> Populate : Populate shared bank
+Populate --> Bank : Read exclusions; insert new unique entries
+Populate --> LLM : Content prompt + up to 20 requested words\nExclude all current bank words
+LLM --> Populate : Word, part of speech, meaning, example, nullable IPA
+
+Learner --> UI : Click Common; choose an answer
+UI --> Practice : Batch request / answer submission
+Practice --> Bank : Read pages of 10; select up to 10 unlearned words
+Practice --> Progress : Exclude learned IDs; record correct-answer learning
+Practice --> LLM : Review prompt for selected existing words
+LLM --> Practice : One question, four choices, one answer per word
+Practice --> Questions : Persist question keys; grade and store first answer
+Practice --> UI : Questions without keys; feedback after grading
+UI --> Recall : Incorrect answer: learner confirms Save
+Recall --> Saved : Atomic save; normalized duplicate guard
+Worker --> Saved : Process saved-word prompt jobs
+Worker --> LLM : Generate saved-word review sentence
+
+note bottom of Populate
+  Count N means NEW entries added by this run, not a target bank total.
+  No database transaction remains open during LLM calls.
+  Stop on failure or three consecutive batches adding nothing.
+  Keep committed batches; report saved/remaining counts for manual retry.
+end note
+
+note bottom of Practice
+  Empty bank: unavailable (503); operator must populate it.
+  Populated bank with no unlearned words: complete.
+  Correct answers mark learned; incorrect answers offer Save for recall.
+  Saving alone does not mark a Common word learned.
+end note
+
+legend bottom
+  Two LLM tasks: operator generates vocabulary; learner requests generate questions.
+  Backend Common adapters share bounded transport; private credentials stay in backend settings.
+  No fixed 1,000-word capacity; 1,000 is an example operator count.
+  No content generation during migration, API startup, or background refill.
+  Source behavior only; existing database and deployment state require separate inspection.
+endlegend
+@enduml

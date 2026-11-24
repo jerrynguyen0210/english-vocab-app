@@ -13,13 +13,12 @@ title OpenRouter generation with capability fallback and validation
 
 ' Sources relative to repository root:
 ' backend/app/llm/openrouter_review.py
-' backend/app/llm/openrouter_common.py
-' backend/app/schemas/common_words.py
+' Common branch is a proposal; no Common generator is currently implemented.
 
-participant "Prompt worker / Common worker / review CLI" as Caller
+participant "Prompt worker / proposed Common request / review CLI" as Caller
 participant "OpenRouter adapter" as Adapter
 participant OpenRouter
-Caller -> Adapter : generate_review(...) or generate_common_words(...)
+Caller -> Adapter : generate_review(...) or proposed generate_common_questions(selected_words)
 Adapter -> Adapter : Validate required inputs and timeout; build JSON-schema request
 break Invalid input or missing API key
   Adapter --> Caller : ReviewError(category=invalid_input)
@@ -29,14 +28,14 @@ loop At most 3 HTTP requests; stop on success or non-capability error
   Adapter -> OpenRouter : POST /chat/completions\nConfigured model, system instructions, input data; bearer provider key
   alt Provider requires reasoning enabled
     OpenRouter --> Adapter : HTTP capability rejection
-    Adapter -> Adapter : Remove reasoning control once\nRaise max_tokens to 4096 (review) / 16000 (Common)
+    Adapter -> Adapter : Remove reasoning control once\nReview: raise max_tokens to 4096\nProposed Common: use a configured batch completion budget
   else Structured output unsupported
     OpenRouter --> Adapter : HTTP capability rejection
     Adapter -> Adapter : Remove response_format and provider preferences once\nRetain prompt instructions and local validation
   else Other HTTP error (auth, quota, rate limit, server error, etc.)
     OpenRouter --> Adapter : HTTP error
     Adapter --> Caller : ReviewError(category=provider_http); no immediate retry
-    note over Adapter : Review fallback recognizes specific HTTP 400 / 404 responses.\nCommon fallback uses the provider capability message.
+    note over Adapter : Review fallback recognizes specific HTTP 400 / 404 responses.\nProposed Common capability policy must also remain bounded.
   else Transport / timeout error
     OpenRouter --> Adapter : Connection failure or timeout
     Adapter --> Caller : ReviewError(category=provider_connection)
@@ -46,14 +45,14 @@ loop At most 3 HTTP requests; stop on success or non-capability error
     alt Review sentence
       Adapter -> Adapter : Require nonempty sentence; normalize Unicode\nRequire exact target once at word boundaries; reject existing blank\nMask target locally as _____
     else Common-word questions
-      Adapter -> Adapter : Limit raw response to 256 KiB\nValidate GeneratedCommonWords schema and question constraints
+      Adapter -> Adapter : PROPOSED: generate questions only for supplied bank IDs\nValidate exact word coverage, one question per word, four unique choices\nand exactly one correct_index (0..3); reject the entire invalid batch
     end
     alt Invalid / incomplete / malformed output
       Adapter --> Caller : ReviewError(category=invalid_response)
     else Validated output
-      Adapter --> Caller : Masked review sentence + answer, or Common candidates
+      Adapter --> Caller : Masked review sentence + answer, or proposed Common questions + answer keys
     end
   end
 end
-note over Caller : Worker-level retries are separate durable jobs (22 / 23).\nThe review CLI prints JSON on success or an error with exit code 1.
+note over Caller : Saved-word worker retries are durable jobs (22).\nProposed Common failures return Retry to the requesting screen (20 / 23).\nThe review CLI prints JSON on success or an error with exit code 1.
 @enduml

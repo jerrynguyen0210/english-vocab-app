@@ -44,5 +44,5 @@ else Retry command
   end
 end
 CLI -> DB : Close session and dispose engine in finally
-note over CLI : Operator commands are separate from the HTTP API.\nCommon-word failures use automatic request-driven cooldown recovery.
+note over CLI : Operator commands are separate from the HTTP API.\nProposed Common batches use request-driven Retry, not this queue.
 @enduml

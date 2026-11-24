@@ -7,7 +7,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import as_utc, local_day_bounds
-from app.models import CommonWordQuestion, ReviewState, User, Word
+from app.models import CommonWord, ReviewState, User, UserCommonWordProgress, Word
 
 
 def due_today(user: User, now: datetime) -> Select[ReviewState]:
@@ -50,10 +50,17 @@ def review_totals(db: Session, user: User, now: datetime) -> dict[str, int]:
 
 
 def learning_totals(db: Session, user: User) -> dict[str, int]:
-    """Learned Common words and the distinct union with the saved word bank."""
-    learned = select(CommonWordQuestion.normalised_word).where(
-        CommonWordQuestion.user_id == user.id,
-        CommonWordQuestion.learned_at.is_not(None),
+    """Count learned bank words and saved vocabulary without double counting."""
+    learned = (
+        select(CommonWord.normalised_word)
+        .join(
+            UserCommonWordProgress,
+            UserCommonWordProgress.common_word_id == CommonWord.id,
+        )
+        .where(
+            UserCommonWordProgress.user_id == user.id,
+            UserCommonWordProgress.learned_at.is_not(None),
+        )
     )
     saved = select(Word.normalised_word).where(Word.user_id == user.id)
     return {

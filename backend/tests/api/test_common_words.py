@@ -1,668 +1,431 @@
-"""Authenticated Common bank flows, filtering, queue recovery and account erasure."""
+"""Shared bank selection, private answers, ownership, learning and recall integration."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
-from unittest.mock import Mock
+from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.export_user import collect_user_data
 from app.llm.openrouter_review import ReviewError
-from app.models import CommonWordJob, CommonWordQuestion, ReviewState, User, Word
-from app.schemas.common_words import GeneratedCommonWord
-from app.services.common_word_bank import REFILL_THRESHOLD
-from app.services.common_word_worker import claim_job, finish_job, process_one
-
-from .helpers import create
-
-URL = "/api/v1/common-words/batch"
-
-
-def candidate(word="reliable"):
-    return GeneratedCommonWord(
-        word=word,
-        ipa="/ˈiːɡə/" if word == "eager" else "/rɪˈlaɪəbl/",
-        part_of_speech="adjective",
-        explanation="Able to be trusted.",
-        example=f"She is {word} today.",
-        choices=[
-            "Easy to forget",
-            "Able to be trusted",
-            "Very expensive",
-            "Difficult to use",
-        ],
-        correct_index=1,
-    )
-
-
-def generate(api, monkeypatch, items=None):
-    client, db, owner, _, _ = api
-    generator = Mock(
-        return_value=items if items is not None else [candidate(), candidate("eager")]
-    )
-    monkeypatch.setattr(
-        "app.services.common_word_worker.generate_common_words", generator
-    )
-    assert client.post(URL, headers=owner, json={}).status_code == 202
-    db.rollback()
-    assert process_one(db.get_bind())
-    assert (
-        generator.call_args.kwargs["timeout"]
-        == get_settings().common_words_timeout_seconds
-    )
-    db.expire_all()
-    return generator
-
-
-def test_generation_is_async_persistent_and_filtered_to_current_user(api, monkeypatch):
-    client, db, owner, other, _ = api
-    assert create(client, owner, " ＲELIABLE ").status_code == 201
-    assert create(client, other, "eager").status_code == 201
-    generator = generate(
-        api, monkeypatch, [candidate(), candidate("eager"), candidate("eager")]
-    )
-    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 1
-    response = client.post(URL, headers=owner, json={})
-    assert (
-        response.status_code == 200 and response.headers["cache-control"] == "no-store"
-    )
-    assert response.json()["status"] == "ready"
-    item = response.json()["questions"][0]
-    assert item["word"] == "eager"  # Other accounts' saved words must not exclude mine.
-    assert item["correctIndex"] == 1 and item["partOfSpeech"] == "adjective"
-    assert item["ipa"] == "/ˈiːɡə/"
-    assert len(item["choices"]) == 4
-    assert db.scalar(select(func.count()).select_from(Word)) == 2
-    assert db.scalar(select(func.count()).select_from(ReviewState)) == 2
-    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 1
-    assert db.scalar(select(CommonWordJob)).failure_category == "low_bank"
-    generator.assert_called_once()
-    assert "reliable" in generator.call_args.args[0]
-    assert "eager" not in generator.call_args.args[0]
-    assert generator.call_args.kwargs["learned_words"] == []
-    assert client.post(URL, headers=other, json={}).json()["status"] == "pending"
-    assert (
-        client.post(URL, headers=owner, json={}).json()["questions"][0]["id"]
-        == item["id"]
-    )
-    assert generator.call_count == 1
-
-
-def test_correct_answers_are_remembered_exported_and_excluded_across_sessions(
-    api, monkeypatch
-):
-    client, db, owner, other, _ = api
-    generate(api, monkeypatch)
-    questions = client.post(URL, headers=owner, json={}).json()["questions"]
-    question = next(q for q in questions if q["word"] == "reliable")
-    learned_url = f"/api/v1/common-words/{question['id']}/learned"
-    assert (
-        client.post(learned_url, headers=other, json={"selected_index": 1}).status_code
-        == 404
-    )
-    assert client.post(learned_url, json={"selected_index": 1}).status_code == 401
-    assert (
-        client.post(learned_url, headers=owner, json={"selected_index": 0}).status_code
-        == 422
-    )
-    stored = db.get(CommonWordQuestion, uuid.UUID(question["id"]))
-    assert stored.learned_at is None
-    response = client.post(learned_url, headers=owner, json={"selected_index": 1})
-    assert response.status_code == 204
-    assert response.headers["cache-control"] == "no-store"
-    db.expire_all()
-    learned_at = stored.learned_at
-    assert learned_at is not None
-    assert (
-        client.post(learned_url, headers=owner, json={"selected_index": 1}).status_code
-        == 204
-    )
-    db.expire_all()
-    assert stored.learned_at == learned_at
-    # A fresh fetch without client exclusions still remembers the correct answer.
-    assert [
-        q["word"] for q in client.post(URL, headers=owner, json={}).json()["questions"]
-    ] == ["eager"]
-    exported = collect_user_data(db, stored.user_id)["common_word_questions"]
-    assert next(q for q in exported if q["word"] == "reliable")["ipa"] == "/rɪˈlaɪəbl/"
-    assert (
-        next(q for q in exported if q["word"] == "reliable")["learned_at"] == learned_at
-    )
-    assert db.scalar(select(func.count()).select_from(Word)) == 0
-    assert db.scalar(select(func.count()).select_from(ReviewState)) == 0
-    assert (
-        client.post(
-            URL, headers=owner, json={"exclude_ids": [q["id"] for q in questions]}
-        ).status_code
-        == 202
-    )
-    db.rollback()
-    generator = Mock(return_value=[candidate(), candidate("patient")])
-    monkeypatch.setattr(
-        "app.services.common_word_worker.generate_common_words", generator
-    )
-    # The partial first refill is retryable after its backoff.
-    db.scalar(select(CommonWordJob)).available_at = datetime.now(UTC) - timedelta(
-        seconds=1
-    )
-    db.commit()
-    assert process_one(db.get_bind())
-    assert generator.call_args.kwargs["learned_words"] == ["reliable"]
-    db.expire_all()
-    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 3
-    # Another account can still learn the same word independently.
-    assert client.post(URL, headers=other, json={}).status_code == 202
-    db.rollback()
-    assert process_one(db.get_bind())
-    assert generator.call_args.kwargs["learned_words"] == []
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        {},
-        {"selected_index": True},
-        {"selected_index": 4},
-        {"selected_index": "1"},
-        {"selected_index": 1, "word": "eager"},
-    ],
+from app.models import (
+    CommonPracticeQuestion,
+    CommonWord,
+    PromptJob,
+    ReviewState,
+    UserCommonWordProgress,
+    Word,
 )
-def test_learned_request_validation(api, monkeypatch, body):
-    client, db, owner, _, _ = api
-    generate(api, monkeypatch)
-    question = db.scalar(select(CommonWordQuestion))
+from app.schemas.common_words import GeneratedCommonQuestion
+
+BATCH = "/api/v1/common-words/batch"
+BANK_SIZE = 40
+
+
+@pytest.fixture(autouse=True)
+def operator_bank(api):
+    _, db, *_ = api
+    assert count(db, CommonWord) == 0
+    db.add_all(
+        [
+            CommonWord(
+                id=uuid.UUID(int=i + 1),
+                word=f"Test word {i}",
+                normalised_word=f"test word {i}",
+                part_of_speech="noun",
+                english_explanation=f"Test meaning {i}",
+            )
+            for i in range(BANK_SIZE)
+        ]
+    )
+    db.commit()
+
+
+def generated(words):
+    return [
+        GeneratedCommonQuestion(
+            common_word_id=w.id,
+            question=f"What does {w.word} mean?",
+            choices=[
+                w.english_explanation,
+                "Something unrelated",
+                "Another unrelated meaning",
+                "A different meaning",
+            ],
+            correct_index=0,
+        )
+        for w in words
+    ]
+
+
+@pytest.fixture
+def generator(monkeypatch):
+    calls = []
+
+    def generate(words, **kwargs):
+        calls.append(words)
+        return generated(words)
+
+    monkeypatch.setattr("app.services.common_words.generate_common_questions", generate)
+    return calls
+
+
+def batch(api):
+    client, _, owner, *_ = api
+    response = client.post(BATCH, headers=owner, json={})
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    return response.json()["questions"]
+
+
+def answer(client, owner, question, index=0):
+    return client.post(
+        f"/api/v1/common-words/questions/{question['id']}/answer",
+        headers=owner,
+        json={"selected_index": index},
+    )
+
+
+def owner_id(client, owner):
+    return uuid.UUID(client.get("/api/v1/auth/me", headers=owner).json()["id"])
+
+
+def count(db, model):
+    return db.scalar(select(func.count()).select_from(model))
+
+
+def test_populated_bank_generates_ten_owned_questions_without_answer_keys(
+    api, generator
+):
+    client, db, owner, *_ = api
+    assert count(db, CommonWord) == BANK_SIZE
+    questions = batch(api)
+    assert len(questions) == 10 and len(generator) == 1
+    assert len({w.id for w in generator[0]}) == 10
+    assert all(
+        "correctIndex" not in q
+        and "correct_index" not in q
+        and len(q["choices"]) == 4
+        and q["question"]
+        for q in questions
+    )
+    assert count(db, CommonPracticeQuestion) == count(db, UserCommonWordProgress) == 10
+    assert count(db, Word) == count(db, PromptJob) == 0
     assert (
-        client.post(
-            f"/api/v1/common-words/{question.id}/learned", headers=owner, json=body
-        ).status_code
-        == 422
+        client.get("/api/v1/reviews/summary", headers=owner).json()["learned_count"]
+        == 0
     )
-    db.expire_all()
-    assert question.learned_at is None
 
 
-def test_learned_and_saved_exclusions_are_not_limited_to_recent_500(api):
-    client, db, owner, _, _ = api
-    owner_id = uuid.UUID(client.get("/api/v1/auth/me", headers=owner).json()["id"])
-    for index in range(501):
-        for prefix, learned in [("known", True), ("recent", False)]:
-            word = f"{prefix}{index}"
-            db.add(
-                CommonWordQuestion(
-                    user_id=owner_id,
-                    normalised_word=word,
-                    **candidate().model_dump(exclude={"word"}),
-                    word=word,
-                    learned_at=datetime.now(UTC) if learned else None,
-                )
-            )
-        db.add(
-            Word(
-                user_id=owner_id,
-                word=f"saved{index}",
-                english_explanation="A saved word.",
-            )
-        )
-    db.add(CommonWordJob(user_id=owner_id))
-    db.commit()
-    claimed = claim_job(db.get_bind())
-    assert set(claimed.learned_words) == {f"known{i}" for i in range(501)}
-    assert {f"saved{i}" for i in range(501)} <= set(claimed.excluded_words)
-    assert {f"recent{i}" for i in range(501)} <= set(claimed.excluded_words)
-    assert len(claimed.excluded_words) == 1002
-
-
-def test_saved_words_are_rechecked_before_insertion_and_before_serving(
-    api, monkeypatch
+def test_selection_pages_past_learned_words_and_keeps_saved_unlearned_words(
+    api, generator
 ):
-    client, db, owner, _, _ = api
-    assert client.post(URL, headers=owner, json={}).status_code == 202
-    db.rollback()
-    claimed = claim_job(db.get_bind())
-    assert create(client, owner, "RELIABLE").status_code == 201
-    db.rollback()
-    finish_job(db.get_bind(), claimed, [candidate(), candidate("eager")])
-    db.expire_all()
-    assert [q.word for q in db.scalars(select(CommonWordQuestion))] == ["eager"]
-    assert create(client, owner, "eager").status_code == 201
-    assert client.post(URL, headers=owner, json={}).json()["status"] == "pending"
-
-
-def test_saved_word_normalization_deduplication_and_batches_do_not_repeat_loaded_ids(
-    api, monkeypatch
-):
-    client, db, owner, _, _ = api
-    generate(api, monkeypatch)
-    first = client.post(URL, headers=owner, json={}).json()["questions"]
-    ids = [item["id"] for item in first]
-    response = client.post(URL, headers=owner, json={"exclude_ids": ids})
-    assert response.status_code == 202
-    assert response.json()["questions"] == []
-    assert response.headers["retry-after"] == "2"
-    # Repeated polling queues exactly one durable job, with no direct LLM calls.
-    for _ in range(3):
-        assert (
-            client.post(URL, headers=owner, json={"exclude_ids": ids}).status_code
-            == 202
+    client, db, owner, *_ = api
+    user_id = owner_id(client, owner)
+    words = list(db.scalars(select(CommonWord).order_by(CommonWord.id)))
+    db.add_all(
+        [
+            UserCommonWordProgress(
+                user_id=user_id, common_word_id=w.id, learned_at=datetime.now(UTC)
+            )
+            for w in words[:27]
+        ]
+    )
+    db.add(
+        Word(
+            user_id=user_id,
+            word=words[27].word,
+            english_explanation=words[27].english_explanation,
         )
-    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 1
-    db.scalar(select(CommonWordJob)).available_at = datetime.now(UTC) - timedelta(
-        seconds=1
     )
     db.commit()
-    claimed = claim_job(db.get_bind())
-    assert set(claimed.excluded_words) == {"reliable", "eager"}
-    finish_job(db.get_bind(), claimed, [candidate("patient")])
-    response = client.post(URL, headers=owner, json={"exclude_ids": ids})
-    assert [q["word"] for q in response.json()["questions"]] == ["patient"]
+    questions = batch(api)
+    assert [w.id for w in generator[0]] == [w.id for w in words[27:37]]
+    assert questions[0]["word"] == words[27].word
 
 
-def test_failure_retries_are_bounded_and_retry_does_not_create_a_job_storm(
-    api, monkeypatch
+def test_correct_answer_is_idempotent_user_scoped_and_excluded_from_next_batch(
+    api, generator
 ):
-    client, db, owner, _, _ = api
-    failed = Mock(
-        side_effect=ReviewError("private provider body", "provider_connection")
+    client, db, owner, other, *_ = api
+    question = batch(api)[0]
+    response = answer(client, owner, question)
+    assert response.json()["result"] == "correct"
+    progress = db.scalar(
+        select(UserCommonWordProgress).where(
+            UserCommonWordProgress.learned_at.is_not(None)
+        )
     )
-    monkeypatch.setattr("app.services.common_word_worker.generate_common_words", failed)
-    client.post(URL, headers=owner, json={})
-    owner_id = db.scalar(select(User.id).where(User.email == "owner@example.com"))
-    db.rollback()
-    for attempt in range(3):
-        assert process_one(db.get_bind())
-        db.expire_all()
-        job = db.get(CommonWordJob, owner_id)
-        assert job.attempts == attempt + 1
-        assert job.failure_category == "provider_connection"
-        if attempt < 2:
-            assert job.failed_at is None
-            job.available_at = datetime.now(UTC) - timedelta(seconds=1)
-            db.commit()
-    db.rollback()
-    assert not process_one(db.get_bind())
-    assert client.post(URL, headers=owner, json={}).json() == {
-        "status": "failed",
+    learned_at = progress.learned_at
+    assert answer(client, owner, question).json() == response.json()
+    db.refresh(progress)
+    assert progress.learned_at == learned_at
+    assert answer(client, owner, question, 1).status_code == 409
+    assert answer(client, other, question).status_code == 404
+    assert question["word"] not in [q["word"] for q in batch(api)]
+    assert count(db, Word) == 0
+    assert (
+        client.get("/api/v1/reviews/summary", headers=owner).json()["learned_count"]
+        == 1
+    )
+    assert (
+        client.get("/api/v1/reviews/summary", headers=other).json()["learned_count"]
+        == 0
+    )
+
+
+def test_incorrect_answer_and_explicit_save_do_not_mark_learned(api, generator):
+    client, db, owner, *_ = api
+    question = batch(api)[0]
+    response = answer(client, owner, question, 1)
+    assert (
+        response.json()["result"] == "incorrect"
+        and response.json()["correctIndex"] == 0
+    )
+    assert count(db, Word) == 0
+    saved = client.post(
+        "/api/v1/words",
+        headers=owner,
+        json={
+            "word": question["word"],
+            "english_explanation": question["explanation"],
+            "example_sentence": question["example"],
+        },
+    )
+    assert saved.status_code == 201
+    assert count(db, ReviewState) == count(db, PromptJob) == 1
+    assert (
+        db.scalar(
+            select(func.count())
+            .select_from(UserCommonWordProgress)
+            .where(UserCommonWordProgress.learned_at.is_not(None))
+        )
+        == 0
+    )
+    new_question = next(q for q in batch(api) if q["word"] == question["word"])
+    answer(client, owner, new_question)
+    summary = client.get("/api/v1/reviews/summary", headers=owner).json()
+    assert (
+        summary["saved_count"]
+        == summary["learned_count"]
+        == summary["total_count"]
+        == 1
+    )
+
+
+def test_final_partial_batch_and_completion_do_not_generate_extra_words(api, generator):
+    client, db, owner, *_ = api
+    user_id = owner_id(client, owner)
+    words = list(db.scalars(select(CommonWord).order_by(CommonWord.id)))
+    db.add_all(
+        [
+            UserCommonWordProgress(
+                user_id=user_id, common_word_id=w.id, learned_at=datetime.now(UTC)
+            )
+            for w in words[:-3]
+        ]
+    )
+    db.commit()
+    questions = batch(api)
+    assert len(questions) == len(generator[0]) == 3
+    for question in questions:
+        assert answer(client, owner, question).status_code == 200
+    assert client.post(BATCH, headers=owner, json={}).json() == {
+        "status": "complete",
         "questions": [],
     }
-    assert failed.call_count == 3
-    job = db.get(CommonWordJob, owner_id)
-    job.failed_at = datetime.now(UTC) - timedelta(seconds=61)
-    db.commit()
-    assert client.post(URL, headers=owner, json={}).status_code == 202
-    assert db.get(CommonWordJob, owner_id).attempts == 0
+    assert len(generator) == 1
 
 
-def test_only_saved_or_duplicate_results_do_not_produce_an_empty_success(
-    api, monkeypatch
+@pytest.mark.parametrize("failure", ["provider", "partial", "duplicates", "wrong_ids"])
+def test_generation_failure_never_persists_partial_questions(api, monkeypatch, failure):
+    client, db, owner, *_ = api
+
+    def generate(words, **kwargs):
+        assert not db.in_transaction(), "LLM I/O must not hold a database transaction"
+        if failure == "provider":
+            raise ReviewError("Provider body must stay private")
+        rows = generated(words)
+        if failure == "partial":
+            return rows[:-1]
+        if failure == "duplicates":
+            return [rows[0]] * 10
+        rows[0].common_word_id = uuid.uuid4()
+        return rows
+
+    monkeypatch.setattr("app.services.common_words.generate_common_questions", generate)
+    response = client.post(BATCH, headers=owner, json={})
+    assert response.status_code == 503 and "Provider body" not in response.text
+    assert count(db, CommonPracticeQuestion) == count(db, UserCommonWordProgress) == 0
+
+
+def test_generation_rechecks_concurrent_learning_outside_transaction(api, monkeypatch):
+    client, db, owner, *_ = api
+    user_id = owner_id(client, owner)
+    calls = []
+
+    def generate(words, **kwargs):
+        assert not db.in_transaction()
+        calls.append(words)
+        if len(calls) == 1:
+            with Session(db.get_bind()) as concurrent:
+                concurrent.add(
+                    UserCommonWordProgress(
+                        user_id=user_id,
+                        common_word_id=words[0].id,
+                        learned_at=datetime.now(UTC),
+                    )
+                )
+                concurrent.commit()
+        return generated(words)
+
+    monkeypatch.setattr("app.services.common_words.generate_common_questions", generate)
+    questions = batch(api)
+    assert len(calls) == 2
+    assert calls[0][0].word not in [q["word"] for q in questions]
+    assert count(db, CommonPracticeQuestion) == 10
+
+
+def test_generation_after_account_deletion_cannot_restore_data(api, monkeypatch):
+    client, db, owner, *_ = api
+
+    def generate(words, **kwargs):
+        assert client.delete("/api/v1/account", headers=owner).status_code == 204
+        return generated(words)
+
+    monkeypatch.setattr("app.services.common_words.generate_common_questions", generate)
+    assert client.post(BATCH, headers=owner, json={}).status_code == 401
+    assert count(db, CommonPracticeQuestion) == 0 and count(db, CommonWord) == BANK_SIZE
+
+
+def test_export_and_erasure_include_owned_common_data_and_preserve_shared_bank(
+    api, generator
 ):
-    client, db, owner, _, _ = api
-    create(client, owner, "reliable")
-    generate(api, monkeypatch, [candidate(), candidate()])
-    job = db.scalar(select(CommonWordJob))
-    assert job.failure_category == "no_new_words" and job.attempts == 1
-    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 0
-    assert client.post(URL, headers=owner, json={}).status_code == 202
-
-
-def test_worker_lease_prevents_double_claim_and_discards_stale_results(api):
-    client, db, owner, _, _ = api
-    client.post(URL, headers=owner, json={})
-    db.rollback()
-    first = claim_job(db.get_bind())
-    assert claim_job(db.get_bind()) is None
-    job = db.get(CommonWordJob, first.user_id)
-    job.available_at = datetime.now(UTC) - timedelta(seconds=1)
-    db.commit()
-    second = claim_job(db.get_bind())
-    assert second.token != first.token
-    finish_job(db.get_bind(), first, [candidate()])
-    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 0
-    db.rollback()
-    finish_job(db.get_bind(), second, [candidate("eager")])
-    db.expire_all()
-    assert db.scalar(select(CommonWordQuestion.word)) == "eager"
-
-
-def test_crashed_final_attempt_becomes_a_terminal_failure(api):
-    client, db, owner, _, _ = api
-    client.post(URL, headers=owner, json={})
-    job = db.scalar(select(CommonWordJob))
-    job.attempts = 3
-    job.available_at = datetime.now(UTC) - timedelta(seconds=1)
-    db.commit()
-    assert claim_job(db.get_bind()) is None
-    db.expire_all()
-    assert db.scalar(select(CommonWordJob)).failure_category == "attempts_exhausted"
-    assert client.post(URL, headers=owner, json={}).json()["status"] == "failed"
-
-
-def test_account_export_and_deletion_include_bank_and_jobs_and_stale_worker_cannot_restore(
-    api, monkeypatch
-):
-    client, db, owner, other, _ = api
-    generate(api, monkeypatch)
-    question = db.scalar(select(CommonWordQuestion))
+    client, db, owner, other, *_ = api
+    user_id = owner_id(client, owner)
+    questions = batch(api)
+    answer(client, owner, questions[0])
+    exported = collect_user_data(db, user_id)
     assert (
-        client.post(
-            f"/api/v1/common-words/{question.id}/learned",
-            headers=owner,
-            json={"selected_index": question.correct_index},
-        ).status_code
-        == 204
+        len(exported["common_word_progress"])
+        == len(exported["common_practice_questions"])
+        == 10
     )
-    owner_id = db.scalar(select(CommonWordQuestion.user_id))
-    other_id = db.scalar(select(User.id).where(User.email == "other@example.com"))
-    # Answering already queued the owner's low bank refill.
-    db.get(CommonWordJob, owner_id).available_at = datetime.now(UTC) - timedelta(
-        seconds=1
-    )
-    db.add(CommonWordJob(user_id=other_id))
-    db.commit()
-    claimed = claim_job(db.get_bind())
-    if claimed.user_id != owner_id:
-        claimed = claim_job(db.get_bind())
-    assert claimed.user_id == owner_id
-    assert len(collect_user_data(db, owner_id)["common_word_questions"]) == 2
-    assert collect_user_data(db, other_id)["common_word_questions"] == []
-    db.rollback()
+    assert any(row["learned_at"] for row in exported["common_word_progress"])
+    assert collect_user_data(db, owner_id(client, other))["common_word_progress"] == []
     assert client.delete("/api/v1/account", headers=owner).status_code == 204
-    db.rollback()
-    finish_job(db.get_bind(), claimed, [candidate("patient")])
-    assert db.scalar(select(func.count()).select_from(CommonWordQuestion)) == 0
-    assert db.get(CommonWordJob, other_id) is not None
-    assert client.post(URL, headers=other, json={}).status_code == 202
+    assert count(db, UserCommonWordProgress) == count(db, CommonPracticeQuestion) == 0
+    assert count(db, CommonWord) == BANK_SIZE
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        {"exclude_ids": ["bad-id"]},
-        {"exclude_ids": [str(uuid.uuid4())] * 1001},
-        {"user_id": str(uuid.uuid4())},
+        {"selected_index": True},
+        {"selected_index": 4},
+        {"selected_index": -1},
+        {"selected_index": "0"},
+        {},
+        {"selected_index": 0, "correct_index": 0},
     ],
 )
-def test_request_validation_and_auth_do_not_queue_work(api, body):
-    client, db, owner, _, _ = api
-    assert client.post(URL, headers=owner, json=body).status_code == 422
-    assert client.post(URL, json={}).status_code == 401
-    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 0
+def test_answer_validation(api, generator, body):
+    client, _, owner, *_ = api
+    question = batch(api)[0]
+    assert (
+        client.post(
+            f"/api/v1/common-words/questions/{question['id']}/answer",
+            headers=owner,
+            json=body,
+        ).status_code
+        == 422
+    )
 
 
-def test_postgres_concurrent_requests_share_one_job_and_one_worker_claim(api):
+def test_common_endpoints_require_auth_and_strict_batch_body(api, generator):
+    client, _, owner, *_ = api
+    assert client.post(BATCH, json={}).status_code == 401
+    assert (
+        client.post(
+            f"/api/v1/common-words/questions/{uuid.uuid4()}/answer",
+            json={"selected_index": 0},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(BATCH, headers=owner, json={"exclude_ids": []}).status_code == 422
+    )
+    assert not generator
+
+
+def test_postgres_concurrent_answer_replays_are_atomic(api, generator):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
 
-    from sqlalchemy.orm import Session
+    from app.models import User
+    from app.services.common_words import answer_question
 
-    from app.schemas.common_words import CommonBatchRequest
-    from app.services.common_words import get_batch
-
-    _client, db, _owner, _, _ = api
+    client, db, owner, *_ = api
+    if db.get_bind().dialect.name != "postgresql":
+        pytest.skip("Concurrent row locking requires PostgreSQL")
+    question = batch(api)[0]
+    user_id = owner_id(client, owner)
+    db.commit()
+    barrier = Barrier(2)
     engine = db.get_bind()
-    if engine.dialect.name != "postgresql":
-        pytest.skip("Row-lock concurrency requires PostgreSQL")
-    owner_id = db.scalar(select(User.id).where(User.email == "owner@example.com"))
-    db.rollback()
-    start = Barrier(2)
 
-    def request():
-        with Session(engine) as connection:
-            user = connection.get(User, owner_id)
-            start.wait(timeout=10)
-            return get_batch(connection, user, CommonBatchRequest()).status
+    def submit():
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+            barrier.wait(timeout=5)
+            return answer_question(session, user, uuid.UUID(question["id"]), 0)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(request) for _ in range(2)]
-        assert [future.result(timeout=15) for future in futures] == [
-            "pending",
-            "pending",
-        ]
-    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 1
-    db.rollback()
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        claims = list(pool.map(claim_job, [engine, engine]))
-    assert sum(claim is not None for claim in claims) == 1
+        results = list(pool.map(lambda _: submit(), range(2)))
+    assert results[0] == results[1]
+    assert results[0].result == "correct"
+    assert (
+        db.scalar(
+            select(func.count())
+            .select_from(UserCommonWordProgress)
+            .where(UserCommonWordProgress.learned_at.is_not(None))
+        )
+        == 1
+    )
 
 
-def test_learning_summary_counts_learned_words_without_double_counting(
-    api, monkeypatch
+@pytest.mark.parametrize("action", ["delete", "disable"])
+def test_generation_rechecks_account_changed_by_an_independent_session(
+    api, monkeypatch, action
 ):
-    client, _db, owner, other, _ = api
-    generate(api, monkeypatch)
-    questions = client.post(URL, headers=owner, json={}).json()["questions"]
-    summary_url = "/api/v1/reviews/summary"
-    assert client.get(summary_url, headers=owner).json()["total_count"] == 0
-    question = next(q for q in questions if q["word"] == "reliable")
-    learned_url = f"/api/v1/common-words/{question['id']}/learned"
-    for _ in range(2):
-        assert (
-            client.post(
-                learned_url, headers=owner, json={"selected_index": 1}
-            ).status_code
-            == 204
-        )
-    summary = client.get(summary_url, headers=owner).json()
-    assert summary["learned_count"] == summary["total_count"] == 1
-    assert summary["saved_count"] == 0
-    assert create(client, owner, " ＲELIABLE ").status_code == 201
-    assert create(client, owner, "hello").status_code == 201
-    summary = client.get(summary_url, headers=owner).json()
-    assert summary["saved_count"] == 2
-    assert summary["learned_count"] == 1
-    assert summary["total_count"] == 2
-    other_summary = client.get(summary_url, headers=other).json()
-    assert other_summary["learned_count"] == other_summary["total_count"] == 0
+    from app.models import User
+    from app.services.accounts import delete_account
+
+    client, db, owner, *_ = api
+    user_id = owner_id(client, owner)
+
+    def generate(words, **kwargs):
+        with Session(db.get_bind()) as other:
+            user = other.get(User, user_id)
+            if action == "delete":
+                delete_account(other, user)
+            else:
+                user.disabled_at = datetime.now(UTC)
+                other.commit()
+        return generated(words)
+
+    monkeypatch.setattr("app.services.common_words.generate_common_questions", generate)
+    response = client.post(BATCH, headers=owner, json={})
+    assert response.status_code == 401
+    assert count(db, CommonPracticeQuestion) == count(db, UserCommonWordProgress) == 0
+    assert count(db, CommonWord) == BANK_SIZE
 
 
-def seed_bank(api, count=20):
-    client, db, owner, _, _ = api
-    owner_id = uuid.UUID(client.get("/api/v1/auth/me", headers=owner).json()["id"])
-    words = [
-        "reliable",
-        "eager",
-        "patient",
-        "kind",
-        "calm",
-        "brave",
-        "honest",
-        "bright",
-        "gentle",
-        "helpful",
-        "careful",
-        "cheerful",
-        "clever",
-        "friendly",
-        "polite",
-        "quiet",
-        "ready",
-        "safe",
-        "warm",
-        "wise",
-    ]
-    questions = []
-    for word in words[:count]:
-        question = CommonWordQuestion(
-            user_id=owner_id, normalised_word=word, **candidate(word).model_dump()
-        )
-        db.add(question)
-        questions.append(question)
+def test_empty_operator_bank_is_unavailable_not_all_learned(api, generator):
+    client, db, owner, *_ = api
+    db.execute(delete(CommonWord))
     db.commit()
-    return owner_id, questions
-
-
-def test_answer_at_refill_threshold_queues_one_job_and_keeps_serving(api):
-    client, db, owner, _, _ = api
-    owner_id, questions = seed_bank(api)
-    assert client.post(URL, headers=owner, json={}).status_code == 200
-    assert db.get(CommonWordJob, owner_id) is None
-    consumed = len(questions) - REFILL_THRESHOLD
-    for index, question in enumerate(questions[:consumed]):
-        response = client.post(
-            f"/api/v1/common-words/{question.id}/learned",
-            headers=owner,
-            json={"selected_index": 1},
-        )
-        assert response.status_code == 204
-        if index < consumed - 1:
-            assert db.get(CommonWordJob, owner_id) is None
-    job = db.get(CommonWordJob, owner_id)
-    assert job is not None and job.attempts == 0
-    db.rollback()
-    claimed = claim_job(db.get_bind())
-    for _ in range(3):
-        response = client.post(URL, headers=owner, json={})
-        assert response.status_code == 200
-        assert len(response.json()["questions"]) == 10
-    db.expire_all()
-    assert db.get(CommonWordJob, owner_id).lease_token == claimed.token
-    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 1
-
-
-def test_saving_common_word_triggers_refill_but_unrelated_saves_do_not(api):
-    client, db, owner, _, _ = api
-    assert create(client, owner, "hello").status_code == 201
-    assert db.scalar(select(func.count()).select_from(CommonWordJob)) == 0
-    owner_id, questions = seed_bank(api, REFILL_THRESHOLD + 1)
-    assert create(client, owner, questions[0].word).status_code == 201
-    assert db.get(CommonWordJob, owner_id) is not None
-    response = client.post(URL, headers=owner, json={})
-    assert len(response.json()["questions"]) == 10
-    assert questions[0].word not in [q["word"] for q in response.json()["questions"]]
-
-
-def test_partial_refill_continues_until_above_half_and_filters_duplicates(api):
-    client, db, owner, _, _ = api
-    owner_id, questions = seed_bank(api, REFILL_THRESHOLD - 1)
-    assert create(client, owner, "warm").status_code == 201
-    assert client.post(URL, headers=owner, json={}).status_code == 200
-    db.rollback()
-    claimed = claim_job(db.get_bind())
-    # Existing, saved and duplicate candidates cannot inflate the bank.
-    finish_job(
-        db.get_bind(),
-        claimed,
-        [
-            candidate(questions[0].word),
-            candidate("warm"),
-            candidate("happy"),
-            candidate("happy"),
-        ],
-    )
-    db.expire_all()
-    job = db.get(CommonWordJob, owner_id)
-    assert job is not None and job.failure_category == "low_bank"
-    assert (
-        db.scalar(select(func.count()).select_from(CommonWordQuestion))
-        == REFILL_THRESHOLD
-    )
-    job.available_at = datetime.now(UTC) - timedelta(seconds=1)
-    db.commit()
-    claimed = claim_job(db.get_bind())
-    assert "happy" in claimed.excluded_words
-    finish_job(db.get_bind(), claimed, [candidate("wise")])
-    db.expire_all()
-    assert db.get(CommonWordJob, owner_id) is None
-    assert (
-        db.scalar(select(func.count()).select_from(CommonWordQuestion))
-        == REFILL_THRESHOLD + 1
-    )
-
-
-def test_failed_background_refill_does_not_block_questions_or_answers(api):
-    client, db, owner, _, _ = api
-    owner_id, questions = seed_bank(api, 10)
-    db.add(
-        CommonWordJob(
-            user_id=owner_id,
-            attempts=3,
-            failed_at=datetime.now(UTC),
-            failure_category="provider_connection",
-        )
-    )
-    db.commit()
-    assert client.post(URL, headers=owner, json={}).status_code == 200
-    assert (
-        client.post(
-            f"/api/v1/common-words/{questions[0].id}/learned",
-            headers=owner,
-            json={"selected_index": 1},
-        ).status_code
-        == 204
-    )
-    assert db.get(CommonWordJob, owner_id).attempts == 3
-    job = db.get(CommonWordJob, owner_id)
-    job.failed_at = datetime.now(UTC) - timedelta(seconds=61)
-    db.commit()
-    assert client.post(URL, headers=owner, json={}).status_code == 200
-    assert db.get(CommonWordJob, owner_id).attempts == 0
-    assert db.get(CommonWordJob, owner_id).failed_at is None
-
-
-def test_active_llm_generation_blocks_other_workers_and_preserves_jobs(
-    api, monkeypatch
-):
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Event
-
-    client, db, owner, other, _ = api
-    assert client.post(URL, headers=owner, json={}).status_code == 202
-    started, release = Event(), Event()
-
-    def generate_while_blocked(*_args, **_kwargs):
-        started.set()
-        assert release.wait(timeout=15)
-        return [candidate()]
-
-    generator = Mock(side_effect=generate_while_blocked)
-    monkeypatch.setattr(
-        "app.services.common_word_worker.generate_common_words", generator
-    )
-    engine = db.get_bind()
-    db.rollback()
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        first = pool.submit(process_one, engine)
-        try:
-            assert started.wait(timeout=10)
-            job = db.scalar(select(CommonWordJob))
-            token = job.lease_token
-            # Even if a slow call outlives its lease, another worker must wait.
-            job.available_at = datetime.now(UTC) - timedelta(seconds=1)
-            db.commit()
-            for _ in range(3):
-                assert client.post(URL, headers=owner, json={}).status_code == 202
-            assert client.post(URL, headers=other, json={}).status_code == 202
-            db.rollback()
-            for _ in range(3):
-                assert not process_one(engine)
-            db.expire_all()
-            jobs = db.scalars(select(CommonWordJob)).all()
-            assert len(jobs) == 2
-            assert sorted(job.attempts for job in jobs) == [0, 1]
-            assert next(job for job in jobs if job.attempts == 1).lease_token == token
-            assert generator.call_count == 1
-            db.rollback()
-        finally:
-            release.set()
-        assert first.result(timeout=10)
-    # Completion releases the guard so another queued bank can refill.
-    assert process_one(engine)
-    assert generator.call_count == 2
-
-
-def test_generation_guard_is_released_after_unexpected_error(api, monkeypatch):
-    from app.services.common_word_generation_lock import generation_slot
-
-    client, db, owner, _, _ = api
-    assert client.post(URL, headers=owner, json={}).status_code == 202
-    monkeypatch.setattr(
-        "app.services.common_word_worker.generate_common_words",
-        Mock(side_effect=RuntimeError("Unexpected generator failure")),
-    )
-    engine = db.get_bind()
-    db.rollback()
-    with pytest.raises(RuntimeError, match="Unexpected generator failure"):
-        process_one(engine)
-    with generation_slot(engine) as acquired:
-        assert acquired
+    response = client.post(BATCH, headers=owner, json={})
+    assert response.status_code == 503
+    assert not generator

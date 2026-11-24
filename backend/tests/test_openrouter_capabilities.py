@@ -1,4 +1,4 @@
-"""Both vocabulary generators adapt to mandatory reasoning without looping."""
+"""Review generation adapts to mandatory reasoning without looping."""
 
 import io
 import json
@@ -7,7 +7,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from app.llm import openrouter_common, openrouter_review
+from app.llm import openrouter_review
 from app.llm.openrouter_review import ReviewError
 
 
@@ -25,22 +25,8 @@ def rejection(kind):
     )
 
 
-def completed(kind):
+def completed():
     output = {"sentence": "She is a reliable colleague."}
-    if kind == "common":
-        output = {
-            "words": [
-                {
-                    "word": "reliable",
-                    "ipa": "/rɪˈlaɪəbl/",
-                    "part_of_speech": "adjective",
-                    "explanation": "Able to be trusted.",
-                    "example": "She is a reliable colleague.",
-                    "choices": ["Trusted", "Expensive", "Forgetful", "Difficult"],
-                    "correct_index": 0,
-                }
-            ]
-        }
     return io.BytesIO(
         json.dumps(
             {
@@ -55,58 +41,53 @@ def completed(kind):
     )
 
 
-def generate(kind):
+def generate():
     options = {"model": "test/model", "api_key": "placeholder-test-key"}
-    if kind == "common":
-        return openrouter_common.generate_common_words([], **options)
     return openrouter_review.generate_review(
         "reliable", "Able to be trusted", **options
     )
 
 
-@pytest.mark.parametrize("kind", ["common", "review"])
 @pytest.mark.parametrize(
     "capabilities", [["reasoning"], ["reasoning", "schema"], ["schema", "reasoning"]]
 )
 def test_independent_capability_fallbacks_are_bounded_and_preserve_validation(
-    kind, capabilities
+    capabilities,
 ):
     with patch(
-        f"app.llm.openrouter_{kind}.urlopen",
+        "app.llm.openrouter_review.urlopen",
         side_effect=[
             *(rejection(capability) for capability in capabilities),
-            completed(kind),
+            completed(),
         ],
     ) as request:
-        assert generate(kind)
+        assert generate()
     payloads = [json.loads(call.args[0].data) for call in request.call_args_list]
     assert payloads[0]["reasoning"] == {"enabled": False}
     assert request.call_count == len(capabilities) + 1
     final = payloads[-1]
     assert "reasoning" not in final
-    assert final["max_tokens"] == (16000 if kind == "common" else 4096)
+    assert final["max_tokens"] == 4096
     if "schema" in capabilities:
         assert "response_format" not in final
     else:
         assert "response_format" in final
 
 
-@pytest.mark.parametrize("kind", ["common", "review"])
-def test_repeated_mandatory_reasoning_rejection_does_not_loop(kind):
+def test_repeated_mandatory_reasoning_rejection_does_not_loop():
     with (
         patch(
-            f"app.llm.openrouter_{kind}.urlopen",
+            "app.llm.openrouter_review.urlopen",
             side_effect=[rejection("reasoning"), rejection("reasoning")],
         ) as request,
         pytest.raises(ReviewError),
     ):
-        generate(kind)
+        generate()
     assert request.call_count == 2
 
 
-@pytest.mark.parametrize("kind", ["common", "review"])
 @pytest.mark.parametrize("status", [401, 402, 429, 500])
-def test_auth_quota_and_server_errors_are_not_capability_retries(kind, status):
+def test_auth_quota_and_server_errors_are_not_capability_retries(status):
     failure = HTTPError(
         "https://example.test",
         status,
@@ -115,8 +96,8 @@ def test_auth_quota_and_server_errors_are_not_capability_retries(kind, status):
         io.BytesIO(b'{"error":{"message":"Reasoning is mandatory"}}'),
     )
     with (
-        patch(f"app.llm.openrouter_{kind}.urlopen", side_effect=failure) as request,
+        patch("app.llm.openrouter_review.urlopen", side_effect=failure) as request,
         pytest.raises(ReviewError),
     ):
-        generate(kind)
+        generate()
     assert request.call_count == 1

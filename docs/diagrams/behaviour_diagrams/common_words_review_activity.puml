@@ -1,0 +1,131 @@
+@startuml
+title Review Common words from Add a word
+
+' Sources: backend/app/services/common_words.py and client/src/components/common-word-practice.tsx.
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #EEF4FB
+  BorderColor #355777
+  DiamondBackgroundColor #FFF4D6
+  DiamondBorderColor #8A6D3B
+}
+
+|Learner / Add a word screen|
+start
+:Click Common button;
+repeat
+  :Request a Common practice batch;
+  |Backend|
+  :Authenticate active user;
+  if (Authentication successful?) then (no)
+    |Learner / Add a word screen|
+    :Show sign-in requirement;
+    stop
+  endif
+  |Database / selection|
+  if (Shared bank empty?) then (yes)
+    |Backend|
+    :Return unavailable (503); no LLM question generation;
+    |Learner / Add a word screen|
+    :Show unavailable/error state and Retry;
+    stop
+  endif
+  |Database / selection|
+  :Load learned bank IDs for this user;\nStart stable bank cursor and empty selection;
+  while (Fewer than 10 unlearned words selected\nAND bank has more entries?) is (yes)
+    :Retrieve next 10 entries from shared\noperator-populated common_words bank;
+    :Compare each entry with user's learned IDs;\nAppend distinct unlearned entries until selection reaches 10;\nAdvance cursor past fetched page;
+  endwhile (no)
+  if (Selection empty?) then (yes)
+    |Learner / Add a word screen|
+    :Show all Common words learned;
+    stop
+  endif
+  |Backend|
+  :Build review prompt with selected words and meanings;\nNormally 10, fewer only at end of bank;
+  |LLM|
+  :Generate exactly one question per supplied word;\nReturn bank ID, question, four distinct choices\nand exactly one correct answer;
+  |Backend|
+  :Validate complete ID coverage, prompts, choices\nand correct_index values (0..3);
+  if (Provider response valid and complete?) then (no)
+    |Learner / Add a word screen|
+    :Show generation error and Retry;
+    if (Retry batch?) then (yes)
+      :Keep progress; request another attempt;
+    else (no)
+      stop
+    endif
+  else (yes)
+    |Database / selection|
+    :Lock and recheck active account and current learned IDs;
+    if (Account still active?) then (no)
+      :Discard generated batch;
+      |Learner / Add a word screen|
+      :Show account unavailable;
+      stop
+    endif
+    |Database / selection|
+    if (Any selected words learned concurrently?) then (yes)
+      :Discard batch and rebuild selection;\nRelease transaction before another LLM request;
+    else (no)
+      :Persist owned generated questions and answer keys;\nUpsert last_presented_at and commit;
+      |Learner / Add a word screen|
+      :Receive prompts and four choices;\nAnswer keys remain on backend;
+      while (Unanswered questions remain in batch?) is (yes)
+        :Display next Common question;\nChoose one of four answers;
+        |Backend|
+        :Authenticate, validate selected_index and question ownership;\nGrade against persisted answer key;
+        |Database / selection|
+        :Store first selected answer and answered_at;\nReplay identical submissions without changing progress;
+        if (Answer correct?) then (yes)
+          :Set learned_at once for this user and bank word;\nCommit answer and learning together;
+        else (no)
+          :Keep learned_at unchanged;\nCommit incorrect answer;
+        endif
+        |Learner / Add a word screen|
+        while (Answer outcome not confirmed?) is (yes)
+          :Show Retry Answer; keep current question;
+          |Backend|
+          :Retry same submission; return persisted outcome\nor apply once if original transaction failed;
+          |Learner / Add a word screen|
+        endwhile (confirmed)
+        if (Confirmed answer correct?) then (yes)
+          :Show correct feedback; word learned;
+        else (no)
+          :Show correct answer and explanation;\nAsk "Save this word for recall?";
+          if (Save word?) then (yes)
+            |Backend|
+            :Use existing saved-word flow;\nCheck per-user normalized-word uniqueness;
+            |Database / selection|
+            :If new, insert Word, ReviewState due now\nand saved-word PromptJob atomically;\nIf already saved, keep existing record;
+            |Learner / Add a word screen|
+            while (Save not confirmed?) is (yes)
+              :Offer Retry Save; preserve answer outcome;
+              |Backend|
+              :Retry existing save flow; handle duplicate as already saved;
+              |Learner / Add a word screen|
+            endwhile (confirmed)
+            :Show Saved / Already saved;\nCommon word stays unlearned unless answered correctly;
+          else (no)
+            :Continue without saving; word remains unlearned;
+          endif
+        endif
+        :Continue to next question;
+      endwhile (batch finished)
+      :Show batch finished;
+    endif
+  endif
+  |Learner / Add a word screen|
+repeat while (Retry or rebuild required,\nor learner requests another batch?) is (yes) not (no)
+stop
+
+legend bottom
+  Source behavior; deployment and migrated database state are not asserted.
+  Operator CLI generates bank vocabulary; learner requests generate questions from that bank.
+  Learned status belongs to each user; future batches exclude learned bank IDs.
+  Incorrect and saved-but-unlearned words remain eligible for future Common practice.
+  Batch target is 10; final batch can be smaller; zero remaining means completion.
+  Common practice does not change scheduled recall scores or schedules.
+  Only a confirmed Save creates the existing scheduled recall records.
+endlegend
+@enduml

@@ -1,0 +1,71 @@
+@startuml
+title Operator Common Bank Generation - Behavior and Recovery
+' Sources: backend/app/generate_common_words.py and app/services/common_word_bank.py.
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #EEF4FB
+  BorderColor #355777
+  DiamondBackgroundColor #FFF4D6
+}
+
+|Operator|
+start
+:Apply forward-only migrations with normal backup procedure;\nRun backend generation command;
+:Supply --count N, or enter N interactively;\nOptionally supply --batch-size 1-20;
+|Backend command|
+:Validate positive integer count, batch size,\nprivate configuration and supported database;
+if (Input/configuration valid?) then (no)
+  :Exit nonzero with safe diagnostic;
+  stop
+endif
+:saved = 0; stalled = 0;
+while (saved < requested N?) is (yes)
+  |SQL database|
+  :Read current bank words for exclusions;\nEnd read transaction;
+  |Backend command|
+  :request_size = min(batch_size, N - saved);
+  |LLM adapter|
+  :Generate vocabulary content, not quiz questions;\nSend request_size and all exclusions;
+  :Use bounded provider calls and capability fallback;\nValidate completed JSON and each word's content;
+  if (Provider or validation failure?) then (yes)
+    |Backend command|
+    :Exit 1; report saved and remaining counts;\nKeep completed batches; suggest remaining --count;
+    stop
+  endif
+  |Backend command|
+  :Normalize candidates;\nSkip existing and within-batch duplicates;
+  |SQL database|
+  :Insert new words in one batch transaction;\nSkip concurrent duplicates using unique constraint;
+  if (Database operation successful?) then (no)
+    :Roll back current batch;
+    |Backend command|
+    :Exit 1; keep previous commits;\nReport saved and remaining counts;
+    stop
+  endif
+  |SQL database|
+  :Commit current batch;
+  |Backend command|
+  :Increase saved by actual insertions;\nPrint Saved X/N;
+  if (Batch added at least one new word?) then (yes)
+    :stalled = 0;
+  else (no)
+    :stalled = stalled + 1;
+  endif
+  if (stalled >= 3?) then (yes)
+    :Exit 1; report repeated duplicate/no-progress output;\nKeep commits; suggest remaining --count;
+    stop
+  endif
+endwhile (no)
+:Exit 0; exactly N new unique entries added;
+|Operator|
+:Bank is ready for learner Common requests;
+stop
+
+legend bottom
+  N is any positive operator count, not a fixed 1,000-word capacity.
+  LLM calls do not hold SQL transactions open.
+  Content includes word, part of speech, meaning, example and nullable IPA.
+  Interrupting the command keeps completed batches; check contents before retrying.
+  No operator run is triggered automatically by migrations or learner requests.
+endlegend
+@enduml

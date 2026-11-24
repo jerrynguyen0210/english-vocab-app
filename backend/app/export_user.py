@@ -14,10 +14,12 @@ from sqlalchemy.pool import NullPool
 from app.core.config import get_settings
 from app.models import (
     AuthSession,
-    CommonWordQuestion,
+    CommonPracticeQuestion,
+    CommonWord,
     ReviewAttempt,
     ReviewState,
     User,
+    UserCommonWordProgress,
     Word,
 )
 
@@ -105,24 +107,29 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
         "review_states": [dict(row) for row in states],
         "review_attempts": [dict(row) for row in attempts],
         "session_metadata": [dict(row) for row in sessions],
-        "common_word_questions": [
+        "common_word_progress": [
             dict(row)
             for row in db.execute(
                 select(
-                    CommonWordQuestion.id,
-                    CommonWordQuestion.word,
-                    CommonWordQuestion.ipa,
-                    CommonWordQuestion.part_of_speech,
-                    CommonWordQuestion.explanation,
-                    CommonWordQuestion.example,
-                    CommonWordQuestion.choices,
-                    CommonWordQuestion.correct_index,
-                    CommonWordQuestion.created_at,
-                    CommonWordQuestion.last_presented_at,
-                    CommonWordQuestion.learned_at,
+                    UserCommonWordProgress.common_word_id,
+                    CommonWord.word,
+                    CommonWord.normalised_word,
+                    UserCommonWordProgress.last_presented_at,
+                    UserCommonWordProgress.learned_at,
                 )
-                .where(CommonWordQuestion.user_id == user_id)
-                .order_by(CommonWordQuestion.created_at, CommonWordQuestion.id)
+                .join(
+                    CommonWord, CommonWord.id == UserCommonWordProgress.common_word_id
+                )
+                .where(UserCommonWordProgress.user_id == user_id)
+                .order_by(UserCommonWordProgress.common_word_id)
+            ).mappings()
+        ],
+        "common_practice_questions": [
+            dict(row)
+            for row in db.execute(
+                select(CommonPracticeQuestion.__table__)
+                .where(CommonPracticeQuestion.user_id == user_id)
+                .order_by(CommonPracticeQuestion.created_at, CommonPracticeQuestion.id)
             ).mappings()
         ],
         "excluded": [

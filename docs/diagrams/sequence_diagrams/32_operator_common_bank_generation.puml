@@ -1,0 +1,80 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 220
+skinparam ParticipantBackgroundColor #EEF4FB
+skinparam ParticipantBorderColor #355777
+hide footbox
+autonumber
+title Operator Generates N New Common Words into SQL
+
+' Sources: backend/app/generate_common_words.py,
+' backend/app/services/common_word_bank.py,
+' backend/app/llm/{openrouter_common_bank,openrouter_common}.py,
+' backend/app/schemas/common_word_bank.py.
+actor Operator
+participant "Backend CLI" as CLI
+participant "Bank population service" as Service
+participant "OpenRouter adapter" as Adapter
+participant "OpenRouter LLM" as LLM
+database "SQL / common_words" as DB
+
+note over CLI, DB : Precondition: normal forward-only migration process applied through 0022.\nHistorical seed is removed; independently saved recall and operator content are retained.
+Operator -> CLI : python -m app.generate_common_words --count N\nOptional --batch-size 1-20 (default 20)
+opt Count omitted
+  CLI --> Operator : Number of new Common words to generate?
+  Operator -> CLI : Positive whole number N
+end
+CLI -> CLI : Validate count and batch size; load private backend settings
+break Invalid input or configuration
+  CLI --> Operator : Nonzero exit; safe diagnostic; no LLM generation
+end
+CLI -> Service : populate_bank(engine, N, settings, batch_size)
+Service -> Service : saved=0; stalled=0
+loop Until saved=N, failure, interruption, or stalled=3
+  Service -> DB : Short read: SELECT all normalised_word values
+  DB --> Service : Current exclusions
+  Service -> DB : Close read connection / end transaction
+  Service -> Adapter : generate_bank_words(min(batch_size, N-saved), exclusions)
+  Adapter -> Adapter : Build content prompt and structured JSON schema
+  Adapter -> LLM : Requested count + all existing words to exclude\nNo database transaction open during provider call
+  note over Adapter, LLM : At most 3 HTTP attempts per call, within configured timeout.\nCapability fallback may remove schema enforcement or reasoning control once each.\nOther provider failures return to CLI without automatic operator retry.
+  LLM --> Adapter : Word, part of speech, explanation, example, nullable IPA\nor provider error
+  Adapter -> Adapter : Require completed bounded JSON; validate content fields\nReject empty, oversized, malformed or excess-count output
+  break Provider or validation failure
+    Adapter --> Service : Safe generation failure
+    Service --> CLI : BankGenerationStopped(saved, N)
+    CLI --> Operator : Exit 1; saved / remaining counts\nCompleted batches kept; retry with remaining --count
+  end
+  Adapter --> Service : Validated candidates
+  Service -> Service : Validate batch; normalize words; skip existing/in-batch duplicates
+  Service -> DB : BEGIN batch write
+  loop Each new normalized candidate
+    Service -> DB : INSERT with stable UUIDv5\nON CONFLICT (normalised_word) DO NOTHING RETURNING id
+    DB --> Service : Inserted ID, or duplicate skipped
+  end
+  alt Database failure
+    Service -> DB : ROLLBACK current batch
+    Service --> CLI : Safe database error with prior saved count
+    CLI --> Operator : Exit 1; completed batches kept; manual retry
+    break Stop operator run
+      note over CLI : Database credentials and provider bodies are not printed.
+    end
+  else Batch committed
+    Service -> DB : COMMIT
+    Service -> Service : Add actual inserted count to saved\nReset stalled on progress, otherwise increment
+    Service --> CLI : progress(saved, N)
+    CLI --> Operator : Saved X/N new Common words
+  end
+end
+alt saved=N
+  Service --> CLI : Return saved count
+  CLI --> Operator : Exit 0; N new unique words saved
+else Three consecutive batches added no words
+  Service --> CLI : BankGenerationStopped(saved, N)
+  CLI --> Operator : Exit 1; report remaining count for manual retry
+end
+CLI -> DB : Dispose engine in finally
+note over Operator, DB : Operator interruption exits nonzero and preserves completed commits.\nCheck bank contents before choosing a new count after an interruption.\nThis command never creates learner questions, learning progress, or recall records.
+@enduml

@@ -28,7 +28,11 @@ Client -> API : GET /api/v1/reviews/summary
 API -> S : review_summary(db, user)
 S -> S : Resolve next local midnight using user timezone
 S -> DB : Count saved words; count reviews due before next local midnight
-S -> DB : Count learned Common words\nCount distinct union of learned and saved normalized words
+alt Proposed Common schema installed
+  S -> DB : Count learned progress rows for this user\nCount distinct normalized words across saved words and learned common_words
+else Current backend through revision 0020
+  S -> S : learned_count = 0; total_count = saved_count
+end
 DB --> S : Counts
 S --> API : saved_count, due_count, daily_remaining=50, learned_count, total_count
 API --> Client : 200; Cache-Control: no-store

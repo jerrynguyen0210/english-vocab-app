@@ -1,42 +1,51 @@
-"""Provider requests stay offline and malformed LLM output never enters the bank."""
+"""Common generation stays bounded and validates the supplied bank IDs exactly."""
 
 import io
 import json
 from unittest.mock import patch
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
+from uuid import uuid4
 
 import pytest
 
-from app.llm.openrouter_common import SYSTEM_PROMPT, generate_common_words
+from app.llm.openrouter_common import generate_common_questions
 from app.llm.openrouter_review import ReviewError
+from app.schemas.common_words import BankWord
 
-
-def candidate(**overrides):
-    return dict(
+WORDS = [
+    BankWord(
+        id=uuid4(),
         word="reliable",
-        ipa="/rɪˈlaɪəbl/",
+        ipa=None,
         part_of_speech="adjective",
-        explanation="Able to be trusted.",
-        example="She is a reliable colleague.",
-        choices=[
-            "Easy to forget",
-            "Able to be trusted",
-            "Very expensive",
-            "Difficult to use",
-        ],
-        correct_index=1,
-        **overrides,
+        english_explanation="Able to be trusted.",
+        example_sentence=None,
     )
+]
+QUESTION = {
+    "common_word_id": str(WORDS[0].id),
+    "question": "What does reliable mean?",
+    "choices": ["Able to be trusted", "Easy to break", "Very slow", "Too expensive"],
+    "correct_index": 0,
+}
 
 
-def envelope(words, finish_reason="stop"):
+def completion(questions=None, finish="stop"):
     return io.BytesIO(
         json.dumps(
             {
                 "choices": [
                     {
-                        "finish_reason": finish_reason,
-                        "message": {"content": json.dumps({"words": words})},
+                        "finish_reason": finish,
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "questions": questions
+                                    if questions is not None
+                                    else [QUESTION]
+                                }
+                            )
+                        },
                     }
                 ]
             }
@@ -45,134 +54,118 @@ def envelope(words, finish_reason="stop"):
 
 
 def generate():
-    return generate_common_words(
-        ["eager"], model="test/model", api_key="placeholder-test-key"
+    return generate_common_questions(
+        WORDS, model="test/model", api_key="placeholder", timeout=15
     )
 
 
-def test_requests_native_everyday_words_and_four_unambiguous_meanings():
-    with patch(
-        "app.llm.openrouter_common.urlopen", return_value=envelope([candidate()])
-    ) as request:
-        items = generate()
-    assert items[0].word == "reliable" and items[0].correct_index == 1
-    assert items[0].ipa == "/rɪˈlaɪəbl/"
-    payload = json.loads(request.call_args.args[0].data)
-    assert "native English speakers" in SYSTEM_PROMPT
-    assert "everyday conversation" in SYSTEM_PROMPT
-    assert "Exactly one meaning" in SYSTEM_PROMPT
-    assert json.loads(payload["messages"][1]["content"])["excluded_words"] == ["eager"]
-    assert payload["response_format"]["type"] == "json_schema"
-    assert payload["max_tokens"] >= 4000
+def rejection(kind, status=400):
+    message = {
+        "reasoning": "Reasoning is mandatory and cannot be disabled",
+        "schema": "response_format json_schema not supported",
+    }[kind]
+    return HTTPError(
+        "https://example.test",
+        status,
+        "Rejected",
+        {},
+        io.BytesIO(json.dumps({"error": {"message": message}}).encode()),
+    )
 
 
-def test_prompt_includes_all_learned_and_saved_exclusions_without_truncation():
-    learned = [f"learned{i}" for i in range(600)]
-    excluded = [f"saved{i}" for i in range(600)]
+def test_supplied_words_and_schema_are_sent_and_output_is_validated():
     with patch(
-        "app.llm.openrouter_common.urlopen", return_value=envelope([candidate()])
+        "app.llm.openrouter_common.urlopen", return_value=completion()
     ) as request:
-        generate_common_words(
-            excluded,
-            learned_words=learned,
-            model="test/model",
-            api_key="placeholder-test-key",
-        )
+        assert generate()[0].common_word_id == WORDS[0].id
     payload = json.loads(request.call_args.args[0].data)
-    content = json.loads(payload["messages"][1]["content"])
-    assert content["learned_words"] == learned
-    assert content["excluded_words"] == excluded
-    assert "Do not include any learned word" in SYSTEM_PROMPT
+    assert json.loads(payload["messages"][1]["content"])[0]["word"] == "reliable"
+    assert payload["response_format"]["json_schema"]["strict"] is True
+    assert request.call_args.kwargs["timeout"] <= 15
 
 
 @pytest.mark.parametrize(
-    "change",
+    "changes",
     [
-        {"choices": ["One", "Two", "Three"]},
-        {"choices": ["One", "Two", "Three", " one "]},
-        {"choices": ["One", "Two", "Three", "   "]},
-        {"choices": ["One", "Two", "Three", 4]},
-        {"correct_index": 4},
+        {"choices": ["one", "two", "three"]},
+        {"choices": ["one", "two", "three", " ONE "]},
+        {"choices": ["one", "two", "three", " "]},
         {"correct_index": True},
-        {"ipa": None},
-        {"ipa": ""},
-        {"ipa": "not slash-delimited"},
-        {"ipa": "/bad\npronunciation/"},
-        {"ipa": "/" + "a" * 120 + "/"},
-        {"word": "not a word"},
-        {"example": "She is a colleague."},
-        {"explanation": " "},
-        {"part_of_speech": "unknown"},
-        {"unexpected": "field"},
+        {"correct_index": 4},
+        {"question": " "},
+        {"common_word_id": str(uuid4())},
+        {"extra": "not allowed"},
     ],
 )
-def test_rejects_invalid_model_questions(change):
-    item = candidate()
-    item.update(change)
-    with (
-        patch("app.llm.openrouter_common.urlopen", return_value=envelope([item])),
-        pytest.raises(ReviewError) as error,
-    ):
-        generate()
-    assert error.value.category == "invalid_response"
-
-
-@pytest.mark.parametrize("raw", [b"not json", b"{}", b'{"choices":[]}', b"x" * 262145])
-def test_rejects_bad_envelopes_and_oversized_response(raw):
-    with (
-        patch("app.llm.openrouter_common.urlopen", return_value=io.BytesIO(raw)),
-        pytest.raises(ReviewError),
-    ):
-        generate()
-
-
-def test_rejects_truncated_generation():
+def test_invalid_questions_fail_as_whole_batch(changes):
     with (
         patch(
             "app.llm.openrouter_common.urlopen",
-            return_value=envelope([candidate()], "length"),
+            return_value=completion([{**QUESTION, **changes}]),
         ),
         pytest.raises(ReviewError),
     ):
         generate()
 
 
-def test_falls_back_for_schema_unsupported_model_but_keeps_validation():
-    error = HTTPError(
-        "https://example.test",
-        400,
-        "Bad Request",
-        {},
-        io.BytesIO(b'{"error":{"message":"response_format not supported"}}'),
-    )
-    with patch(
-        "app.llm.openrouter_common.urlopen",
-        side_effect=[error, envelope([candidate()])],
-    ) as request:
-        assert len(generate()) == 1
-    assert "response_format" not in json.loads(request.call_args.args[0].data)
+@pytest.mark.parametrize("questions", [[], [QUESTION, QUESTION]])
+def test_missing_and_duplicate_ids_rejected(questions):
+    with (
+        patch("app.llm.openrouter_common.urlopen", return_value=completion(questions)),
+        pytest.raises(ReviewError),
+    ):
+        generate()
+
+
+def test_truncation_is_rejected():
+    with (
+        patch(
+            "app.llm.openrouter_common.urlopen",
+            return_value=completion(finish="length"),
+        ),
+        pytest.raises(ReviewError),
+    ):
+        generate()
 
 
 @pytest.mark.parametrize(
-    "failure",
-    [
-        URLError("private error"),
-        HTTPError("https://example.test", 401, "private error", {}, None),
-    ],
+    "capabilities",
+    [["reasoning"], ["schema"], ["reasoning", "schema"], ["schema", "reasoning"]],
 )
-def test_provider_errors_do_not_expose_response_details(failure):
-    with (
-        patch("app.llm.openrouter_common.urlopen", side_effect=failure),
-        pytest.raises(ReviewError) as error,
-    ):
-        generate()
-    assert "private error" not in str(error.value)
+def test_capability_fallbacks_are_independent_and_bounded(capabilities):
+    with patch(
+        "app.llm.openrouter_common.urlopen",
+        side_effect=[*(rejection(kind) for kind in capabilities), completion()],
+    ) as request:
+        assert generate()
+    assert request.call_count == len(capabilities) + 1
+    payload = json.loads(request.call_args.args[0].data)
+    if "schema" in capabilities:
+        assert "response_format" not in payload
+    if "reasoning" in capabilities:
+        assert "reasoning" not in payload and payload["max_tokens"] == 16000
 
 
-def test_missing_key_does_not_contact_provider():
+@pytest.mark.parametrize("status", [401, 402, 429, 500])
+def test_noncapability_errors_are_not_retried(status):
     with (
-        patch("app.llm.openrouter_common.urlopen") as request,
+        patch(
+            "app.llm.openrouter_common.urlopen",
+            side_effect=rejection("reasoning", status),
+        ) as request,
         pytest.raises(ReviewError),
     ):
-        generate_common_words([], model="test/model", api_key="")
-    request.assert_not_called()
+        generate()
+    assert request.call_count == 1
+
+
+def test_repeated_reasoning_rejection_does_not_loop():
+    with (
+        patch(
+            "app.llm.openrouter_common.urlopen",
+            side_effect=[rejection("reasoning"), rejection("reasoning")],
+        ) as request,
+        pytest.raises(ReviewError),
+    ):
+        generate()
+    assert request.call_count == 2

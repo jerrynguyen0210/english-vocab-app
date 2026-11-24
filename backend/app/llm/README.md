@@ -30,10 +30,9 @@ models with mandatory reasoning may still think. The sentence prompt requests at
 and caps output at 128 tokens.
 Models that require reasoning are retried without the request to disable it;
 models that support the control still receive `reasoning.enabled: false`.
-Mandatory-reasoning retries allow 16,000 completion tokens for Common batches and
-4,096 for review sentences, because reasoning shares the budget with the final
-JSON. Ordinary requests retain their smaller budgets. Truncated responses are
-still rejected and never inserted into the question bank.
+Mandatory-reasoning retries allow 4,096 completion tokens for review sentences,
+because reasoning shares the budget with the final JSON. Ordinary requests retain their smaller budgets. Truncated responses are
+still rejected and never stored as review prompts.
 Choose a text-generation model. If the provider rejects schema enforcement,
 the client retries once without it and validates the returned JSON locally. Missing keys
 fail generation jobs safely while the API and fallback prompts remain usable.
@@ -46,37 +45,42 @@ previous example/definition prompts, without network calls or changing schedules
 Revision 0013 adds the durable job queue. Old words keep their prompts; only newly added words use OpenRouter generation.
 Direct database inserts that bypass the word service receive a blank placeholder.
 
-## Common word questions
+## Shared-bank Common questions
 
-`openrouter_common.py` uses the same private OpenRouter settings to request batches
-of 20 words commonly used by native English speakers in everyday conversation. Each
-candidate must include a simple explanation, a natural example using the target,
-four distinct meaning choices, and a valid correct-answer index. Invalid or truncated
-responses are rejected; models without schema enforcement fall back to a JSON prompt
-with the same mandatory local validation.
+`openrouter_common.py` generates questions for up to ten supplied bank entries.
+The Common button triggers selection from the operator-populated shared bank before the LLM
+call; generation never invents bank words. The structured JSON must contain
+exactly one question, four distinct choices, and one integer answer index per
+supplied bank ID. Partial, duplicate, extra-ID, oversized and truncated responses
+are rejected as a whole. Capability fallback is bounded to three HTTP requests
+within the remaining Common timeout. Provider error bodies are not exposed.
 
-The authenticated `POST /api/v1/common-words/batch` route serves up to ten persisted
-questions per user, excluding learned words, saved words and supplied recent question IDs.
-When none remain, it queues a refill and returns 202. `python -m app.prompt_worker`
-handles that queue alongside existing review prompt jobs. Generation does not hold
-an account lock or an HTTP request open. The worker rechecks saved words and existing
-questions under an account lock after generation, then attaches only new unsaved
-words. Prompts include all correctly answered words in `learned_words` and all saved
-vocabulary plus up to 500 recent unlearned generated words in `excluded_words`.
-Learned and saved words are not truncated. The app continues to add a revealed
-word to scheduled Review only when its user explicitly chooses Save word.
+Questions and answer keys are persisted per user. Batch responses omit the keys;
+only the answer endpoint returns feedback after server grading. No Common worker
+or background refill queue is used. `COMMON_WORDS_TIMEOUT_SECONDS` is a total
+batch-generation budget (default 240 seconds), independent of saved-word prompt
+worker timeouts. Generation and failures are exercised with mocked providers in
+`tests/test_openrouter_common.py` and `tests/api/test_common_words.py`.
 
-`POST /api/v1/common-words/{question_id}/learned` accepts `selected_index`, verifies
-the correct answer and question ownership, and stores an idempotent `learned_at`
-timestamp. Learned questions are never served again. The client waits for this write
-before advancing and offers retry if it fails. This memory is included in account
-exports and erased with the account. Migration 0018 adds the nullable timestamp;
-past local quiz answers cannot be reconstructed.
+## Operator bank generation
 
-Migration 0017 adds the question bank and job tables. Refills have recoverable leases,
-three attempts with backoff, and a 60-second cooldown before a user can retry a failed
-job. The Common answer index is returned for local practice feedback; this is separate
-from authenticated, server-graded scheduled Review attempts.
+`python -m app.generate_common_words --count 1000` adds 1,000 **new** unique
+Common vocabulary entries directly to SQL. Without `--count`, the command prompts
+for a positive integer. `--batch-size` accepts 1 through 20 (default 20).
+`openrouter_common_bank.py` asks the configured LLM for word content, meanings,
+examples, parts of speech and nullable IPA; it does not generate quiz questions.
+
+This uses private `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_URL`, and
+`OPENROUTER_TIMEOUT_SECONDS` for each provider call. The same bounded transport
+and capability fallback used by question generation validates completed JSON.
+Every batch is validated before SQL insertion, and normalized duplicates are
+ignored using a database conflict guard. Exclusions include the whole current
+bank. There are no automatic content-generation jobs or startup LLM calls.
+
+Completed batches persist even if a later provider call fails. The command exits
+nonzero with saved/remaining counts for manual retry, and stops after three
+consecutive batches add nothing. Migration 0022 removes the retired bundled seed;
+apply migrations before running this command. Migrations never generate content.
 
 ## Direct testing
 

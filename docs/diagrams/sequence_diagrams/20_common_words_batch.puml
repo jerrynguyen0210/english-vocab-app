@@ -9,48 +9,51 @@ skinparam ActorBorderColor #355777
 skinparam ArrowColor #355777
 hide footbox
 autonumber
-title Serve Common-word bank and queue refill
+title Common button selects 10 unlearned bank words
 
-' Sources relative to repository root:
-' backend/app/api/routes/common_words.py
-' backend/app/services/common_words.py
-' backend/app/services/common_word_bank.py
-
-actor Client
-participant "FastAPI route" as API
-participant "Service" as S
+' Sources: backend/app/api/routes/common_words.py and backend/app/services/common_words.py.
+actor Learner
+participant "Add a word screen" as Client
+participant "Common batch API" as API
+participant "Common practice service" as S
 database PostgreSQL as DB
-ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
-note over API : Invalid request parameters / body return 422 before service execution.
 
-Client -> API : POST /api/v1/common-words/batch (exclude_ids)
-API -> S : get_batch(db, user, body)
-S -> DB : Lock and recheck active User FOR UPDATE
-break Account unavailable
-  S --> API : AccountUnavailable
-  API --> Client : 401
+Learner -> Client : Click Common button
+Client -> API : Request Common practice batch (authenticated)\nPOST /api/v1/common-words/batch
+API -> S : Resolve active user; validate request
+break Unauthenticated or account unavailable
+  API --> Client : Authentication error; no selection or LLM call
 end
-S -> DB : Count unlearned questions excluding currently saved words
-opt Available count <= 15
-  S -> DB : queue_refill: create missing job or reset failed job after 60s cooldown
-  note right of DB : Preserve active leases and failures still in cooldown.\nOne CommonWordJob per user.
+S -> DB : Read user's learned common_word_ids\nfrom user_common_word_progress WHERE learned_at IS NOT NULL
+DB --> S : Learned IDs
+S -> S : selected = []; cursor = start of shared common_words bank
+loop Until 10 distinct unlearned words selected OR bank exhausted
+  S -> DB : Read next 10 common_words after cursor\nStable ID order; keyset pagination
+  DB --> S : Up to 10 bank entries, or end of bank
+  S -> S : Advance cursor past fetched page\nCompare with learned IDs; append only unlearned entries\nStop appending when selected contains 10 words
 end
-S -> DB : Select up to 10 available questions excluding exclude_ids\nOrder least recently presented (null first), creation time, ID
-DB --> S : Questions
-alt Questions available
-  S -> DB : Set last_presented_at; COMMIT
-  S --> API : status=ready + question content, IPA, choices, correct_index
-  API --> Client : 200; Cache-Control: no-store
-else No eligible questions
-  S -> DB : queue_refill; COMMIT
-  alt Job queued or already pending / leased
-    S --> API : status=pending
-    API --> Client : 202; Retry-After: 2; Cache-Control: no-store
-  else Failed job still in cooldown
-    S --> API : status=failed
-    API --> Client : 200 status=failed; Cache-Control: no-store
+note over S, DB : Shared bank contains operator-generated vocabulary; its size is operator-selected.\nNo per-user word generation or bank refill job.\nLearned words are filtered before LLM generation.\nSaved-but-unlearned words remain eligible.
+opt No words selected
+  S -> DB : Check whether the shared bank contains any entries
+  DB --> S : Bank available or empty
+end
+alt Shared bank is empty
+  S --> API : CommonGenerationUnavailable
+  API --> Client : 503; Common words are not available yet
+else Populated bank has no unlearned words remaining
+  S --> API : status=complete; questions=[]
+  API --> Client : Show all Common words learned
+else At least one unlearned word selected
+  ref over S, DB : 23_common_words_worker: request-driven question generation\nGenerate and persist questions for the selected bank words
+  alt Generation or validation fails
+    S --> API : Retryable generation error; no partial batch persisted
+    API --> Client : Show Retry; preserve existing learning progress
+  else Valid batch persisted
+    S --> API : Up to 10 owned question IDs, word details, prompts and four choices\nAnswer keys remain on backend
+    API --> Client : Show one question at a time
+    note over Client : Normal batch = exactly 10 unlearned words.\nIf fewer than 10 remain in the bank, show the smaller final batch.\nRequest another batch only when the learner chooses to continue.
   end
 end
-ref over S, DB : 23_common_words_worker replenishes asynchronously
-note over S : Fetching Common questions does not create saved words or review schedules.
+note over API, DB : Do not hold a database transaction open during the LLM request.\nRecheck active account and learned IDs before publishing the batch;\nif concurrent learning changed the selection, discard and rebuild it.\nAt most 3 selection/generation attempts within the Common timeout budget.
+
 @enduml

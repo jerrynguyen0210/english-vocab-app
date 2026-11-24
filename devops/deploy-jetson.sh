@@ -154,6 +154,14 @@ server {
     set_real_ip_from 127.0.0.1;
     real_ip_header CF-Connecting-IP;
 
+    # Common batches generate questions during the request (backend default budget: 240s).
+    location = /api/v1/common-words/batch {
+        proxy_pass http://127.0.0.1:$API_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 300s;
+    }
     location /api/ {
         proxy_pass http://127.0.0.1:$API_PORT;
         proxy_set_header Host \$host;

@@ -1,6 +1,6 @@
 import { authenticatedFetch } from '@/services/auth';
 
-// Only these fixed, client-owned messages may be shown directly in the UI.
+// Only fixed client-owned messages may be shown directly in the UI.
 export class CommonWordsError extends Error {}
 
 export type CommonWordQuestion = {
@@ -9,24 +9,32 @@ export type CommonWordQuestion = {
   ipa?: string | null;
   partOfSpeech: string;
   explanation: string;
-  example: string;
+  example: string | null;
+  question: string;
   choices: readonly [string, string, string, string];
+};
+
+export type CommonAnswer = {
+  result: 'correct' | 'incorrect';
   correctIndex: number;
+  explanation: string;
 };
 
 function isQuestion(value: unknown): value is CommonWordQuestion {
   if (!value || typeof value !== 'object') return false;
   const question = value as Record<string, unknown>;
   return (
-    ['id', 'word', 'partOfSpeech', 'explanation', 'example'].every(
+    ['id', 'word', 'partOfSpeech', 'explanation', 'question'].every(
       (field) =>
         typeof question[field] === 'string' &&
         question[field].trim().length > 0,
     ) &&
+    (question.example === null || typeof question.example === 'string') &&
     (question.ipa == null ||
       (typeof question.ipa === 'string' &&
         question.ipa.length <= 120 &&
         /^\/[^/\r\n]+\/$/.test(question.ipa))) &&
+    !('correctIndex' in question) &&
     Array.isArray(question.choices) &&
     question.choices.length === 4 &&
     question.choices.every(
@@ -34,36 +42,12 @@ function isQuestion(value: unknown): value is CommonWordQuestion {
     ) &&
     new Set(
       question.choices.map((choice: string) => choice.trim().toLowerCase()),
-    ).size === 4 &&
-    typeof question.correctIndex === 'number' &&
-    Number.isInteger(question.correctIndex) &&
-    question.correctIndex >= 0 &&
-    question.correctIndex < 4
+    ).size === 4
   );
 }
 
-function waitForGeneration(signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error('Request cancelled'));
-      return;
-    }
-    const cancel = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', cancel);
-      reject(new Error('Request cancelled'));
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', cancel);
-      resolve();
-    }, 2000);
-    signal?.addEventListener('abort', cancel, { once: true });
-  });
-}
-
-/** The worker generates questions; short authenticated requests poll its durable job. */
+/** One request selects bank words and generates questions; no background polling. */
 export async function loadCommonWords(
-  excludeIds: readonly string[] = [],
   signal?: AbortSignal,
 ): Promise<readonly CommonWordQuestion[]> {
   if (signal?.aborted) throw new Error('Request cancelled');
@@ -73,7 +57,47 @@ export async function loadCommonWords(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      pollCommonWords(excludeIds, controller.signal),
+      (async () => {
+        const response = await authenticatedFetch(
+          '/common-words/batch',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+            signal: controller.signal,
+          },
+          5 * 60 * 1000,
+        );
+        if (!response.ok)
+          throw new CommonWordsError(
+            'Could not prepare new words. Please try again shortly.',
+          );
+        const batch: unknown = await response.json();
+        if (
+          !batch ||
+          typeof batch !== 'object' ||
+          !('status' in batch) ||
+          !('questions' in batch) ||
+          !Array.isArray(batch.questions)
+        )
+          throw new CommonWordsError(
+            'The server returned an invalid response. Please try again.',
+          );
+        if (batch.status === 'complete' && batch.questions.length === 0)
+          return [];
+        if (
+          batch.status !== 'ready' ||
+          batch.questions.length < 1 ||
+          batch.questions.length > 10 ||
+          !batch.questions.every(isQuestion) ||
+          new Set(batch.questions.map((item) => item.id)).size !==
+            batch.questions.length
+        )
+          throw new CommonWordsError(
+            'The server returned invalid questions. Please try again.',
+          );
+        return batch.questions;
+      })(),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => {
@@ -94,48 +118,36 @@ export async function loadCommonWords(
   }
 }
 
-async function pollCommonWords(
-  excludeIds: readonly string[],
-  signal: AbortSignal,
-): Promise<readonly CommonWordQuestion[]> {
-  const body = JSON.stringify({ exclude_ids: excludeIds.slice(-1000) });
-  while (true) {
-    if (signal?.aborted) throw new Error('Request cancelled');
-    const response = await authenticatedFetch('/common-words/batch', {
+export async function answerCommonQuestion(
+  questionId: string,
+  selectedIndex: number,
+): Promise<CommonAnswer> {
+  const response = await authenticatedFetch(
+    `/common-words/questions/${questionId}/answer`,
+    {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body,
-      signal,
-    });
-    if (!response.ok)
-      throw new CommonWordsError('Could not load common words.');
-    const batch: unknown = await response.json();
-    if (!batch || typeof batch !== 'object' || !('status' in batch))
-      throw new CommonWordsError(
-        'The server returned an invalid response. Please try again.',
-      );
-    if (batch.status === 'failed')
-      throw new CommonWordsError(
-        'Could not prepare new words. Please try again shortly.',
-      );
-    if (batch.status === 'ready') {
-      if (
-        !('questions' in batch) ||
-        !Array.isArray(batch.questions) ||
-        batch.questions.length > 10 ||
-        !batch.questions.every(isQuestion) ||
-        new Set(batch.questions.map((question) => question.id)).size !==
-          batch.questions.length
-      )
-        throw new CommonWordsError(
-          'The server returned invalid questions. Please try again.',
-        );
-      return batch.questions;
-    }
-    if (batch.status !== 'pending')
-      throw new CommonWordsError(
-        'The server returned an invalid response. Please try again.',
-      );
-    await waitForGeneration(signal);
-  }
+      body: JSON.stringify({ selected_index: selectedIndex }),
+    },
+  );
+  if (!response.ok)
+    throw new CommonWordsError('Could not check your answer. Please retry.');
+  const result: unknown = await response.json();
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    !('result' in result) ||
+    !['correct', 'incorrect'].includes(String(result.result)) ||
+    !('correctIndex' in result) ||
+    !Number.isInteger(result.correctIndex) ||
+    Number(result.correctIndex) < 0 ||
+    Number(result.correctIndex) > 3 ||
+    !('explanation' in result) ||
+    typeof result.explanation !== 'string' ||
+    (result.result === 'correct') !== (result.correctIndex === selectedIndex)
+  )
+    throw new CommonWordsError(
+      'The server returned an invalid answer. Please retry.',
+    );
+  return result as CommonAnswer;
 }

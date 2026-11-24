@@ -14,12 +14,10 @@ title Background prompt-worker orchestration and recovery
 ' Sources relative to repository root:
 ' backend/app/prompt_worker.py
 ' backend/app/services/prompt_jobs/worker.py
-' backend/app/services/common_word_worker.py
 
 actor "Service runner / operator" as Operator
 participant "app.prompt_worker" as Loop
 participant "Saved-word prompt jobs" as Prompt
-participant "Common refill jobs" as Common
 database PostgreSQL as DB
 Operator -> Loop : python -m app.prompt_worker
 Loop -> DB : Obtain configured engine
@@ -27,18 +25,15 @@ loop Until KeyboardInterrupt
   Loop -> Prompt : process_one(engine)
   ref over Prompt, DB : 22_prompt_generation_worker
   Prompt --> Loop : reviewed flag
-  Loop -> Common : process_one(engine) if prompt call did not raise SQLAlchemyError
-  ref over Common, DB : 23_common_words_worker
-  Common --> Loop : common flag
-  opt Neither service claimed work
+  opt No saved-word job claimed
     Loop -> Loop : Wait 1 second
   end
-  opt SQLAlchemyError during either call
+  opt SQLAlchemyError during saved-word processing
     Loop -> Loop : Log fixed error; wait 5 seconds; continue next iteration
     note over Loop, DB : Crashed / incomplete jobs become claimable when leases expire.
   end
 end
 Operator -> Loop : KeyboardInterrupt
 Loop -> DB : Dispose engine in finally
-note over Loop : Within each iteration, prompt and Common work run sequentially.\nProvider errors are converted into job retry states inside each service.
+note over Loop : Provider errors are converted into saved-word job retry states.\nProposed Common generation runs on batch requests (20 / 23), not this worker.
 @enduml

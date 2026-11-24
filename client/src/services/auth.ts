@@ -146,18 +146,26 @@ export async function signOut() {
 }
 
 /** Use for replayable JSON API requests; refresh once after an expired token. */
-export async function authenticatedFetch(path: string, init: RequestInit = {}) {
+export async function authenticatedFetch(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = 15000,
+) {
   if (!path.startsWith('/') || path.startsWith('//'))
     throw new Error('Expected an API-relative path.');
   if (!accessToken) await refreshSession();
   const send = (token: string | null) => {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${token}`);
-    return reachableFetch(`${getApiBaseUrl()}/api/v1${path}`, {
-      ...init,
-      headers,
-      credentials: nativeAuth ? 'omit' : (init.credentials ?? 'omit'),
-    });
+    return reachableFetch(
+      `${getApiBaseUrl()}/api/v1${path}`,
+      {
+        ...init,
+        headers,
+        credentials: nativeAuth ? 'omit' : (init.credentials ?? 'omit'),
+      },
+      timeoutMs,
+    );
   };
   const requestVersion = sessionVersion;
   const attemptedToken = accessToken;

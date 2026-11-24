@@ -7,13 +7,15 @@ title WordRecall - Backend System Context
 ' Persistence: backend/app/core/database.py, backend/app/models/*.py
 ' Generation: backend/app/prompt_worker.py,
 '   backend/app/services/prompt_jobs/worker.py,
-'   backend/app/services/common_word_worker.py,
-'   backend/app/llm/{openrouter_review,openrouter_common}.py
+'   backend/app/llm/openrouter_review.py
 ' Embeddings: backend/app/embedding_worker.py,
 '   backend/app/services/embeddings.py, backend/app/services/reviews/topics.py
 ' Dictionary: backend/app/services/dictionary.py
-' Operations: backend/app/{migrate,export_user}.py
+' Operations: backend/app/{migrate,export_user,generate_common_words}.py
+' Common content: backend/app/services/common_word_bank.py, app/llm/openrouter_common_bank.py
 ' Client platforms and database deployment: README.md, backend/docker-compose.yml
+' Common practice: sequences 20, 21, 23; operator content generation: sequence 32.
+' Logical source architecture; no claim about inspected deployment state.
 ' Uses standard PlantUML only; no remote includes or credentials are required.
 
 left to right direction
@@ -37,9 +39,9 @@ rectangle "WordRecall client\n[External software system]\n\nExpo / React Native\
 
 rectangle "WordRecall backend\n[System in scope]\n\nAccounts and authentication\nDictionary lookup and saved words\nScheduled reviews and topic search\nCommon-word practice\n\nFastAPI API + background workers" as backend #DCEEDC
 
-database "PostgreSQL\n[External data store]\n\nAccounts and token hashes\nWords and embedding vectors\nReview schedules and attempts\nQuestion bank, learning progress\nand persistent generation jobs" as postgres
+database "PostgreSQL\n[External data store]\n\nAccounts and token hashes\nWords and embedding vectors\nReview schedules and attempts\nSaved-word generation jobs\nOperator-generated shared Common words,\nper-user progress and generated questions" as postgres
 
-rectangle "OpenRouter\n[External software system]\n\nLanguage-model gateway\nReview sentence generation\nCommon-word question generation" as openrouter
+rectangle "OpenRouter\n[External software system]\n\nLanguage-model gateway\nReview sentence generation\nCommon vocabulary and question generation" as openrouter
 
 rectangle "Ollama\n[External software system]\n\nEmbedding model server\nSaved-word and topic vectors" as ollama
 
@@ -48,18 +50,22 @@ actor "Operator / deployment automation" as operator
 learner --> client : Registers, saves words,\npractises and manages account
 client --> backend : JSON over HTTP(S): /api/v1\nAuth, account, words, reviews, common words\nBearer access token; browser refresh cookie\nor native refresh token
 backend --> postgres : Reads and writes application data\nClaims jobs and stores generated results\nSQL via SQLAlchemy / psycopg
-backend --> openrouter : Sends word + meaning or word exclusions;\nreceives generated sentences / questions\nHTTPS JSON: POST /chat/completions\nBackground prompt worker
+backend --> openrouter : Generates vocabulary in operator batches of up to 20;\nsends saved word + meaning, or 10 selected\nunlearned bank words;\nreceives generated sentences / questions\nHTTPS JSON: POST /chat/completions\nSaved-word worker / Common request\nOperator content-generation CLI
 backend --> ollama : Sends saved-word text / topic query;\nreceives embedding vectors\nHTTP(S) JSON: POST /api/embed\nAPI topic search + embedding worker
-operator --> backend : Runs migration / export CLIs;\nchecks GET /health over HTTP(S)
+operator --> backend : Runs migration / export CLIs;\ngenerates N new Common words with LLM;\nchecks GET /health over HTTP(S)
 
 note bottom of backend
   Local dictionary: WordNet corpus + LemmInflect.
   Authentication is implemented by the backend.
-  Workers belong to this system; jobs persist in PostgreSQL.
+  Workers belong to this system; saved-word jobs persist in PostgreSQL.
+  Operator chooses N new words; CLI generates and saves batches of up to 20.
+  The Common button flow selects 10 unlearned bank words,
+  generates four-choice questions on request and grades on the backend.
+  Correct answers mark learned; incorrect answers offer Save for recall.
 end note
 
 legend bottom
-  Scope: the implemented backend and its direct environment, not a deployment topology.
+  Scope: backend source and direct environment; not an inspected deployment topology.
   Arrows identify the caller; labels describe request and response data.
   PostgreSQL and model servers sit outside the backend application boundary.
   Ollama review generation also exists as a standalone CLI; the prompt worker uses OpenRouter.

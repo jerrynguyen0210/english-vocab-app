@@ -1,8 +1,10 @@
 @startuml
-title English Vocabulary - Database Relationships
+title English Vocabulary - Database Relationships with Operator-Generated Common Word Bank
 
-' Based on backend/app/models/*.py and migrations through revision 0019.
-' Represents the current declared schema, not an inspected deployed database.
+' Based on backend/app/models/*.py and migrations through revision 0022.
+' Existing entities represent the declared schema, not an inspected deployed database.
+' Yellow entities highlight Common practice tables created by revision 0021.
+' Revision 0022 removes historical seed content; the operator CLI populates active content.
 hide circle
 skinparam shadowing false
 skinparam entity {
@@ -89,40 +91,49 @@ entity "prompt_jobs" as prompt_jobs {
   failure_category : VARCHAR(32)
 }
 
-entity "common_word_questions" as common_word_questions {
+entity "common_words" as common_words <<Common>> #FFF2CC {
   * id : UUID <<PK>>
-  * user_id : UUID <<FK>>
   * word : TEXT
+  * normalised_word : TEXT <<UK>>
   ipa : VARCHAR(120)
-  * normalised_word : TEXT
   * part_of_speech : VARCHAR(32)
-  * explanation : TEXT
-  * example : TEXT
-  * choices : JSON
-  * correct_index : INTEGER
+  * english_explanation : TEXT
+  example_sentence : TEXT
   * created_at : TIMESTAMP (UTC)
-  last_presented_at : TIMESTAMP (UTC)
-  learned_at : TIMESTAMP (UTC)
-  .. Composite unique keys ..
-  UNIQUE (user_id, normalised_word)
 }
 
-entity "common_word_jobs" as common_word_jobs {
+entity "user_common_word_progress" as user_common_word_progress <<Common>> #FFF2CC {
   * user_id : UUID <<PK, FK>>
-  * available_at : TIMESTAMP (UTC)
-  * attempts : INTEGER
-  lease_token : UUID
-  failed_at : TIMESTAMP (UTC)
-  failure_category : VARCHAR(32)
+  * common_word_id : UUID <<PK, FK>>
+  last_presented_at : TIMESTAMP (UTC)
+  learned_at : TIMESTAMP (UTC)
+  .. Composite primary key ..
+  PRIMARY KEY (user_id, common_word_id)
+}
+
+entity "common_practice_questions" as common_practice_questions <<Common>> #FFF2CC {
+  * id : UUID <<PK>>
+  * user_id : UUID <<FK>>
+  * common_word_id : UUID <<FK>>
+  * question : TEXT
+  * choices : JSON (4 strings)
+  * correct_index : INTEGER
+  * created_at : TIMESTAMP (UTC)
+  selected_index : INTEGER
+  answered_at : TIMESTAMP (UTC)
 }
 
 users ||--o{ words : "id -> user_id"
 users ||--o{ auth_sessions : "id -> user_id / CASCADE"
-users ||--o{ common_word_questions : "id -> user_id / CASCADE"
-users ||--o| common_word_jobs : "id -> user_id / CASCADE"
 words ||--o| review_states : "id -> word_id / CASCADE"
 words ||--o| prompt_jobs : "id -> word_id / CASCADE"
 words ||--o{ review_attempts : "(id, user_id) -> (word_id, user_id)"
+
+' Common relationships: each progress row belongs to one user and one bank entry.
+users ||--o{ user_common_word_progress : "id -> user_id / CASCADE"
+common_words ||--o{ user_common_word_progress : "id -> common_word_id"
+users ||--o{ common_practice_questions : "id -> user_id / CASCADE"
+common_words ||--o{ common_practice_questions : "id -> common_word_id"
 
 note right of users
   password_hash OR auth_provider_id must be present.
@@ -146,15 +157,59 @@ note right of review_attempts
   database deletion for accounts marked deleted.
 end note
 
-note right of common_word_questions
-  correct_index BETWEEN 0 AND 3
-  No FK links a generated question to words;
-  matching word text is not a database relationship.
-end note
-
 note bottom of auth_rate_buckets
   Independent shared rate-limit storage.
   No user or session foreign key.
+end note
+
+note right of common_words
+  Shared SQL bank populated explicitly by the operator LLM CLI.
+  --count N adds N new unique words; no fixed 1,000-word limit.
+  Vocabulary is generated in batches of up to 20.
+  Entries are shared by all users and have no user_id.
+  Meanings, examples and nullable IPA are validated before insert.
+  normalised_word uniqueness prevents duplicate bank content.
+  Deleting a user never deletes shared bank entries.
+  Referenced bank entries cannot be deleted until
+  their progress rows are handled explicitly.
+end note
+
+note right of user_common_word_progress
+  Users and common_words are many-to-many
+  through this table, with at most one row per pair.
+  Create progress when a generated batch is published;
+  no row means never published to this user.
+  Correct answers set learned_at once; incorrect answers
+  leave it unchanged. learned_at IS NOT NULL means learned.
+  Select bank entries 10 at a time, skipping learned IDs
+  until 10 unlearned words or end of bank is reached.
+  Account erasure cascades only to that user's progress.
+  Learning a Common word does not automatically save it
+  to words or create a scheduled review.
+end note
+
+note right of common_practice_questions
+  Generated on a Common-button batch request.
+  One question per selected bank word, with four distinct
+  choices and exactly one correct_index BETWEEN 0 AND 3.
+  Keep answer keys on the backend until grading.
+  selected_index is NULL or BETWEEN 0 AND 3.
+  selected_index and answered_at are both NULL or both set.
+  Store first answer for idempotent feedback; correctness
+  is derived from selected_index = correct_index.
+  Many questions may reference a bank word across users
+  and sessions; learned status lives in progress instead.
+end note
+
+note bottom of words
+  Existing per-user saved vocabulary remains independent.
+  After an incorrect Common answer, offer Save for recall.
+  On confirmation, copy the bank entry into words
+  using the existing per-user normalized-word uniqueness.
+  No direct FK links words to common_words; custom words
+  and saved copies remain valid independently of the bank.
+  Saving creates a review state and prompt job, but does not
+  mark the Common word learned; already-saved words are not duplicated.
 end note
 
 legend bottom
@@ -165,6 +220,7 @@ legend bottom
   UUID = SQLAlchemy Uuid (native UUID or CHAR(32), depending on database)
   TIMESTAMP (UTC) = application UTCDateTime, backed by a timezone-aware DateTime type
   words.word, normalised_word and english_explanation must not be blank
-  Application tables only; Alembic migration bookkeeping is omitted
+  Yellow / <<Common>> = shared vocabulary, per-user progress and owned practice questions
+  Application tables only; Alembic bookkeeping is omitted
 endlegend
 @enduml

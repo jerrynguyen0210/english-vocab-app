@@ -29,14 +29,6 @@ class WordAlreadyExists(ServiceError):
     pass
 
 
-class CommonQuestionNotFound(ServiceError):
-    pass
-
-
-class InvalidCommonAnswer(ServiceError):
-    pass
-
-
 class ReviewNotFound(ServiceError):
     pass
 
@@ -68,4 +60,12 @@ class AuthRateLimited(ServiceError):
 
 
 class ReviewGenerationUnavailable(ServiceError):
+    pass
+
+
+class CommonQuestionNotFound(ServiceError):
+    pass
+
+
+class CommonGenerationUnavailable(ServiceError):
     pass

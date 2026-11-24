@@ -23,31 +23,35 @@ const questions: readonly CommonWordQuestion[] = [
     partOfSpeech: 'adjective',
     explanation: 'Someone or something you can depend on.',
     example: 'She is a reliable colleague.',
+    question: 'What does reliable mean?',
     choices: [
       'Easy to forget',
       'Able to be trusted',
       'Very expensive',
       'Difficult to understand',
     ],
-    correctIndex: 1,
   },
   {
     id: 'eager',
     word: 'eager',
     partOfSpeech: 'adjective',
-    explanation: 'Very interested and excited about doing something.',
-    example: 'He was eager to learn more.',
+    explanation: 'Very interested and excited.',
+    example: null,
+    question: 'What does eager mean?',
     choices: [
       'Ready and excited',
       'Quiet and tired',
       'Hard to find',
       'Unwilling to help',
     ],
-    correctIndex: 0,
   },
 ];
-const response = (status = 201) =>
-  ({ ok: status >= 200 && status < 300, status }) as Response;
+const response = (body: unknown = {}, status = 200) =>
+  ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  }) as Response;
 const onSaved = jest.fn();
 const onBackToVocab = jest.fn();
 function practice(active = true, savedWords: string[] = []) {
@@ -60,131 +64,37 @@ function practice(active = true, savedWords: string[] = []) {
     />
   );
 }
+async function choose(name = 'B. Able to be trusted') {
+  await fireEvent.press(screen.getByRole('button', { name }));
+}
 async function advance() {
   await act(async () => {
     jest.advanceTimersByTime(800);
   });
 }
+function grade(path: string, options?: RequestInit) {
+  if (path === '/words') return Promise.resolve(response({}, 201));
+  const correctIndex = path.includes('/reliable/') ? 1 : 0;
+  const selected = JSON.parse(String(options?.body)).selected_index;
+  return Promise.resolve(
+    response({
+      result: selected === correctIndex ? 'correct' : 'incorrect',
+      correctIndex,
+      explanation: questions[path.includes('/reliable/') ? 0 : 1].explanation,
+    }),
+  );
+}
 
 beforeEach(() => {
   jest.useFakeTimers();
   loadMock.mockReset().mockResolvedValue(questions);
-  fetchMock.mockReset().mockResolvedValue(response());
+  fetchMock.mockReset().mockImplementation(grade);
   onSaved.mockClear();
   onBackToVocab.mockClear();
 });
 afterEach(() => jest.useRealTimers());
 
-test('shows IPA beside the word in the question and revealed answer', async () => {
-  await render(practice());
-  expect(
-    screen.getByLabelText('IPA pronunciation: /rɪˈlaɪəbl/'),
-  ).toBeOnTheScreen();
-  await fireEvent.press(
-    screen.getByRole('button', { name: 'A. Easy to forget' }),
-  );
-  expect(
-    screen.getByLabelText('IPA pronunciation: /rɪˈlaɪəbl/'),
-  ).toBeOnTheScreen();
-  await fireEvent.press(
-    screen.getByRole('button', { name: 'Skip · Next word' }),
-  );
-  expect(screen.getByText('eager')).toBeOnTheScreen();
-  expect(screen.queryByLabelText(/IPA pronunciation/)).toBeNull();
-});
-
-test.each(['correct', 'incorrect'])(
-  'the question timer stops after a %s answer and resets for the next word',
-  async (answer) => {
-    await render(practice());
-    expect(
-      screen.getByLabelText(
-        'Time spent on this question: 0 minutes, 0 seconds',
-      ),
-    ).toBeOnTheScreen();
-    await act(async () => {
-      jest.advanceTimersByTime(2250);
-    });
-    expect(
-      screen.getByLabelText(
-        'Time spent on this question: 0 minutes, 2 seconds',
-      ),
-    ).toBeOnTheScreen();
-    await fireEvent.press(
-      screen.getByRole('button', {
-        name:
-          answer === 'correct' ? 'B. Able to be trusted' : 'A. Easy to forget',
-      }),
-    );
-    await act(async () => {
-      jest.advanceTimersByTime(500);
-    });
-    if (answer === 'correct') {
-      expect(
-        screen.getByLabelText(
-          'Time spent on this question: 0 minutes, 2 seconds',
-        ),
-      ).toBeOnTheScreen();
-      await advance();
-    } else {
-      await act(async () => {
-        jest.advanceTimersByTime(5000);
-      });
-      expect(
-        screen.getByLabelText(
-          'Time spent on this question: 0 minutes, 2 seconds',
-        ),
-      ).toBeOnTheScreen();
-      await fireEvent.press(
-        screen.getByRole('button', { name: 'Skip · Next word' }),
-      );
-    }
-    expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
-    expect(
-      screen.getByLabelText(
-        'Time spent on this question: 0 minutes, 0 seconds',
-      ),
-    ).toBeOnTheScreen();
-  },
-);
-
-test('the timer preserves elapsed time while Common is hidden and formats minutes', async () => {
-  const view = await render(practice());
-  await act(async () => {
-    jest.advanceTimersByTime(1500);
-  });
-  await view.rerender(practice(false));
-  await act(async () => {
-    jest.advanceTimersByTime(10000);
-  });
-  expect(
-    screen.getByLabelText('Time spent on this question: 0 minutes, 1 second'),
-  ).toBeOnTheScreen();
-  await view.rerender(practice());
-  await act(async () => {
-    jest.advanceTimersByTime(59500);
-  });
-  expect(
-    screen.getByLabelText('Time spent on this question: 1 minute, 1 second'),
-  ).toBeOnTheScreen();
-  expect(
-    screen.getByLabelText('Time spent on this question: 1 minute, 1 second'),
-  ).toBeOnTheScreen();
-});
-
-test('shows the safe generation failure message instead of a generic load error', async () => {
-  loadMock.mockRejectedValueOnce(
-    new CommonWordsError(
-      'Could not prepare new words. Please try again shortly.',
-    ),
-  );
-  await render(practice());
-  expect(screen.getByRole('alert')).toHaveTextContent(
-    'Could not prepare new words. Please try again shortly.',
-  );
-});
-
-test('Vocab remains the default and switching tabs preserves search inputs and quiz progress', async () => {
+test('Common button triggers loading; Vocab stays default and inputs persist across tabs', async () => {
   await render(<AddWordScreen />);
   expect(loadMock).not.toHaveBeenCalled();
   await fireEvent.changeText(
@@ -192,80 +102,23 @@ test('Vocab remains the default and switching tabs preserves search inputs and q
     'create',
   );
   await fireEvent.press(screen.getByRole('tab', { name: 'Common' }));
-  expect(screen.getByRole('tab', { name: 'Common' })).toBeSelected();
-  expect(screen.queryByPlaceholderText('Enter a word, e.g. create')).toBeNull();
-  expect(screen.getAllByRole('button')).toHaveLength(4);
-  await fireEvent.press(
-    screen.getByRole('button', { name: 'B. Able to be trusted' }),
-  );
-  await fireEvent.press(screen.getByRole('tab', { name: 'Vocab' }));
-  await advance();
-  expect(
-    screen.getByPlaceholderText('Enter a word, e.g. create'),
-  ).toHaveDisplayValue('create');
-  await fireEvent.press(screen.getByRole('tab', { name: 'Common' }));
-  expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
-  expect(
-    screen.getByText('✓ Correct! Moving to the next word…'),
-  ).toBeOnTheScreen();
-  await advance();
-  expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
+  expect(screen.getByText('What does reliable mean?')).toBeOnTheScreen();
   expect(loadMock).toHaveBeenCalledTimes(1);
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  await fireEvent.press(screen.getByRole('tab', { name: 'Vocab' }));
+  expect(screen.getByDisplayValue('create')).toBeOnTheScreen();
 });
 
-test('shows a loading state until the question source resolves', async () => {
-  let resolve!: (items: readonly CommonWordQuestion[]) => void;
-  loadMock.mockReturnValue(
-    new Promise((done) => {
-      resolve = done;
-    }),
-  );
+test('shows generated question and IPA without revealing the explanation before answering', async () => {
   await render(practice());
-  expect(screen.getByLabelText('Loading common words')).toBeBusy();
-  expect(screen.queryAllByRole('button')).toHaveLength(0);
-  await act(async () => {
-    resolve(questions);
-  });
-  expect(screen.queryByLabelText('Loading common words')).toBeNull();
+  expect(screen.getByText('What does reliable mean?')).toBeOnTheScreen();
+  expect(
+    screen.getByLabelText('IPA pronunciation: /rɪˈlaɪəbl/'),
+  ).toBeOnTheScreen();
+  expect(screen.queryByText(questions[0].explanation)).toBeNull();
   expect(screen.getAllByRole('button')).toHaveLength(4);
 });
 
-test('correct answers lock all choices, advance automatically, and count each answer once', async () => {
-  await render(practice());
-  const answer = screen.getByRole('button', { name: 'B. Able to be trusted' });
-  await fireEvent.press(answer);
-  expect(
-    screen.getByText('✓ Correct! Moving to the next word…'),
-  ).toBeOnTheScreen();
-  for (const choice of screen.getAllByRole('button'))
-    expect(choice).toBeDisabled();
-  await fireEvent.press(answer);
-  await advance();
-  expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
-  await fireEvent.press(
-    screen.getByRole('button', { name: 'A. Ready and excited' }),
-  );
-  await advance();
-  expect(screen.getByText('2 correct · 0 words saved')).toBeOnTheScreen();
-  expect(fetchMock).toHaveBeenCalledTimes(2);
-  expect(fetchMock).toHaveBeenNthCalledWith(
-    1,
-    '/common-words/reliable/learned',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selected_index: 1 }),
-    },
-  );
-  expect(fetchMock).toHaveBeenNthCalledWith(2, '/common-words/eager/learned', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ selected_index: 0 }),
-  });
-});
-
-test('correct answers wait for persistent memory before advancing', async () => {
+test('correct answer is submitted to server once and advances only after persistence', async () => {
   let resolve!: (value: Response) => void;
   fetchMock.mockReturnValueOnce(
     new Promise((done) => {
@@ -273,90 +126,80 @@ test('correct answers wait for persistent memory before advancing', async () => 
     }),
   );
   await render(practice());
-  await fireEvent.press(
-    screen.getByRole('button', { name: 'B. Able to be trusted' }),
-  );
+  await choose();
+  expect(screen.getByText('Checking your answer…')).toBeOnTheScreen();
+  expect(screen.queryByText(/Correct!/)).toBeNull();
+  await choose();
   await advance();
   expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
-  expect(
-    screen.getByText('✓ Correct! Remembering this word…'),
-  ).toBeOnTheScreen();
-  for (const choice of screen.getAllByRole('button'))
-    expect(choice).toBeDisabled();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/common-words/questions/reliable/answer',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selected_index: 1 }),
+    },
+  );
   await act(async () => {
-    resolve(response(204));
+    resolve(
+      response({
+        result: 'correct',
+        correctIndex: 1,
+        explanation: questions[0].explanation,
+      }),
+    );
   });
   await advance();
   expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
+  expect(onSaved).not.toHaveBeenCalled();
 });
 
-test.each(['network', 'server'])(
-  'remembering a correct answer supports retry after %s failure',
-  async (failure) => {
-    if (failure === 'network')
-      fetchMock.mockRejectedValueOnce(new Error('offline'));
-    else fetchMock.mockResolvedValueOnce(response(503));
-    await render(practice());
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'B. Able to be trusted' }),
-    );
-    await advance();
-    expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      /Could not remember|connection|offline/i,
-    );
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'Retry remembering word' }),
-    );
-    await advance();
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'B. Quiet and tired' }),
-    );
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'Skip · Next word' }),
-    );
-    expect(screen.getByText('1 correct · 0 words saved')).toBeOnTheScreen();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  },
-);
-
-test('a missed answer reveals the meaning and example, and Skip never saves', async () => {
+test('answer failure holds the question and retry sends exactly the same selected choice', async () => {
+  fetchMock.mockRejectedValueOnce(new Error('offline'));
   await render(practice());
-  await fireEvent.press(
-    screen.getByRole('button', { name: 'A. Easy to forget' }),
-  );
-  expect(screen.getByText('CORRECT ANSWER')).toBeOnTheScreen();
-  expect(screen.getByText('adjective · Able to be trusted')).toBeOnTheScreen();
-  expect(screen.getByText('Your answer: Easy to forget')).toBeOnTheScreen();
-  expect(screen.getByText('“She is a reliable colleague.”')).toBeOnTheScreen();
+  await choose('A. Easy to forget');
+  expect(screen.getByRole('alert')).toBeOnTheScreen();
+  expect(screen.queryByText('Save this word for later?')).toBeNull();
   await advance();
   expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole('button', { name: 'Retry answer' }));
+  expect(screen.getByText('CORRECT ANSWER')).toBeOnTheScreen();
+  expect(fetchMock.mock.calls[0][1]?.body).toBe(
+    fetchMock.mock.calls[1][1]?.body,
+  );
+});
+
+test('incorrect answer is graded on backend, reveals feedback, and Skip never saves', async () => {
+  await render(practice());
+  await choose('A. Easy to forget');
+  expect(screen.getByText('CORRECT ANSWER')).toBeOnTheScreen();
+  expect(screen.getByText('adjective · Able to be trusted')).toBeOnTheScreen();
+  expect(screen.getByText('Save this word for later?')).toBeOnTheScreen();
+  expect(screen.getByText('Your answer: Easy to forget')).toBeOnTheScreen();
   await fireEvent.press(
     screen.getByRole('button', { name: 'Skip · Next word' }),
   );
   expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(onSaved).not.toHaveBeenCalled();
 });
 
-test('saving posts the revealed word once, blocks Skip while pending, and shows confirmation before continuing', async () => {
+test('Save is explicit, prevents duplicate taps, and blocks Skip while pending', async () => {
+  await render(practice());
+  await choose('A. Easy to forget');
   let resolve!: (value: Response) => void;
-  fetchMock.mockReturnValue(
+  fetchMock.mockReturnValueOnce(
     new Promise((done) => {
       resolve = done;
     }),
-  );
-  await render(practice());
-  await fireEvent.press(
-    screen.getByRole('button', { name: 'A. Easy to forget' }),
   );
   await fireEvent.press(screen.getByRole('button', { name: 'Save word' }));
   expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
   expect(
     screen.getByRole('button', { name: 'Skip · Next word' }),
   ).toBeDisabled();
-  await fireEvent.press(screen.getByRole('button', { name: 'Saving…' }));
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(fetchMock).toHaveBeenCalledWith('/words', {
+  expect(fetchMock).toHaveBeenLastCalledWith('/words', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -366,92 +209,73 @@ test('saving posts the revealed word once, blocks Skip while pending, and shows 
     }),
   });
   await act(async () => {
-    resolve(response());
+    resolve(response({}, 201));
   });
   expect(screen.getByText('✓ Word saved to your bank')).toBeOnTheScreen();
   expect(onSaved).toHaveBeenCalledWith('reliable');
-  await advance();
-  expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
   await fireEvent.press(screen.getByRole('button', { name: 'Next word' }));
-  await fireEvent.press(
-    screen.getByRole('button', { name: 'A. Ready and excited' }),
-  );
+  await choose('A. Ready and excited');
   await advance();
   expect(screen.getByText('1 correct · 1 word saved')).toBeOnTheScreen();
   await fireEvent.press(
     screen.getByRole('button', { name: 'Practise more words' }),
   );
-  expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
-  expect(screen.getAllByRole('button')).toHaveLength(4);
   expect(loadMock).toHaveBeenCalledTimes(2);
-  expect(loadMock.mock.calls[1][0]).toEqual(['reliable', 'eager']);
 });
 
-test.each(['network', 'server'])(
-  'save %s failure stays on the revealed word and supports retry',
-  async (failure) => {
-    if (failure === 'network')
-      fetchMock.mockRejectedValueOnce(new Error('offline'));
-    else fetchMock.mockResolvedValueOnce(response(503));
-    await render(practice());
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'A. Easy to forget' }),
-    );
-    await fireEvent.press(screen.getByRole('button', { name: 'Save word' }));
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      /Could not save|connection|offline/i,
-    );
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(screen.getByText('CORRECT ANSWER')).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole('button', { name: 'Retry save' }));
-    expect(screen.getByText('✓ Word saved to your bank')).toBeOnTheScreen();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  },
-);
+test('save failure can retry without resubmitting the graded answer', async () => {
+  await render(practice());
+  await choose('A. Easy to forget');
+  fetchMock.mockResolvedValueOnce(response({}, 503));
+  await fireEvent.press(screen.getByRole('button', { name: 'Save word' }));
+  expect(screen.getByRole('alert')).toHaveTextContent(/Could not save/);
+  await fireEvent.press(screen.getByRole('button', { name: 'Retry save' }));
+  expect(screen.getByText('✓ Word saved to your bank')).toBeOnTheScreen();
+  expect(
+    fetchMock.mock.calls.filter(([path]) => path.includes('/answer')),
+  ).toHaveLength(1);
+});
 
 test.each(['known', 'conflict'])(
-  'already saved words (%s) show an honest confirmation and do not increase saved counts',
+  'already saved words (%s) do not inflate saved counts',
   async (kind) => {
-    fetchMock.mockResolvedValue(response(409));
     await render(practice(true, kind === 'known' ? ['reliable'] : []));
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'A. Easy to forget' }),
-    );
+    await choose('A. Easy to forget');
+    if (kind === 'conflict') fetchMock.mockResolvedValueOnce(response({}, 409));
     await fireEvent.press(
       screen.getByRole('button', {
         name: kind === 'known' ? 'Already saved · Continue' : 'Save word',
       }),
     );
     expect(screen.getByText('✓ Already in your word bank')).toBeOnTheScreen();
-    expect(fetchMock).toHaveBeenCalledTimes(kind === 'known' ? 0 : 1);
     await fireEvent.press(screen.getByRole('button', { name: 'Next word' }));
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'B. Quiet and tired' }),
-    );
+    await choose('B. Quiet and tired');
     await fireEvent.press(
       screen.getByRole('button', { name: 'Skip · Next word' }),
     );
     expect(screen.getByText('0 correct · 0 words saved')).toBeOnTheScreen();
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'Back to Vocab' }),
-    );
-    expect(onBackToVocab).toHaveBeenCalledTimes(1);
   },
 );
 
-test('question loading failures and an empty bank provide retry and a route back to Vocab', async () => {
-  loadMock.mockRejectedValueOnce(new Error('failed')).mockResolvedValueOnce([]);
+test('generation failure offers retry and all-learned completion is explicit', async () => {
+  loadMock
+    .mockRejectedValueOnce(
+      new CommonWordsError(
+        'Could not prepare new words. Please try again shortly.',
+      ),
+    )
+    .mockResolvedValueOnce([]);
   await render(practice());
-  expect(screen.getByRole('alert')).toHaveTextContent(/Could not load words/);
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    /Could not prepare new words/,
+  );
   await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
-  expect(screen.getByText('No common words available')).toBeOnTheScreen();
+  expect(screen.getByText('All Common words learned')).toBeOnTheScreen();
   await fireEvent.press(screen.getByRole('button', { name: 'Back to Vocab' }));
   expect(onBackToVocab).toHaveBeenCalledTimes(1);
-  await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
-  expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
 });
 
-test('late question loads are discarded after the Common tab is hidden', async () => {
+test('late batch loads are discarded after tab is hidden', async () => {
   let resolve!: (items: readonly CommonWordQuestion[]) => void;
   loadMock.mockReturnValueOnce(
     new Promise((done) => {
@@ -460,11 +284,45 @@ test('late question loads are discarded after the Common tab is hidden', async (
   );
   const view = await render(practice());
   await view.rerender(practice(false));
-  expect(loadMock.mock.calls[0][1]?.aborted).toBe(true);
+  expect(loadMock.mock.calls[0][0]?.aborted).toBe(true);
   await act(async () => {
     resolve(questions);
   });
   expect(screen.queryByText('Word 1 of 2')).toBeNull();
   await view.rerender(practice());
   expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
+});
+
+test('correct-answer progression pauses while tab is hidden', async () => {
+  const view = await render(practice());
+  await choose();
+  await view.rerender(practice(false));
+  await advance();
+  expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
+  await view.rerender(practice());
+  await advance();
+  expect(screen.getByText('Word 2 of 2')).toBeOnTheScreen();
+});
+
+test('timer stops while grading and resets for the next question', async () => {
+  await render(practice());
+  await act(async () => {
+    jest.advanceTimersByTime(2250);
+  });
+  expect(
+    screen.getByLabelText('Time spent on this question: 0 minutes, 2 seconds'),
+  ).toBeOnTheScreen();
+  await choose('A. Easy to forget');
+  await act(async () => {
+    jest.advanceTimersByTime(5000);
+  });
+  expect(
+    screen.getByLabelText('Time spent on this question: 0 minutes, 2 seconds'),
+  ).toBeOnTheScreen();
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Skip · Next word' }),
+  );
+  expect(
+    screen.getByLabelText('Time spent on this question: 0 minutes, 0 seconds'),
+  ).toBeOnTheScreen();
 });

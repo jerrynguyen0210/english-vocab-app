@@ -12,7 +12,9 @@ from app.core.config import get_settings
 from app.migrate import upgrade_database
 
 
-def test_common_learning_migration_preserves_existing_questions(tmp_path, monkeypatch):
+def test_common_word_removal_migration_preserves_account_and_saved_words(
+    tmp_path, monkeypatch
+):
     url = f"sqlite:///{tmp_path}/common-learning.db"
     monkeypatch.setenv("DATABASE_URL", url)
     get_settings.cache_clear()
@@ -39,7 +41,7 @@ def test_common_learning_migration_preserves_existing_questions(tmp_path, monkey
                     "choices": '["A greeting", "A colour", "A number", "A place"]',
                 },
             )
-        command.upgrade(config, "head")
+        command.upgrade(config, "0019")
         with engine.connect() as connection:
             assert tuple(
                 connection.execute(
@@ -48,6 +50,29 @@ def test_common_learning_migration_preserves_existing_questions(tmp_path, monkey
                     )
                 ).one()
             ) == ("hello", 0, None, None)
+        with engine.begin() as connection:
+            connection.execute(
+                text("INSERT INTO common_word_jobs (user_id) VALUES (:owner)"),
+                {"owner": "1" * 32},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO words (id, user_id, word, normalised_word, english_explanation) "
+                    "VALUES (:word, :owner, 'saved', 'saved', 'Kept vocabulary')"
+                ),
+                {"word": "3" * 32, "owner": "1" * 32},
+            )
+        command.upgrade(config, "head")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            tables = inspect(connection).get_table_names()
+            assert "common_word_questions" not in tables
+            assert "common_word_jobs" not in tables
+            assert (
+                connection.scalar(text("SELECT email FROM users"))
+                == "legacy@example.test"
+            )
+            assert connection.scalar(text("SELECT word FROM words")) == "saved"
     finally:
         engine.dispose()
         get_settings.cache_clear()
@@ -285,6 +310,150 @@ def test_stored_prompt_migration_masks_legacy_examples(tmp_path, monkeypatch):
             assert [tuple(row) for row in rows] == [
                 (case[2], case[3]) for case in cases
             ]
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+def test_operator_common_bank_upgrade_is_empty_repeatable_and_matches_models(
+    tmp_path, monkeypatch
+):
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from app.core.database import Base
+
+    url = f"sqlite:///{tmp_path}/shared-common.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    config = Config("alembic.ini")
+    engine = create_engine(url)
+    try:
+        command.upgrade(config, "0020")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            original_ids = (
+                connection.execute(text("SELECT id FROM common_words ORDER BY id"))
+                .scalars()
+                .all()
+            )
+            assert len(original_ids) == 0
+            assert (
+                connection.scalar(
+                    text("SELECT count(DISTINCT normalised_word) FROM common_words")
+                )
+                == 0
+            )
+            assert (
+                compare_metadata(
+                    MigrationContext.configure(
+                        connection,
+                        opts={
+                            "include_object": lambda obj, name, kind, reflected, compared: (
+                                name
+                                in {
+                                    "common_words",
+                                    "common_practice_questions",
+                                    "user_common_word_progress",
+                                }
+                                if kind == "table"
+                                else obj.table.name
+                                in {
+                                    "common_words",
+                                    "common_practice_questions",
+                                    "user_common_word_progress",
+                                }
+                            )
+                        },
+                    ),
+                    Base.metadata,
+                )
+                == []
+            )
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT id FROM common_words ORDER BY id"))
+                .scalars()
+                .all()
+                == original_ids
+            )
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+def test_remove_bundled_content_keeps_operator_bank_and_saved_recall(
+    tmp_path, monkeypatch
+):
+    url = f"sqlite:///{tmp_path}/remove-bundled.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    config = Config("alembic.ini")
+    engine = create_engine(url)
+    try:
+        command.upgrade(config, "0021")
+        with engine.begin() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM common_words")) == 1000
+            seed_id = connection.scalar(text("SELECT id FROM common_words LIMIT 1"))
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, password_hash) VALUES (:owner, 'operator-test@example.test', 'placeholder-test-hash')"
+                ),
+                {"owner": "1" * 32},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO words (id, user_id, word, normalised_word, english_explanation) VALUES (:id, :owner, 'saved', 'saved', 'Existing recall')"
+                ),
+                {"id": "2" * 32, "owner": "1" * 32},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO common_words (id, word, normalised_word, part_of_speech, english_explanation) VALUES (:id, 'operator word', 'operator word', 'noun', 'Operator generated')"
+                ),
+                {"id": "3" * 32},
+            )
+            for index, word_id in enumerate([seed_id, "3" * 32], start=4):
+                connection.execute(
+                    text(
+                        "INSERT INTO user_common_word_progress (user_id, common_word_id, learned_at) VALUES (:owner, :word, '2026-11-24 00:00:00')"
+                    ),
+                    {"owner": "1" * 32, "word": word_id},
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO common_practice_questions (id, user_id, common_word_id, question, choices, correct_index) VALUES (:id, :owner, :word, 'Question', :choices, 0)"
+                    ),
+                    {
+                        "id": str(index) * 32,
+                        "owner": "1" * 32,
+                        "word": word_id,
+                        "choices": '["one", "two", "three", "four"]',
+                    },
+                )
+        command.upgrade(config, "head")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM common_words")) == 1
+            assert (
+                connection.scalar(text("SELECT word FROM common_words"))
+                == "operator word"
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM user_common_word_progress")
+                )
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM common_practice_questions")
+                )
+                == 1
+            )
+            assert connection.scalar(text("SELECT word FROM words")) == "saved"
+            assert connection.scalar(text("SELECT count(*) FROM users")) == 1
     finally:
         engine.dispose()
         get_settings.cache_clear()

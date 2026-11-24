@@ -9,42 +9,58 @@ skinparam ActorBorderColor #355777
 skinparam ArrowColor #355777
 hide footbox
 autonumber
-title Mark a correctly answered Common word learned
+title Answer Common question, learn or offer Save for recall
 
-' Sources relative to repository root:
-' backend/app/api/routes/common_words.py
-' backend/app/services/common_words.py
-' backend/app/services/common_word_bank.py
-
-actor Client
-participant "FastAPI route" as API
-participant "Service" as S
+' Sources: backend/app/api/routes/common_words.py and backend/app/services/common_words.py.
+actor Learner
+participant "Common practice screen" as Client
+participant "Common answer API" as API
+participant "Common practice service" as S
 database PostgreSQL as DB
-ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
-note over API : Invalid request parameters / body return 422 before service execution.
+participant "Existing saved-word service" as Words
 
-Client -> API : POST /api/v1/common-words/{question_id}/learned (selected_index)
-API -> S : mark_learned(db, user, question_id, selected_index)
-S -> DB : Lock and recheck active User FOR UPDATE
-break Account unavailable
-  S --> API : AccountUnavailable
-  API --> Client : 401
+Learner -> Client : Choose one of four answers
+Client -> API : POST /api/v1/common-words/questions/{question_id}/answer\nselected_index (0..3)
+API -> S : Authenticate active user; validate input
+S -> DB : BEGIN; lock account and owned common_practice_questions row
+break Missing question or question belongs to another user
+  S -> DB : ROLLBACK
+  API --> Client : Not found; no progress changed
 end
-S -> DB : Load owned CommonWordQuestion
-DB --> S : Question or none
-alt Missing / another user's question
-  S --> API : CommonQuestionNotFound
-  API --> Client : 404
-else Selected index incorrect
-  S --> API : InvalidCommonAnswer
-  API --> Client : 422 Choose the correct meaning
-else Correct selected index
-  opt First successful learning
-    S -> DB : Set learned_at=now
+alt Question already answered
+  S -> DB : Read stored answer outcome; end transaction
+  S --> API : Return original outcome for same answer\nReject a different resubmission as a conflict
+else First answer
+  S -> S : Compare selected_index with stored correct_index
+  S -> DB : Store selected_index and answered_at
+  alt Correct answer
+    S -> DB : UPSERT user_common_word_progress\nSet learned_at only if not already set
+    note right of DB : Learning is per user and bank word.\nPreserve original learned_at on retries.\nExclude this word from future Common selection.
+  else Incorrect answer
+    S -> DB : Leave learned_at unchanged (unlearned remains unlearned)
   end
-  S -> DB : FLUSH; count available bank\nQueue / reset refill if <= 15, respecting cooldown; COMMIT
-  S --> API : Done
-  API --> Client : 204; Cache-Control: no-store
-  note over S : Exact retries preserve original learned_at.\nLearning does not save the word into the review bank.
+  S -> DB : COMMIT answer and progress atomically
+  S --> API : Correct / incorrect + correct answer and explanation
 end
+API --> Client : Persisted outcome and feedback
+alt Correct outcome
+  Client --> Learner : Correct; word learned; Continue
+else Incorrect outcome
+  Client --> Learner : Show correct answer; Save this word for recall?
+  alt Learner chooses Save
+    Client -> Words : Existing POST /api/v1/words\nCopy bank word, explanation and example
+    ref over Words, DB : 11_words_create: save Word + ReviewState + PromptJob
+    alt Already saved
+      Words --> Client : Existing duplicate response; show Already saved
+    else Save succeeds
+      Words --> Client : Saved; available for scheduled recall
+    else Save fails
+      Words --> Client : Show Retry Save; keep answer outcome
+    end
+  else Learner declines
+    Client --> Learner : Continue without saving
+  end
+end
+note over Client, DB : Saving does not mark a Common word learned.\nAn incorrect answer never clears learning recorded by another request.\nAnswer persistence failure offers Retry Answer before advancing.\nQuestion answer replay never performs the optional Save action.
+
 @enduml

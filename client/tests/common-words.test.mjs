@@ -5,30 +5,18 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 
 const question = {
-  id: '19be59ac-9db2-405f-a789-1e7509b90cd8',
+  id: 'q1',
   word: 'reliable',
-  ipa: '/rɪˈlaɪəbl/',
+  ipa: null,
   partOfSpeech: 'adjective',
   explanation: 'Able to be trusted.',
-  example: 'She is a reliable colleague.',
-  choices: [
-    'Easy to forget',
-    'Able to be trusted',
-    'Very expensive',
-    'Difficult to use',
-  ],
-  correctIndex: 1,
+  example: null,
+  question: 'What does reliable mean?',
+  choices: ['Trusted', 'Slow', 'Broken', 'Expensive'],
 };
-function loader(fetch) {
+function services(fetch) {
   const exports = {};
-  let now = 0;
-  const timers = new Set();
-  const advance = (milliseconds) => {
-    now += milliseconds;
-    for (const timer of [...timers]) {
-      if (timer.at <= now && timers.delete(timer)) timer.callback();
-    }
-  };
+  const timers = new Map();
   const source = readFileSync(
     new URL('../src/services/common-words.ts', import.meta.url),
     'utf8',
@@ -45,138 +33,67 @@ function loader(fetch) {
       require: () => ({ authenticatedFetch: fetch }),
       AbortController,
       setTimeout: (callback, delay) => {
-        const timer = { callback, at: now + delay };
-        timers.add(timer);
-        // Polling advances a virtual clock; the overall deadline does not
-        // advance it itself, so normal requests can finish first.
-        if (delay < 300000)
-          timer.immediate = setImmediate(() => advance(delay));
-        return timer;
+        const key = {};
+        timers.set(key, { callback, delay });
+        return key;
       },
-      clearTimeout: (timer) => {
-        if (timer) {
-          timers.delete(timer);
-          clearImmediate(timer.immediate);
-        }
-      },
+      clearTimeout: (key) => timers.delete(key),
     },
   );
-  return Object.assign(exports.loadCommonWords, { advance });
+  return {
+    ...exports,
+    expire: () => {
+      for (const { callback } of timers.values()) callback();
+    },
+  };
 }
-const response = (body, status = 200) => Response.json(body, { status });
 
-test('Common fetch polls a durable job and keeps exclusions and cancellation on every request', async () => {
-  const calls = [];
-  const controller = new AbortController();
-  const load = loader(async (path, options) => {
-    calls.push({ path, options });
-    return calls.length < 3
-      ? response({ status: 'pending', questions: [] }, 202)
-      : response({ status: 'ready', questions: [question] });
-  });
-  assert.deepEqual(await load(['previous-id'], controller.signal), [question]);
-  assert.equal(calls.length, 3);
-  for (const { path, options } of calls) {
+test('one batch request sends no exclusions and accepts answer-free questions', async () => {
+  let calls = 0;
+  const { loadCommonWords } = services(async (path, options, timeoutMs) => {
+    assert.equal(timeoutMs, 300000);
+    calls++;
     assert.equal(path, '/common-words/batch');
-    assert.equal(options.method, 'POST');
-    assert.deepEqual(JSON.parse(options.body), {
-      exclude_ids: ['previous-id'],
-    });
-    assert.equal(options.signal, calls[0].options.signal);
-    assert.equal(options.signal.aborted, false);
-  }
-});
-
-test('failed generation is surfaced without sample fallback or repeated model requests', async () => {
-  let calls = 0;
-  const load = loader(async () => {
-    calls++;
-    return response({ status: 'failed', questions: [] });
+    assert.equal(options.body, '{}');
+    return Response.json({ status: 'ready', questions: [question] });
   });
-  await assert.rejects(load(), /Could not prepare new words/);
+  assert.deepEqual(await loadCommonWords(), [question]);
   assert.equal(calls, 1);
 });
 
-test('network failure and non-successful responses are not replayed automatically', async () => {
-  for (const failure of [
-    new Error('network failure'),
-    response({}, 401),
-    response({}, 422),
-  ]) {
-    let calls = 0;
-    const load = loader(async () => {
-      calls++;
-      if (failure instanceof Error) throw failure;
-      return failure;
-    });
-    await assert.rejects(load());
-    assert.equal(calls, 1);
-  }
+test('completion returns no questions and performs no polling', async () => {
+  assert.equal(
+    (
+      await services(async () =>
+        Response.json({ status: 'complete', questions: [] }),
+      ).loadCommonWords()
+    ).length,
+    0,
+  );
 });
 
-test('hiding the screen cancels pending polling', async () => {
+test('server failure offers retry without automatically repeating generation', async () => {
   let calls = 0;
-  const controller = new AbortController();
-  const load = loader(async () => {
+  const api = services(async () => {
     calls++;
-    queueMicrotask(() => controller.abort());
-    return response({ status: 'pending' }, 202);
+    return new Response('', { status: 503 });
   });
-  await assert.rejects(load([], controller.signal), /cancelled/);
+  await assert.rejects(api.loadCommonWords(), /Could not prepare/);
   assert.equal(calls, 1);
-});
-
-test('an already aborted screen makes no API call', async () => {
-  const controller = new AbortController();
-  controller.abort();
-  const load = loader(() => {
-    throw new Error('Must not call');
-  });
-  await assert.rejects(load([], controller.signal), /cancelled/);
-});
-
-test('pending generation has a bounded wait and can be retried by the user', async () => {
-  let calls = 0;
-  const load = loader(async () => {
-    calls++;
-    return response({ status: 'pending' }, 202);
-  });
-  await assert.rejects(load(), /still being prepared/);
-  assert.equal(calls, 150);
-});
-
-test('the five-minute deadline includes a stalled request and aborts it', async () => {
-  let signal;
-  const load = loader(async (_, options) => {
-    signal = options.signal;
-    return new Promise(() => {});
-  });
-  const pending = load();
-  load.advance(299999);
-  assert.equal(signal.aborted, false);
-  load.advance(1);
-  await assert.rejects(pending, /still being prepared/);
-  assert.equal(signal.aborted, true);
 });
 
 for (const invalid of [
   null,
   {},
-  { status: 'unknown' },
-  { status: 'ready' },
-  { status: 'ready', questions: [{ ...question, correctIndex: 4 }] },
-  { status: 'ready', questions: [{ ...question, correctIndex: true }] },
-  { status: 'ready', questions: [{ ...question, ipa: 123 }] },
-  { status: 'ready', questions: [{ ...question, ipa: 'not IPA notation' }] },
+  { status: 'pending', questions: [] },
+  { status: 'ready', questions: [] },
+  { status: 'complete', questions: [question] },
+  { status: 'ready', questions: [{ ...question, correctIndex: 0 }] },
+  { status: 'ready', questions: [{ ...question, question: '' }] },
   {
     status: 'ready',
-    questions: [{ ...question, choices: ['One', 'Two', 'Three'] }],
+    questions: [{ ...question, choices: ['one', 'two', 'three', ' ONE '] }],
   },
-  {
-    status: 'ready',
-    questions: [{ ...question, choices: ['One', 'Two', 'Three', ' one '] }],
-  },
-  { status: 'ready', questions: [{ ...question, explanation: '' }] },
   { status: 'ready', questions: [question, question] },
   {
     status: 'ready',
@@ -185,19 +102,63 @@ for (const invalid of [
       id: String(i),
     })),
   },
+])
+  test(`reject invalid batch ${JSON.stringify(invalid).slice(0, 80)}`, async () => {
+    await assert.rejects(
+      services(async () => Response.json(invalid)).loadCommonWords(),
+      /invalid/,
+    );
+  });
+
+test('cancelled requests never start generation', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    services(() => {
+      throw new Error('Must not fetch');
+    }).loadCommonWords(controller.signal),
+    /cancelled/,
+  );
+});
+
+test('total generation deadline aborts a stalled request', async () => {
+  let signal;
+  const api = services(async (_, options) => {
+    signal = options.signal;
+    return new Promise(() => {});
+  });
+  const pending = api.loadCommonWords();
+  api.expire();
+  await assert.rejects(pending, /still being prepared/);
+  assert.equal(signal.aborted, true);
+});
+
+test('answer submission sends the actual selected choice and trusts server grading', async () => {
+  const api = services(async (path, options) => {
+    assert.equal(path, '/common-words/questions/q1/answer');
+    assert.deepEqual(JSON.parse(options.body), { selected_index: 2 });
+    return Response.json({
+      result: 'incorrect',
+      correctIndex: 0,
+      explanation: 'Trusted',
+    });
+  });
+  assert.equal((await api.answerCommonQuestion('q1', 2)).result, 'incorrect');
+});
+
+for (const invalid of [
+  { result: 'correct', correctIndex: 2, explanation: 'Trusted' },
+  { result: 'incorrect', correctIndex: 0, explanation: 'Trusted' },
+  { result: 'correct', correctIndex: true },
+  {},
 ]) {
-  test(`rejects malformed Common response: ${JSON.stringify(invalid).slice(0, 110)}`, async () => {
-    await assert.rejects(loader(async () => response(invalid))(), /invalid/i);
+  test('rejects inconsistent or malformed answer feedback', async () => {
+    await assert.rejects(
+      services(async () => Response.json(invalid)).answerCommonQuestion(
+        'q1',
+        0,
+      ),
+      /invalid answer/,
+    );
   });
 }
-
-test('limits exclusions to the latest 1000 loaded questions', async () => {
-  let body;
-  const load = loader(async (_, options) => {
-    body = JSON.parse(options.body);
-    return response({ status: 'ready', questions: [] });
-  });
-  await load(Array.from({ length: 1005 }, (_, i) => String(i)));
-  assert.equal(body.exclude_ids.length, 1000);
-  assert.equal(body.exclude_ids[0], '5');
-});

@@ -14,7 +14,6 @@ title Atomically erase account and owned data
 ' Sources relative to repository root:
 ' backend/app/api/routes/account.py
 ' backend/app/services/accounts.py
-' backend/app/models/common_word.py
 ' backend/app/models/prompt_job.py
 
 actor Client
@@ -32,7 +31,11 @@ break Account unavailable
   API --> Client : 401
 end
 S -> DB : Set deleted_at; FLUSH erasure marker
-S -> DB : DELETE AuthSessions, CommonWordJobs, CommonWordQuestions
+S -> DB : DELETE AuthSessions
+opt Proposed Common schema installed
+  S -> DB : DELETE user's common_practice_questions and user_common_word_progress
+  note right of DB : Proposed ownership FKs also permit ON DELETE CASCADE.\nRetain the shared common_words bank and other users' progress.
+end
 S -> DB : DELETE ReviewAttempts, ReviewStates and Words
 note right of DB : Word deletion cascades to its PromptJob.\nThe erasure marker satisfies deletion protection triggers.
 S -> DB : DELETE User; COMMIT all erasure changes

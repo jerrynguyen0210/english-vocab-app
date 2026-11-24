@@ -7,6 +7,8 @@ import { authenticatedFetch } from '@/services/auth';
 import { connectionMessage } from '@/services/connectivity';
 import {
   loadCommonWords,
+  answerCommonQuestion,
+  type CommonAnswer,
   CommonWordsError,
   type CommonWordQuestion,
 } from '@/services/common-words';
@@ -135,7 +137,7 @@ export function CommonWordPractice({
   const answerLocked = useRef(false);
   const savePending = useRef(false);
   const mounted = useRef(true);
-  const loadedQuestionIds = useRef(new Set<string>());
+  const [answer, setAnswer] = useState<CommonAnswer | null>(null);
   const question = questions?.[index];
 
   useEffect(() => {
@@ -149,11 +151,10 @@ export function CommonWordPractice({
     if (!active || questions !== null) return;
     let cancelled = false;
     const controller = new AbortController();
-    loadCommonWords([...loadedQuestionIds.current], controller.signal).then(
+    loadCommonWords(controller.signal).then(
       (items) => {
         if (!cancelled) {
           setLoadError('');
-          items.forEach((item) => loadedQuestionIds.current.add(item.id));
           setQuestions(items);
         }
       },
@@ -179,6 +180,7 @@ export function CommonWordPractice({
     if (savePending.current) return;
     answerLocked.current = false;
     setSelected(null);
+    setAnswer(null);
     setSaveError('');
     setAlreadySaved(false);
     onStepChange?.();
@@ -199,31 +201,31 @@ export function CommonWordPractice({
     }, [active, phase, next]),
   );
 
-  async function rememberCorrectAnswer() {
+  async function submitAnswer(choice: number) {
     if (!active || !question || savePending.current) return;
     savePending.current = true;
     setSaving(true);
     setSaveError('');
     try {
-      const response = await authenticatedFetch(
-        `/common-words/${question.id}/learned`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ selected_index: question.correctIndex }),
-        },
-      );
-      if (!response.ok) throw new Error('Could not remember word');
+      const result = await answerCommonQuestion(question.id, choice);
       if (!mounted.current) return;
-      setCorrectCount((current) => current + 1);
-      setPhase('correct');
+      setAnswer(result);
+      if (result.result === 'correct') {
+        setCorrectCount((current) => current + 1);
+        setPhase('correct');
+      } else {
+        setPhase('reveal');
+      }
+      onStepChange?.();
     } catch (failure) {
       if (mounted.current)
         setSaveError(
-          connectionMessage(
-            failure,
-            `Could not remember “${question.word}” as learned. Please retry.`,
-          ),
+          failure instanceof CommonWordsError
+            ? failure.message
+            : connectionMessage(
+                failure,
+                'Could not check your answer. Please retry.',
+              ),
         );
     } finally {
       savePending.current = false;
@@ -236,12 +238,8 @@ export function CommonWordPractice({
       return;
     answerLocked.current = true;
     setSelected(choice);
-    if (choice === question.correctIndex) {
-      setPhase('learning');
-      void rememberCorrectAnswer();
-    } else {
-      setPhase('reveal');
-    }
+    setPhase('learning');
+    void submitAnswer(choice);
     onStepChange?.();
   }
 
@@ -293,6 +291,7 @@ export function CommonWordPractice({
     answerLocked.current = false;
     setIndex(0);
     setSelected(null);
+    setAnswer(null);
     setCorrectCount(0);
     setBatchSaved([]);
     setSaveError('');
@@ -341,10 +340,11 @@ export function CommonWordPractice({
       ) : questions.length === 0 ? (
         <View style={styles.card}>
           <ThemedText accessibilityRole="header" style={styles.heading}>
-            No common words available
+            All Common words learned
           </ThemedText>
           <ThemedText style={styles.body}>
-            Try again later, or search for a word in Vocab.
+            You have learned every word in the Common bank. You can keep
+            practising saved words in Review.
           </ThemedText>
           <Action label="Try again" onPress={restart} />
           <Action label="Back to Vocab" onPress={onBackToVocab} secondary />
@@ -445,14 +445,16 @@ export function CommonWordPractice({
                 <WordHeading question={question} />
                 <ThemedText style={[styles.meaning, styles.successText]}>
                   {question.partOfSpeech} ·{' '}
-                  {question.choices[question.correctIndex]}
+                  {answer ? question.choices[answer.correctIndex] : ''}
                 </ThemedText>
                 <ThemedText style={styles.body}>
-                  {question.explanation}
+                  {answer?.explanation ?? question.explanation}
                 </ThemedText>
-                <ThemedText style={styles.body}>
-                  “{question.example}”
-                </ThemedText>
+                {!!question.example && (
+                  <ThemedText style={styles.body}>
+                    “{question.example}”
+                  </ThemedText>
+                )}
                 {selected !== null && (
                   <ThemedText style={styles.previousAnswer}>
                     Your answer: {question.choices[selected]}
@@ -506,16 +508,16 @@ export function CommonWordPractice({
           ) : (
             <>
               <View style={styles.card}>
-                <ThemedText style={styles.body}>
-                  Choose the closest meaning
-                </ThemedText>
+                <ThemedText style={styles.body}>{question.question}</ThemedText>
                 <WordHeading question={question} />
                 <ThemedText style={styles.partOfSpeech}>
                   {question.partOfSpeech}
                 </ThemedText>
-                <ThemedText style={styles.body}>
-                  “{question.example}”
-                </ThemedText>
+                {!!question.example && (
+                  <ThemedText style={styles.body}>
+                    “{question.example}”
+                  </ThemedText>
+                )}
               </View>
               <View
                 style={styles.choices}
@@ -523,8 +525,7 @@ export function CommonWordPractice({
               >
                 {question.choices.map((choice, choiceIndex) => {
                   const correct =
-                    (phase === 'correct' || phase === 'learning') &&
-                    selected === choiceIndex;
+                    phase === 'correct' && selected === choiceIndex;
                   return (
                     <Pressable
                       key={choice}
@@ -576,7 +577,7 @@ export function CommonWordPractice({
                 {phase === 'correct'
                   ? '✓ Correct! Moving to the next word…'
                   : phase === 'learning'
-                    ? '✓ Correct! Remembering this word…'
+                    ? 'Checking your answer…'
                     : 'Tap an answer to continue'}
               </ThemedText>
               {phase === 'learning' && !!saveError && (
@@ -588,10 +589,12 @@ export function CommonWordPractice({
                     {saveError}
                   </ThemedText>
                   <Action
-                    label={saving ? 'Remembering…' : 'Retry remembering word'}
+                    label={saving ? 'Checking…' : 'Retry answer'}
                     disabled={saving}
                     busy={saving}
-                    onPress={() => void rememberCorrectAnswer()}
+                    onPress={() =>
+                      selected !== null && void submitAnswer(selected)
+                    }
                   />
                 </>
               )}

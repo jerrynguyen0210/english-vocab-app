@@ -1,60 +1,117 @@
-"""Shared low-water refill policy; callers hold the user's account lock."""
+"""Append an operator-selected number of LLM-generated words to the shared SQL bank."""
 
-from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from collections.abc import Callable
+from uuid import NAMESPACE_URL, uuid5
 
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Engine, select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.models import CommonWordJob, CommonWordQuestion, Word
+from app.core.config import Settings
+from app.core.text import normalise_word
+from app.llm.openrouter_common_bank import generate_bank_words
+from app.llm.openrouter_review import ReviewError
+from app.models import CommonWord
+from app.schemas.common_word_bank import GeneratedBankBatch
 
-# Each model call requests twenty questions. Start replenishing at half a batch.
-BANK_TARGET = 20
-REFILL_THRESHOLD = BANK_TARGET // 2 + 5
 
-
-def available_questions(user_id: UUID) -> Select[CommonWordQuestion]:
-    saved = (
-        select(Word.id)
-        .where(
-            Word.user_id == user_id,
-            Word.normalised_word == CommonWordQuestion.normalised_word,
+class BankGenerationStopped(Exception):
+    def __init__(self, inserted: int, requested: int, reason: str) -> None:
+        self.inserted = inserted
+        self.requested = requested
+        super().__init__(
+            f"{reason} Saved {inserted} of {requested} new words; {requested - inserted} remain."
         )
-        .exists()
-    )
-    return select(CommonWordQuestion).where(
-        CommonWordQuestion.user_id == user_id,
-        CommonWordQuestion.learned_at.is_(None),
-        ~saved,
-    )
 
 
-def available_count(db: Session, user_id: UUID) -> int:
-    return (
-        db.scalar(
-            select(func.count()).select_from(available_questions(user_id).subquery())
+def populate_bank(
+    engine: Engine,
+    count: int,
+    settings: Settings,
+    *,
+    batch_size: int = 20,
+    progress: Callable[[int, int], None] | None = None,
+) -> int:
+    if type(count) is not int or count < 1 or not 1 <= batch_size <= 20:
+        raise ValueError(
+            "Count must be positive and batch size must be between 1 and 20"
         )
-        or 0
-    )
-
-
-def queue_refill(db: Session, user_id: UUID) -> bool:
-    """Keep one durable job, preserving live leases and failed-job cooldowns."""
-    now = datetime.now(UTC)
-    job = db.get(CommonWordJob, user_id)
-    if job is None:
-        db.add(CommonWordJob(user_id=user_id))
-    elif job.failed_at is not None:
-        if job.failed_at + timedelta(seconds=60) > now:
-            return False
-        job.failed_at = None
-        job.failure_category = None
-        job.attempts = 0
-        job.lease_token = None
-        job.available_at = now
-    return True
-
-
-def refill_if_low(db: Session, user_id: UUID) -> None:
-    if available_count(db, user_id) <= REFILL_THRESHOLD:
-        queue_refill(db, user_id)
+    if (
+        not settings.openrouter_api_key.get_secret_value().strip()
+        or not settings.openrouter_model.strip()
+    ):
+        raise ValueError(
+            "Configure OPENROUTER_API_KEY and OPENROUTER_MODEL in the private backend environment"
+        )
+    dialect = engine.dialect.name
+    if dialect not in {"sqlite", "postgresql"}:
+        raise ValueError("Common bank generation supports SQLite and PostgreSQL")
+    insert = postgres_insert if dialect == "postgresql" else sqlite_insert
+    inserted, stalled = 0, 0
+    try:
+        while inserted < count:
+            # Read exclusions in a short transaction; never hold it during LLM work.
+            with engine.connect() as connection:
+                existing = set(connection.scalars(select(CommonWord.normalised_word)))
+            requested = min(batch_size, count - inserted)
+            generated = generate_bank_words(
+                requested,
+                sorted(existing),
+                model=settings.openrouter_model,
+                api_key=settings.openrouter_api_key.get_secret_value(),
+                base_url=settings.openrouter_url,
+                timeout=settings.openrouter_timeout_seconds,
+            )
+            candidates = GeneratedBankBatch(words=generated).words
+            if len(candidates) > requested:
+                raise ValueError("Too many generated words")
+            added = 0
+            with engine.begin() as connection:
+                for candidate in candidates:
+                    normalized = normalise_word(candidate.word)
+                    if normalized in existing:
+                        continue
+                    existing.add(normalized)
+                    statement = (
+                        insert(CommonWord)
+                        .values(
+                            id=uuid5(
+                                NAMESPACE_URL,
+                                "wordrecall/common-bank/llm/" + normalized,
+                            ),
+                            word=candidate.word,
+                            normalised_word=normalized,
+                            part_of_speech=candidate.part_of_speech,
+                            english_explanation=candidate.english_explanation,
+                            example_sentence=candidate.example_sentence,
+                            ipa=candidate.ipa,
+                        )
+                        .on_conflict_do_nothing(index_elements=["normalised_word"])
+                        .returning(CommonWord.id)
+                    )
+                    if connection.scalar(statement) is not None:
+                        added += 1
+            inserted += added
+            if progress is not None:
+                progress(inserted, count)
+            stalled = stalled + 1 if added == 0 else 0
+            if stalled >= 3:
+                raise BankGenerationStopped(
+                    inserted,
+                    count,
+                    "The model returned no new words in three consecutive batches.",
+                )
+    except (ReviewError, ValueError):
+        raise BankGenerationStopped(
+            inserted,
+            count,
+            "LLM generation or output validation failed. Check the configured model and retry.",
+        ) from None
+    except SQLAlchemyError:
+        raise BankGenerationStopped(
+            inserted,
+            count,
+            "Database write/read failed. Verify database access and apply migrations before retrying.",
+        ) from None
+    return inserted

@@ -1,81 +1,73 @@
-"""Validate model output before it can enter a user's question bank."""
+"""Common practice contracts; answer keys are never part of a batch response."""
 
-import re
-import uuid
-from typing import Annotated, Literal
+from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.text import normalise_word
 
-ShortText = Annotated[str, Field(min_length=1, max_length=200)]
+
+class BankWord(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    word: str
+    ipa: str | None
+    part_of_speech: str
+    english_explanation: str
+    example_sentence: str | None
 
 
-class GeneratedCommonWord(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+class GeneratedCommonQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    common_word_id: UUID
+    question: str = Field(min_length=1, max_length=1000)
+    choices: list[str] = Field(min_length=4, max_length=4)
+    correct_index: int = Field(ge=0, le=3, strict=True)
 
-    word: str = Field(min_length=1, max_length=80)
-    ipa: str = Field(min_length=3, max_length=120, pattern=r"^/[^/\r\n]+/$")
-    part_of_speech: Literal[
-        "noun",
-        "verb",
-        "adjective",
-        "adverb",
-        "preposition",
-        "conjunction",
-        "interjection",
-    ]
-    explanation: str = Field(min_length=1, max_length=500)
-    example: ShortText
-    choices: list[ShortText] = Field(min_length=4, max_length=4)
-    correct_index: int = Field(ge=0, le=3)
-
-    @field_validator("word")
+    @field_validator("choices")
     @classmethod
-    def english_word(cls, value: str) -> str:
-        value = normalise_word(value)
-        if not re.fullmatch(r"[a-z]+(?:[-'][a-z]+)*", value):
-            raise ValueError("Expected an English word")
-        return value
-
-    @model_validator(mode="after")
-    def usable_question(self) -> "GeneratedCommonWord":
-        if len({normalise_word(choice) for choice in self.choices}) != 4:
-            raise ValueError("Answer choices must be distinct")
-        if not re.search(
-            rf"(?<!\w){re.escape(self.word)}(?!\w)", normalise_word(self.example)
+    def distinct_choices(cls, values: list[str]) -> list[str]:
+        values = [value.strip() for value in values]
+        if (
+            any(not normalise_word(value) or len(value) > 500 for value in values)
+            or len({normalise_word(value) for value in values}) != 4
         ):
-            raise ValueError("Example must contain the target word")
-        return self
+            raise ValueError("Four distinct nonblank choices are required")
+        return values
 
 
-class GeneratedCommonWords(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    words: list[GeneratedCommonWord] = Field(min_length=1, max_length=20)
+class GeneratedCommonBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    questions: list[GeneratedCommonQuestion] = Field(min_length=1, max_length=10)
+
+
+class CommonQuestion(BaseModel):
+    id: UUID
+    word: str
+    ipa: str | None
+    partOfSpeech: str
+    explanation: str
+    example: str | None
+    question: str
+    choices: list[str]
+
+
+class CommonBatch(BaseModel):
+    status: Literal["ready", "complete"]
+    questions: list[CommonQuestion] = Field(default_factory=list)
 
 
 class CommonBatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    exclude_ids: list[uuid.UUID] = Field(default_factory=list, max_length=1000)
 
 
-class CommonLearnedRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    selected_index: int = Field(ge=0, le=3)
+class CommonAnswerInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    selected_index: int = Field(ge=0, le=3, strict=True)
 
 
-class CommonQuestion(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    id: uuid.UUID
-    word: str
-    ipa: str | None = None
-    part_of_speech: str = Field(serialization_alias="partOfSpeech")
+class CommonAnswerResult(BaseModel):
+    result: Literal["correct", "incorrect"]
+    correctIndex: int
     explanation: str
-    example: str
-    choices: list[str]
-    correct_index: int = Field(serialization_alias="correctIndex")
-
-
-class CommonBatch(BaseModel):
-    status: Literal["ready", "pending", "failed"]
-    questions: list[CommonQuestion] = Field(default_factory=list)

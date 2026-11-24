@@ -15,12 +15,18 @@ title Save word and enqueue prompt generation
 ' backend/app/api/routes/words.py
 ' backend/app/services/words.py
 ' backend/app/services/reviews/prompts.py
-' backend/app/services/common_word_bank.py
+
 
 actor Client
 participant "FastAPI route" as API
 participant "Service" as S
 database PostgreSQL as DB
+note over Client, S
+  Proposed Common flow (21): an incorrect answer can offer Save.
+  Confirmed saves reuse this existing flow; saving does not mark
+  a Common word learned and never queues a Common-bank refill.
+end note
+
 ref over Client, DB : 02_access_authentication: resolve active bearer session or return 401
 note over API : Invalid request parameters / body return 422 before service execution.
 
@@ -39,9 +45,6 @@ end
 S -> S : Build initial masked example / explanation prompt
 S -> DB : INSERT Word; FLUSH
 S -> DB : INSERT ReviewState due now + PromptJob
-opt A Common question exists for this saved word
-  S -> DB : Count available Common questions; queue refill if <= 15
-end
 alt Insert / commit integrity conflict
   S -> DB : ROLLBACK; recheck duplicate
   alt Duplicate now exists

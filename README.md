@@ -447,9 +447,9 @@ Client `authenticatedFetch` accepts v1-relative paths, such as `/words`.
 
 | Method | Path | Contract |
 | --- | --- | --- |
+| POST | `/api/v1/common-words/batch` | `{}` → up to 10 server-generated questions or complete status |
+| POST | `/api/v1/common-words/questions/{question_id}/answer` | `selected_index` → persisted grading and learning result |
 | POST | `/api/v1/words` | `word`, `english_explanation` → created word (201) |
-| POST | `/api/v1/common-words/batch` | Optional `exclude_ids` → unsaved Common questions (200), generation pending (202), or failed status (200) |
-| POST | `/api/v1/common-words/{question_id}/learned` | Correct `selected_index` → remember the word as learned (204) |
 | GET | `/api/v1/reviews/next?limit=1` | Due items; limit 1–50; empty array when none |
 | POST | `/api/v1/reviews/{word_id}/answer` | `typed_answer`, `time_taken_ms` → grading result |
 | PATCH | `/api/v1/account` | Validated IANA `timezone` → updated profile (200) |
@@ -521,66 +521,78 @@ WordNet data retains its bundled Princeton license in the installed corpus; see
 
 ### Common word practice
 
-The Add screen's Common tab loads authenticated backend questions instead of sample
-data. OpenRouter is asked for common, contemporary words that native English speakers
-use in everyday conversation, mainly A2–B2 vocabulary across home, work, shopping,
-friends and travel. Each question includes a simple explanation, a natural example,
-and four distinct meaning choices with exactly one correct answer. Generated output
-is validated locally before storage; this validates structure, not linguistic accuracy.
+Click Common on Add a word to request a practice batch. The backend reads the
+operator-populated shared bank in pages of ten, skips this user's learned bank IDs, and
+continues until ten distinct unlearned words are selected. The last batch can be
+smaller; when none remain, the screen shows that all Common words are learned.
+Saved-but-unlearned words remain eligible.
 
-`POST /api/v1/common-words/batch` accepts `{"exclude_ids": []}` and returns
-`{"status": "ready", "questions": [...]}` with up to ten questions. Items use `id`,
-`word`, `ipa`, `partOfSpeech`, `explanation`, `example`, `choices`, and `correctIndex`.
-New questions include a British English IPA transcription displayed beside the
-word. Older questions can return `ipa: null` and remain usable without pronunciation.
-The Common quiz provides local feedback and persists correct answers through
-`POST /api/v1/common-words/{question_id}/learned` with `{"selected_index": 1}`.
-The server verifies the answer against the user's stored question and records
-`learned_at`; retries preserve the original timestamp. The app waits for persistence
-before advancing and offers retry on failure. Learned words stay excluded across
-sessions and devices without changing scheduled Review scores or adding Review words.
-Saved words are compared using the same normalization as the word bank and excluded
-both when generated questions are attached and whenever questions are served.
-Every refill prompt includes all correctly answered words as `learned_words`, plus
-all saved vocabulary and all unlearned generated words as `excluded_words`.
-These exclusion lists are not truncated.
-Local filtering still prevents repeats if the model ignores exclusions.
-Questions, including their learned timestamps, and refill jobs are owned by,
-exported with, and erased with their account. Generation never saves words automatically.
+`POST /api/v1/common-words/batch` accepts `{}`. It sends the selected words and
+meanings to OpenRouter to generate one question per word, four distinct choices,
+and one answer. The backend validates exact bank-ID coverage and persists the
+complete batch. It returns question IDs, word details, prompts, and choices without
+answer keys. Generation runs during the request, outside database transactions;
+there is no Common refill worker or polling queue. A changed learned selection
+is rechecked before publication and rebuilt within a bounded request budget.
 
-The refill baseline is 20 questions, matching the model's requested batch size.
-When ten or fewer unlearned, unsaved questions remain (50%), the server queues one
-durable refill job per user. It checks on batch fetches, correct answers, and saving
-a Common word, so replenishment starts while the user is answering. Available
-questions still return immediately while generation runs, including during a refill
-failure cooldown. If no questions match the request's exclusions, the endpoint also
-queues a job and returns HTTP 202 with `{"status": "pending", "questions": []}`.
-The existing
-`python -m app.prompt_worker` processes both review prompts and Common refills outside
-HTTP requests. The app polls every two seconds, cancels polling when hidden, and keeps
-up to 1,000 recent question IDs out of subsequent batches during that screen session.
-Loading stops after five minutes, including time spent waiting for HTTP responses,
-and offers a manual retry. Common generation uses `COMMON_WORDS_TIMEOUT_SECONDS`
-(default 300 seconds) independently of the Review prompt timeout. Its worker lease
-includes an additional 60 seconds for finishing the job.
-Common refill workers also share a generation lock: only one Common LLM refill runs
-at a time across worker instances. Other banks wait in the durable queue without
-consuming an attempt. The lock covers generation and saving its results, even if a
-slow call outlives its job lease, and releases when the worker exits. App polling
-continues to reuse the existing job. Review prompt generation remains independent.
-Expired worker leases are recovered, stale results discarded, and failures retried
-up to three times. Partial refills that leave ten or fewer eligible questions keep
-the job queued with the same bounded retries; all candidates are checked against the
-latest saved and generated words before insertion. The job completes once a refill
-raises the eligible bank above ten. Generation latency or provider failures can still
-allow the reserve to drop below half while the user continues answering.
-After terminal failure the API returns `status: "failed"` only when no matching
-questions remain; subsequent activity can queue work after a 60-second cooldown. Long-running generation remains
-durable if the client stops waiting. Provider error bodies are not returned or logged.
+`POST /api/v1/common-words/questions/{question_id}/answer` accepts
+`{"selected_index": 0}`. Backend grading returns `result`, `correctIndex`, and
+`explanation`. A correct answer stores per-user learning once and excludes the
+word from future batches. Identical answer retries replay the stored outcome;
+a changed answer returns 409. Incorrect answers show feedback and offer Save for
+recall. Confirmed saves reuse `POST /api/v1/words`, creating the existing review
+state and saved-word prompt job. Saving alone never marks a Common word learned.
+The client holds the current question on answer failures and offers retry.
 
-Use the existing private `OPENROUTER_*` settings; no new credentials or services are
-required. Apply forward-only migrations through `0018` with the normal `python -m app.migrate`
-procedure and restart the API and prompt worker before using Common practice.
+Apply the latest forward-only migrations using the normal migration/backup
+procedure. Revision `0022` removes the old 1,000 bundled entries and their Common
+questions/progress. Independently saved recall words and operator-generated bank
+entries are retained. Shipped migration `0021` and its JSON dependency remain
+unchanged solely to support historical migration replay; a fresh database upgraded
+to head has an empty Common bank.
+
+Populate the bank explicitly from the backend environment:
+
+```bash
+cd backend
+.venv/bin/python -m app.generate_common_words --count 1000
+```
+
+Or omit `--count` to enter the number interactively:
+
+```bash
+.venv/bin/python -m app.generate_common_words
+```
+
+For Docker, run the same command inside the configured API container, for example
+`docker compose exec api python -m app.generate_common_words --count 1000`
+using the same Compose files/environment as your deployment.
+
+The count means **new unique words to add**, not the desired bank total. Any
+positive integer is accepted. The command asks the configured OpenRouter LLM for
+up to 20 words per request (`--batch-size 1-20` can reduce this), including simple
+meanings, natural examples, parts of speech, and nullable British IPA. Existing
+bank words are excluded and normalized duplicates are skipped, including inserts
+from concurrent operators. Generation never runs during migration or app startup.
+
+Validated batches commit immediately. Failure exits nonzero, reports the number
+saved and remaining, and keeps completed batches. Re-run with the remaining count;
+a fresh `--count 1000` requests another 1,000 new entries. Three consecutive
+batches without new entries stop the command rather than looping indefinitely.
+No database transaction stays open during LLM requests. Provider errors and
+credentials are not printed. Before the bank is populated, Common practice returns
+an unavailable response rather than claiming every word has been learned.
+
+Account export includes Common progress and question responses; erasure removes
+owned data while preserving the shared bank. Learning summary totals count the
+normalized union of learned Common vocabulary and saved words once.
+
+Use private `OPENROUTER_*` configuration; no credentials belong in source control.
+`COMMON_WORDS_TIMEOUT_SECONDS` defaults to 240 seconds for the whole generation
+request. The client allows five minutes for this request, and the Jetson Nginx
+configuration allows 300 seconds on the batch route. Any additional reverse proxy
+or edge service must allow the configured backend request budget. API and client
+should be released together because the retired `/learned` contract is not restored.
 
 ### Background review prompt generation
 
