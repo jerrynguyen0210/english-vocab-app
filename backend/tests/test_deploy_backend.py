@@ -67,7 +67,10 @@ if operation[0] == failure or (failure == "up:api" and operation[0] == "up" and 
 @pytest.mark.parametrize(
     "action,expected",
     [
-        ("build", ["build", "api", "prompt-worker", "embedding-worker"]),
+        (
+            "build",
+            ["build", "api", "prompt-worker", "embedding-worker", "common-worker"],
+        ),
         (
             "rebuild",
             [
@@ -77,6 +80,7 @@ if operation[0] == failure or (failure == "up:api" and operation[0] == "up" and 
                 "api",
                 "prompt-worker",
                 "embedding-worker",
+                "common-worker",
             ],
         ),
         (
@@ -89,6 +93,7 @@ if operation[0] == failure or (failure == "up:api" and operation[0] == "up" and 
                 "api",
                 "prompt-worker",
                 "embedding-worker",
+                "common-worker",
             ],
         ),
         (
@@ -107,9 +112,9 @@ def test_start_builds_both_and_waits_for_migrations_before_starting_worker(deplo
     result, calls = deployment("start")
     assert result.returncode == 0, result.stderr
     assert calls == [
-        ["build", "api", "prompt-worker", "embedding-worker"],
+        ["build", "api", "prompt-worker", "embedding-worker", "common-worker"],
         ["up", "-d", "--wait", "--wait-timeout", "120", "db"],
-        ["stop", "prompt-worker", "embedding-worker"],
+        ["stop", "prompt-worker", "embedding-worker", "common-worker"],
         [
             "up",
             "-d",
@@ -131,8 +136,9 @@ def test_start_builds_both_and_waits_for_migrations_before_starting_worker(deplo
             "120",
             "prompt-worker",
             "embedding-worker",
+            "common-worker",
         ],
-        ["ps", "db", "api", "prompt-worker", "embedding-worker"],
+        ["ps", "db", "api", "prompt-worker", "embedding-worker", "common-worker"],
     ]
 
 
@@ -142,6 +148,8 @@ def test_start_never_starts_worker_after_build_or_api_failure(deployment, failur
     assert result.returncode != 0
     assert not any(call[0] == "up" and "embedding-worker" in call for call in calls)
     if failure == "build":
-        assert calls == [["build", "api", "prompt-worker", "embedding-worker"]]
+        assert calls == [
+            ["build", "api", "prompt-worker", "embedding-worker", "common-worker"]
+        ]
     if failure == "exec":
         assert "Background workers remain stopped" in result.stderr

@@ -326,3 +326,18 @@ test('timer stops while grading and resets for the next question', async () => {
     screen.getByLabelText('Time spent on this question: 0 minutes, 0 seconds'),
   ).toBeOnTheScreen();
 });
+
+test('timeout offers Check again and displays the resumed batch', async () => {
+  loadMock
+    .mockRejectedValueOnce(
+      new CommonWordsError(
+        'Words are still being prepared. Check again to resume this batch.',
+      ),
+    )
+    .mockResolvedValueOnce(questions);
+  await render(practice());
+  expect(screen.queryByLabelText('Loading common words')).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Check again' }));
+  expect(screen.getByText('Word 1 of 2')).toBeOnTheScreen();
+  expect(loadMock).toHaveBeenCalledTimes(2);
+});

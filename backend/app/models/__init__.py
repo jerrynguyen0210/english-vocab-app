@@ -1,4 +1,5 @@
 from app.models.auth import AuthRateBucket, AuthSession
+from app.models.common_batch import CommonPracticeBatch
 from app.models.common_word import (
     CommonPracticeQuestion,
     CommonWord,
@@ -13,6 +14,7 @@ from app.models.word import Word
 __all__ = [
     "AuthRateBucket",
     "AuthSession",
+    "CommonPracticeBatch",
     "CommonPracticeQuestion",
     "CommonWord",
     "PromptJob",

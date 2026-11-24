@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 
+const batchId = '00000000-0000-0000-0000-000000000001';
 const question = {
   id: 'q1',
   word: 'reliable',
@@ -42,20 +43,33 @@ function services(fetch) {
   );
   return {
     ...exports,
+    poll: async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+      for (const [key, { callback, delay }] of [...timers.entries()])
+        if (delay === 3000) {
+          timers.delete(key);
+          callback();
+        }
+    },
     expire: () => {
-      for (const { callback } of timers.values()) callback();
+      for (const { callback, delay } of [...timers.values()])
+        if (delay === 300000) callback();
     },
   };
 }
 
-test('one batch request sends no exclusions and accepts answer-free questions', async () => {
+test('starts a resumable batch and accepts answer-free questions', async () => {
   let calls = 0;
   const { loadCommonWords } = services(async (path, options, timeoutMs) => {
-    assert.equal(timeoutMs, 300000);
+    assert.equal(timeoutMs, undefined);
     calls++;
-    assert.equal(path, '/common-words/batch');
-    assert.equal(options.body, '{}');
-    return Response.json({ status: 'ready', questions: [question] });
+    assert.equal(path, '/common-words/batches');
+    assert.equal(options.method, 'POST');
+    return Response.json({
+      id: batchId,
+      status: 'ready',
+      questions: [question],
+    });
   });
   assert.deepEqual(await loadCommonWords(), [question]);
   assert.equal(calls, 1);
@@ -65,7 +79,7 @@ test('completion returns no questions and performs no polling', async () => {
   assert.equal(
     (
       await services(async () =>
-        Response.json({ status: 'complete', questions: [] }),
+        Response.json({ id: batchId, status: 'complete', questions: [] }),
       ).loadCommonWords()
     ).length,
     0,
@@ -78,14 +92,14 @@ test('server failure offers retry without automatically repeating generation', a
     calls++;
     return new Response('', { status: 503 });
   });
-  await assert.rejects(api.loadCommonWords(), /Could not prepare/);
+  await assert.rejects(api.loadCommonWords(), /Could not check/);
   assert.equal(calls, 1);
 });
 
 for (const invalid of [
   null,
   {},
-  { status: 'pending', questions: [] },
+  { status: 'unknown', questions: [] },
   { status: 'ready', questions: [] },
   { status: 'complete', questions: [question] },
   { status: 'ready', questions: [{ ...question, correctIndex: 0 }] },
@@ -105,7 +119,13 @@ for (const invalid of [
 ])
   test(`reject invalid batch ${JSON.stringify(invalid).slice(0, 80)}`, async () => {
     await assert.rejects(
-      services(async () => Response.json(invalid)).loadCommonWords(),
+      services(async () =>
+        Response.json(
+          invalid && typeof invalid === 'object'
+            ? { id: batchId, ...invalid }
+            : invalid,
+        ),
+      ).loadCommonWords(),
       /invalid/,
     );
   });
@@ -154,11 +174,86 @@ for (const invalid of [
 ]) {
   test('rejects inconsistent or malformed answer feedback', async () => {
     await assert.rejects(
-      services(async () => Response.json(invalid)).answerCommonQuestion(
-        'q1',
-        0,
-      ),
+      services(async () =>
+        Response.json(
+          invalid && typeof invalid === 'object'
+            ? { id: batchId, ...invalid }
+            : invalid,
+        ),
+      ).answerCommonQuestion('q1', 0),
       /invalid answer/,
     );
   });
 }
+
+test('polls the same batch until ready without repeating POST', async () => {
+  const calls = [];
+  const api = services(async (path, options) => {
+    calls.push([path, options.method]);
+    return Response.json({
+      id: batchId,
+      status:
+        calls.length === 1
+          ? 'pending'
+          : calls.length === 2
+            ? 'generating'
+            : 'ready',
+      questions: calls.length === 3 ? [question] : [],
+    });
+  });
+  const pending = api.loadCommonWords();
+  await api.poll();
+  await api.poll();
+  assert.deepEqual(await pending, [question]);
+  assert.deepEqual(calls, [
+    ['/common-words/batches', 'POST'],
+    [`/common-words/batches/${batchId}`, undefined],
+    [`/common-words/batches/${batchId}`, undefined],
+  ]);
+});
+
+test('cancelling a polling wait stops further status requests', async () => {
+  let calls = 0;
+  const api = services(async () => {
+    calls++;
+    return Response.json({ id: batchId, status: 'pending', questions: [] });
+  });
+  const controller = new AbortController();
+  const pending = api.loadCommonWords(controller.signal);
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  await assert.rejects(pending, /cancelled/);
+  await api.poll();
+  assert.equal(calls, 1);
+});
+
+test('failed jobs stop polling and offer an explicit retry', async () => {
+  const api = services(async () =>
+    Response.json({ id: batchId, status: 'failed', questions: [] }),
+  );
+  await assert.rejects(api.loadCommonWords(), /preparation failed/);
+});
+
+test('timeout discards late results; next load resumes the saved batch', async () => {
+  let finish;
+  let calls = 0;
+  const api = services(async () => {
+    calls++;
+    if (calls === 1)
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return Response.json({
+      id: batchId,
+      status: 'ready',
+      questions: [question],
+    });
+  });
+  const pending = api.loadCommonWords();
+  api.expire();
+  await assert.rejects(pending, /Check again/);
+  finish(
+    Response.json({ id: batchId, status: 'ready', questions: [question] }),
+  );
+  assert.deepEqual(await api.loadCommonWords(), [question]);
+});

@@ -46,7 +46,25 @@ function isQuestion(value: unknown): value is CommonWordQuestion {
   );
 }
 
-/** One request selects bank words and generates questions; no background polling. */
+const BATCH_DEADLINE_MS = 5 * 60 * 1000;
+const POLL_INTERVAL_MS = 3000;
+
+function waitForBatch(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cancel = () => {
+      clearTimeout(timer);
+      reject(new Error('Request cancelled'));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', cancel);
+      resolve();
+    }, POLL_INTERVAL_MS);
+    signal.addEventListener('abort', cancel, { once: true });
+    if (signal.aborted) cancel();
+  });
+}
+
+/** Start/resume the account's batch, then read its status until ready. */
 export async function loadCommonWords(
   signal?: AbortSignal,
 ): Promise<readonly CommonWordQuestion[]> {
@@ -55,66 +73,93 @@ export async function loadCommonWords(
   const cancel = () => controller.abort();
   signal?.addEventListener('abort', cancel, { once: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let rejectCancelled: (() => void) | undefined;
   try {
     return await Promise.race([
       (async () => {
-        const response = await authenticatedFetch(
-          '/common-words/batch',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}',
-            signal: controller.signal,
-          },
-          5 * 60 * 1000,
-        );
-        if (!response.ok)
-          throw new CommonWordsError(
-            'Could not prepare new words. Please try again shortly.',
+        let batchId: string | null = null;
+        while (!controller.signal.aborted) {
+          const response = await authenticatedFetch(
+            batchId
+              ? `/common-words/batches/${batchId}`
+              : '/common-words/batches',
+            batchId
+              ? { signal: controller.signal }
+              : { method: 'POST', signal: controller.signal },
           );
-        const batch: unknown = await response.json();
-        if (
-          !batch ||
-          typeof batch !== 'object' ||
-          !('status' in batch) ||
-          !('questions' in batch) ||
-          !Array.isArray(batch.questions)
-        )
-          throw new CommonWordsError(
-            'The server returned an invalid response. Please try again.',
-          );
-        if (batch.status === 'complete' && batch.questions.length === 0)
-          return [];
-        if (
-          batch.status !== 'ready' ||
-          batch.questions.length < 1 ||
-          batch.questions.length > 10 ||
-          !batch.questions.every(isQuestion) ||
-          new Set(batch.questions.map((item) => item.id)).size !==
-            batch.questions.length
-        )
-          throw new CommonWordsError(
-            'The server returned invalid questions. Please try again.',
-          );
-        return batch.questions;
+          if (!response.ok)
+            throw new CommonWordsError(
+              'Could not check question preparation. Please try again.',
+            );
+          const batch: unknown = await response.json();
+          if (
+            !batch ||
+            typeof batch !== 'object' ||
+            !('id' in batch) ||
+            typeof batch.id !== 'string' ||
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              batch.id,
+            ) ||
+            (batchId !== null && batch.id !== batchId) ||
+            !('status' in batch) ||
+            !('questions' in batch) ||
+            !Array.isArray(batch.questions)
+          )
+            throw new CommonWordsError(
+              'The server returned an invalid response. Please try again.',
+            );
+          batchId = batch.id;
+          if (batch.status === 'failed')
+            throw new CommonWordsError(
+              'Question preparation failed. Please try again.',
+            );
+          if (batch.status === 'complete' && batch.questions.length === 0)
+            return [];
+          if (batch.status === 'ready') {
+            if (
+              batch.questions.length < 1 ||
+              batch.questions.length > 10 ||
+              !batch.questions.every(isQuestion) ||
+              new Set(batch.questions.map((item) => item.id)).size !==
+                batch.questions.length
+            )
+              throw new CommonWordsError(
+                'The server returned invalid questions. Please try again.',
+              );
+            return batch.questions;
+          }
+          if (
+            !['pending', 'generating'].includes(String(batch.status)) ||
+            batch.questions.length !== 0
+          )
+            throw new CommonWordsError(
+              'The server returned an invalid response. Please try again.',
+            );
+          await waitForBatch(controller.signal);
+        }
+        throw new Error('Request cancelled');
       })(),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => {
-            reject(
-              new CommonWordsError(
-                'Words are still being prepared. Please try again shortly.',
-              ),
-            );
-            controller.abort();
-          },
-          5 * 60 * 1000,
-        );
+        rejectCancelled = () => reject(new Error('Request cancelled'));
+        controller.signal.addEventListener('abort', rejectCancelled, {
+          once: true,
+        });
+        timer = setTimeout(() => {
+          reject(
+            new CommonWordsError(
+              'Words are still being prepared. Check again to resume this batch.',
+            ),
+          );
+          controller.abort();
+        }, BATCH_DEADLINE_MS);
       }),
     ]);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', cancel);
+    if (rejectCancelled)
+      controller.signal.removeEventListener('abort', rejectCancelled);
+    controller.abort();
   }
 }
 

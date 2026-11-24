@@ -139,7 +139,7 @@ database credentials in the Jetson's private `backend/.env`; optionally add
 
 Omit `--web-build-dir` when building on the board. With Node 24.3+ or 26+ and npm
 available, the script installs client dependencies, builds a production SPA for
-the public domain, updates the API and prompt-worker images, applies guarded
+the public domain, updates the API and background worker images, applies guarded
 forward migrations, and publishes the frontend after local health checks.
 The existing database volume is checked before updating, and the working Nginx,
 Cloudflare tunnel and DNS are preserved by default.
@@ -208,9 +208,9 @@ uses server rendering; building does not publish it to a hosting provider or
 produce native app binaries. Development port/host options last for the menu
 session, or can be supplied as `CLIENT_PORT=8081 CLIENT_HOST=lan`.
 
-The backend menu builds/rebuilds both API and prompt-worker images and manages
+The backend menu builds/rebuilds API, prompt, embedding, and Common worker images and manages
 the existing local Docker Compose stack, including status, combined API/worker
-logs, prompt queue status, and forward migrations. Start/update recreates both
+logs, prompt queue status, and forward migrations. Start/update recreates the
 application containers in migration-safe order, including when only mounted
 source files changed; startup retains the guarded migration entrypoint.
 This uses the existing development Compose file with live reload,
@@ -447,7 +447,9 @@ Client `authenticatedFetch` accepts v1-relative paths, such as `/words`.
 
 | Method | Path | Contract |
 | --- | --- | --- |
-| POST | `/api/v1/common-words/batch` | `{}` → up to 10 server-generated questions or complete status |
+| POST | `/api/v1/common-words/batches` | Start/resume an account-owned batch (202), returning its ID and status |
+| GET | `/api/v1/common-words/batches/{batch_id}` | Poll status and retrieve ready questions without answer keys |
+| POST | `/api/v1/common-words/batch` | Legacy synchronous generation for older clients |
 | POST | `/api/v1/common-words/questions/{question_id}/answer` | `selected_index` → persisted grading and learning result |
 | POST | `/api/v1/words` | `word`, `english_explanation` → created word (201) |
 | GET | `/api/v1/reviews/next?limit=1` | Due items; limit 1–50; empty array when none |
@@ -527,13 +529,20 @@ continues until ten distinct unlearned words are selected. The last batch can be
 smaller; when none remain, the screen shows that all Common words are learned.
 Saved-but-unlearned words remain eligible.
 
-`POST /api/v1/common-words/batch` accepts `{}`. It sends the selected words and
-meanings to OpenRouter to generate one question per word, four distinct choices,
-and one answer. The backend validates exact bank-ID coverage and persists the
-complete batch. It returns question IDs, word details, prompts, and choices without
-answer keys. Generation runs during the request, outside database transactions;
-there is no Common refill worker or polling queue. A changed learned selection
-is rechecked before publication and rebuilt within a bounded request budget.
+`POST /api/v1/common-words/batches` starts or resumes the account's queued,
+generating, or unanswered ready batch. The `common-worker` sends selected words
+and meanings to OpenRouter to generate one question per word, four distinct
+choices, and one answer. The backend validates exact bank-ID coverage, then
+persists questions and ready status atomically, without answer keys in the response.
+LLM calls run outside database transactions. Learned selection is rechecked before
+publication and rebuilt within a bounded generation budget.
+
+The client polls `GET /api/v1/common-words/batches/{batch_id}` every three seconds
+and displays questions automatically when ready. Leaving the screen cancels polling;
+returning resumes the batch. After five minutes, **Check again** resumes existing
+work. Failed generation requires an explicit retry. Migration `0023` and the
+`common-worker` service are required. See [resumable batch details](docs/common-word-batches.md).
+The synchronous `/common-words/batch` endpoint remains available for older clients.
 
 `POST /api/v1/common-words/questions/{question_id}/answer` accepts
 `{"selected_index": 0}`. Backend grading returns `result`, `correctIndex`, and
@@ -629,11 +638,11 @@ owned data while preserving the shared bank. Learning summary totals count the
 normalized union of learned Common vocabulary and saved words once.
 
 Use private `OPENROUTER_*` configuration; no credentials belong in source control.
-`COMMON_WORDS_TIMEOUT_SECONDS` defaults to 240 seconds for the whole generation
-request. The client allows five minutes for this request, and the Jetson Nginx
-configuration allows 300 seconds on the batch route. Any additional reverse proxy
-or edge service must allow the configured backend request budget. API and client
-should be released together because the retired `/learned` contract is not restored.
+`COMMON_WORDS_TIMEOUT_SECONDS` defaults to 240 seconds for generation. The client
+polls for up to five minutes with a 15-second timeout for each HTTP request.
+Generation continues independently of the client connection; expired worker leases
+become failed batches that can be retried. Deploy the migrated backend and worker
+before releasing the client. The retired `/learned` contract is not restored.
 
 ### Background review prompt generation
 

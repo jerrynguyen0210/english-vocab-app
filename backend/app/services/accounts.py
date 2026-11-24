@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AuthSession,
+    CommonPracticeBatch,
     CommonPracticeQuestion,
     ReviewAttempt,
     ReviewState,
@@ -49,6 +50,9 @@ def delete_account(db: Session, user: User) -> None:
     # The trigger permits erasure only after this marker, in the same transaction.
     user.deleted_at = datetime.now(UTC)
     db.flush()
+    db.execute(
+        delete(CommonPracticeBatch).where(CommonPracticeBatch.user_id == user.id)
+    )
     word_ids = select(Word.id).where(Word.user_id == user.id)
     db.execute(
         delete(CommonPracticeQuestion).where(CommonPracticeQuestion.user_id == user.id)

@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.llm.openrouter_common import generate_common_questions
 from app.llm.openrouter_review import ReviewError
-from app.models import CommonPracticeQuestion, CommonWord, User, UserCommonWordProgress
+from app.models import (
+    CommonPracticeBatch,
+    CommonPracticeQuestion,
+    CommonWord,
+    User,
+    UserCommonWordProgress,
+)
 from app.schemas.common_words import (
     BankWord,
     CommonAnswerResult,
@@ -54,8 +60,10 @@ def select_unlearned(db: Session, user_id: UUID) -> list[BankWord]:
     return selected
 
 
-def get_batch(db: Session, user: User) -> CommonBatch:
+def get_batch(db: Session, user: User, *, batch_id: UUID | None = None) -> CommonBatch:
     user_id = user.id
+    if batch_id is not None:
+        generation_batch(db, user_id, batch_id)
     settings = get_settings()
     deadline = time.monotonic() + settings.common_words_timeout_seconds
     # Another session can learn during generation. Rebuild within a bounded total deadline.
@@ -70,6 +78,11 @@ def get_batch(db: Session, user: User) -> CommonBatch:
                 raise CommonGenerationUnavailable(
                     "Common words are not available yet. Please try again later."
                 )
+            if batch_id is not None:
+                lock_account_by_id(db, user_id)
+                batch = generation_batch(db, user_id, batch_id)
+                batch.status = "complete"
+                db.commit()
             return CommonBatch(status="complete")
         try:
             generated = generate_common_questions(
@@ -90,6 +103,8 @@ def get_batch(db: Session, user: User) -> CommonBatch:
                 "Could not prepare Common questions. Please retry."
             ) from None
         lock_account_by_id(db, user_id)
+        if batch_id is not None:
+            generation_batch(db, user_id, batch_id)
         learned = db.scalar(
             select(UserCommonWordProgress.common_word_id)
             .where(
@@ -135,6 +150,10 @@ def get_batch(db: Session, user: User) -> CommonBatch:
                     choices=record.choices,
                 )
             )
+        if batch_id is not None:
+            batch = generation_batch(db, user_id, batch_id)
+            batch.status = "ready"
+            batch.question_ids = [str(question.id) for question in response]
         db.commit()
         return CommonBatch(status="ready", questions=response)
     raise CommonGenerationUnavailable(
@@ -189,3 +208,20 @@ def answer_question(
     )
     db.commit()
     return result
+
+
+def generation_batch(db: Session, user_id: UUID, batch_id: UUID) -> CommonPracticeBatch:
+    batch = db.scalar(
+        select(CommonPracticeBatch)
+        .where(CommonPracticeBatch.user_id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if (
+        batch is None
+        or batch.id != batch_id
+        or batch.status != "generating"
+        or batch.available_at <= datetime.now(UTC)
+    ):
+        raise CommonGenerationUnavailable("This batch is no longer generating")
+    return batch

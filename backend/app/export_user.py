@@ -14,6 +14,7 @@ from sqlalchemy.pool import NullPool
 from app.core.config import get_settings
 from app.models import (
     AuthSession,
+    CommonPracticeBatch,
     CommonPracticeQuestion,
     CommonWord,
     ReviewAttempt,
@@ -122,6 +123,14 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
                 )
                 .where(UserCommonWordProgress.user_id == user_id)
                 .order_by(UserCommonWordProgress.common_word_id)
+            ).mappings()
+        ],
+        "common_practice_batches": [
+            dict(row)
+            for row in db.execute(
+                select(CommonPracticeBatch.__table__).where(
+                    CommonPracticeBatch.user_id == user_id
+                )
             ).mappings()
         ],
         "common_practice_questions": [

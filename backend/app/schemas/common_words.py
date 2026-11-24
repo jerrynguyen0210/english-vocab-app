@@ -71,3 +71,9 @@ class CommonAnswerResult(BaseModel):
     result: Literal["correct", "incorrect"]
     correctIndex: int
     explanation: str
+
+
+class CommonBatchStatus(BaseModel):
+    id: UUID
+    status: Literal["pending", "generating", "ready", "complete", "failed"]
+    questions: list[CommonQuestion] = Field(default_factory=list)

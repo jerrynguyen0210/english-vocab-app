@@ -147,34 +147,38 @@ export function CommonWordPractice({
     };
   }, []);
 
-  useEffect(() => {
-    if (!active || questions !== null) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    loadCommonWords(controller.signal).then(
-      (items) => {
-        if (!cancelled) {
-          setLoadError('');
-          setQuestions(items);
-        }
-      },
-      (failure) => {
-        if (!cancelled)
-          setLoadError(
-            failure instanceof CommonWordsError
-              ? failure.message
-              : connectionMessage(
-                  failure,
-                  'Could not load words. Please try again.',
-                ),
-          );
-      },
-    );
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [active, questions, loadAttempt]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!active || questions !== null) return;
+      void loadAttempt; // Manual retry reruns this focus effect.
+      setLoadError('');
+      let cancelled = false;
+      const controller = new AbortController();
+      loadCommonWords(controller.signal).then(
+        (items) => {
+          if (!cancelled) {
+            setLoadError('');
+            setQuestions(items);
+          }
+        },
+        (failure) => {
+          if (!cancelled)
+            setLoadError(
+              failure instanceof CommonWordsError
+                ? failure.message
+                : connectionMessage(
+                    failure,
+                    'Could not load words. Please try again.',
+                  ),
+            );
+        },
+      );
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }, [active, questions, loadAttempt]),
+  );
 
   const next = useCallback(() => {
     if (savePending.current) return;
@@ -311,7 +315,11 @@ export function CommonWordPractice({
             {loadError}
           </ThemedText>
           <Action
-            label="Try again"
+            label={
+              loadError.includes('still being prepared')
+                ? 'Check again'
+                : 'Try again'
+            }
             onPress={() => {
               setLoadError('');
               setLoadAttempt((current) => current + 1);
@@ -334,7 +342,8 @@ export function CommonWordPractice({
             </ThemedText>
           </View>
           <ThemedText style={[styles.body, styles.center]}>
-            Preparing your next questions. This may take a moment.
+            Preparing your next questions. They will appear automatically when
+            ready.
           </ThemedText>
         </View>
       ) : questions.length === 0 ? (
