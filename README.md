@@ -568,6 +568,47 @@ For Docker, run the same command inside the configured API container, for exampl
 `docker compose exec api python -m app.generate_common_words --count 1000`
 using the same Compose files/environment as your deployment.
 
+Manage or inspect the Common bank with the interactive backend menu:
+
+```bash
+./devops/manage_common_words.sh
+```
+
+The launcher runs Python on the host and uses `backend/.venv/bin/python` when
+available. Invoke `./devops/manage_common_words.sh` from the repository root, or
+use its absolute path from another working directory. From `backend/`, you can
+also run `python -m app.manage_common_words` when the host has the backend
+dependencies and can reach the configured database.
+
+For the **Jetson Nano Docker deployment**, run the menu inside the API container:
+
+```bash
+cd /home/pi5/Documents/english-vocab-app/backend
+docker compose -f docker-compose.jetson.yml exec api \
+  python -m app.manage_common_words
+```
+
+The Jetson production database is accessible through the Docker network and does
+not expose a host database port. Use the container command above for that
+deployment; the host launcher does not automatically enter Docker. Keep the
+terminal interactive (do not add `-T`) and use the same Compose project/environment
+as the deployed stack.
+
+Rebuild and update the API image with the new menu code before running the
+command. The production container has no source-code mount, so updating files on
+the host alone does not update its application code.
+
+The menu provides bank counts, the latest ten words, paginated browsing/search,
+full word details, LLM generation, single-word deletion, and clearing the bank.
+Generation reuses the existing operator generator and asks for the new-word count
+and batch size. Viewing the bank does not require an OpenRouter API key.
+
+Deletion requires typing the exact displayed confirmation. It atomically removes
+the selected bank words and their Common questions and learning progress, while
+preserving independently saved recall words. Clearing uses the IDs captured before
+confirmation, so concurrently added words are retained. The menu never applies
+migrations automatically; use the normal migration command first if needed.
+
 The count means **new unique words to add**, not the desired bank total. Any
 positive integer is accepted. The command asks the configured OpenRouter LLM for
 up to 20 words per request (`--batch-size 1-20` can reduce this), including simple
