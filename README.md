@@ -611,11 +611,19 @@ The menu provides bank counts, the latest ten words, paginated browsing/search,
 full word details, LLM generation, single-word deletion, and clearing the bank.
 Option **8** inspects every bank word for duplicates after Unicode, case, and
 whitespace normalization, duplicate stored normalization keys, inconsistent
-normalization, and null or blank fields. It reports required fields separately
+normalization, null or blank fields, and invalid vocabulary content. It reports required fields separately
 from optional example sentences and IPA, with counts and up to ten sample IDs
-per finding category. Inspection only reads the database and does not repair or
-delete entries. The bank has no generation-source marker, so inspection covers
-all Common words, including generated words.
+per finding category. If findings exist, it asks `Repair affected content with the
+LLM? [y/N]:`. Enter `y` or `yes` to fill missing or invalid parts of speech,
+meanings, examples and IPA using the configured OpenRouter model. Repair scans
+all affected words, including findings beyond the ten displayed samples, in
+batches of up to 20. It validates responses, preserves word IDs, valid fields
+and learning history, and skips rows edited concurrently. Completed batches
+remain saved on failure; choose option 8 again to retry remaining findings.
+A fresh inspection runs after repair. Duplicates, invalid word identities,
+normalization and timestamp issues require manual review and remain reported.
+Declining repair leaves the database unchanged. The bank has no generation-source
+marker, so inspection covers all Common words, including generated words.
 Generation reuses the existing operator generator and asks for the new-word count
 and batch size. Viewing the bank does not require an OpenRouter API key.
 

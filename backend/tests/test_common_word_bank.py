@@ -19,7 +19,7 @@ def word(value="hello"):
         part_of_speech="noun",
         english_explanation="A test meaning.",
         example_sentence=f"We use {value} often.",
-        ipa=None,
+        ipa="/test/",
     )
 
 

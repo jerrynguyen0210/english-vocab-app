@@ -234,7 +234,7 @@ def test_menu_generation_reuses_llm_population_and_reports_sql_progress(
                 part_of_speech="interjection",
                 english_explanation="A greeting",
                 example_sentence="Say hello.",
-                ipa=None,
+                ipa="/test/",
             )
         ]
     )
@@ -270,3 +270,147 @@ def test_main_handles_closed_input_and_disposes_engine(bank, monkeypatch, capsys
     monkeypatch.setattr("builtins.input", closed)
     menu.main()
     assert "Menu closed" in capsys.readouterr().out
+
+
+def repair_entry(word):
+    return GeneratedBankWord(
+        word=word,
+        part_of_speech="noun",
+        english_explanation="Replacement meaning",
+        example_sentence="Replacement example.",
+        ipa="/test/",
+    )
+
+
+def test_inspection_decline_never_calls_llm(bank, monkeypatch, capsys):
+    engine, settings, _ = bank
+    repair = Mock()
+    monkeypatch.setattr(menu, "repair_bank", repair)
+    inputs(monkeypatch, ["8", "", "0"])
+    menu.run_menu(engine, settings)
+    repair.assert_not_called()
+    assert "Missing optional: ipa: 3" in capsys.readouterr().out
+
+
+def test_menu_repairs_missing_ipa_and_reinspects_without_changing_history(
+    bank, monkeypatch, capsys
+):
+    engine, settings, ids = bank
+    repair = Mock(
+        side_effect=lambda words, **kwargs: [repair_entry(w["word"]) for w in words]
+    )
+    monkeypatch.setattr("app.services.common_word_repair.repair_bank_words", repair)
+    inputs(monkeypatch, ["8", "yes", "0"])
+    menu.run_menu(engine, settings)
+    assert repair.call_count == 1
+    output = capsys.readouterr().out
+    assert "Saved repairs for 3 Common words" in output
+    assert "No duplicates, missing values" in output
+    alpha = find_word(engine, str(ids[0]))
+    assert alpha.ipa == "/test/"
+    assert alpha.meaning == "Meaning of Alpha"
+    assert alpha.example == "An example for Alpha."
+    assert bank_summary(engine) == {
+        "words": 3,
+        "questions": 2,
+        "progress": 2,
+        "learned": 2,
+    }
+    # A clean inspection should not prompt for repair.
+    inputs(monkeypatch, ["8", "0"])
+    menu.run_menu(engine, settings)
+    assert repair.call_count == 1
+
+
+@pytest.mark.parametrize("failure", ["identity", "missing", "provider"])
+def test_invalid_repairs_leave_content_unchanged_and_menu_open(
+    bank, monkeypatch, capsys, failure
+):
+    from app.llm.openrouter_review import ReviewError
+
+    engine, settings, _ = bank
+
+    def response(words, **kwargs):
+        if failure == "provider":
+            raise ReviewError("Synthetic failure", "provider_connection")
+        if failure == "missing":
+            return []
+        return [repair_entry("different") for word in words]
+
+    monkeypatch.setattr("app.services.common_word_repair.repair_bank_words", response)
+    inputs(monkeypatch, ["8", "y", "1", "0"])
+    menu.run_menu(engine, settings)
+    assert all(word.ipa is None for word in latest_words(engine))
+    output = capsys.readouterr().out
+    assert "LLM repair failed" in output
+    assert "Common words: 3" in output
+
+
+def test_repairs_all_findings_beyond_inspection_sample_and_keeps_completed_batches(
+    bank, monkeypatch
+):
+    from app.llm.openrouter_review import ReviewError
+    from app.services.common_word_management import inspect_bank
+    from app.services.common_word_repair import repair_bank
+
+    engine, settings, _ = bank
+    with Session(engine) as db:
+        db.add_all(
+            [
+                CommonWord(
+                    word="word " + chr(97 + i),
+                    normalised_word="word " + chr(97 + i),
+                    part_of_speech="noun",
+                    english_explanation="Meaning",
+                )
+                for i in range(22)
+            ]
+        )
+        db.commit()
+    calls = []
+
+    def response(words, **kwargs):
+        calls.append(words)
+        if len(calls) == 2:
+            raise ReviewError("Synthetic failure", "provider_connection")
+        return [repair_entry(w["word"]) for w in words]
+
+    monkeypatch.setattr("app.services.common_word_repair.repair_bank_words", response)
+    with pytest.raises(ReviewError):
+        repair_bank(engine, settings)
+    assert [len(call) for call in calls] == [20, 5]
+    assert inspect_bank(engine).counts["Missing optional: ipa"] == 5
+    calls.clear()
+    assert repair_bank(engine, settings) == 5
+    assert not inspect_bank(engine).counts
+
+
+def test_repair_detects_invalid_content_and_preserves_concurrent_edits(
+    bank, monkeypatch
+):
+    from app.services.common_word_management import inspect_bank
+    from app.services.common_word_repair import repair_bank
+
+    engine, settings, ids = bank
+    with Session(engine) as db:
+        alpha = db.get(CommonWord, ids[0])
+        alpha.ipa = "invalid IPA"
+        alpha.part_of_speech = ""
+        db.commit()
+    report = inspect_bank(engine)
+    assert report.counts["Invalid content: ipa"] == 1
+    assert report.counts["Missing required: part_of_speech"] == 1
+
+    def response(words, **kwargs):
+        with Session(engine) as db:
+            beta = db.get(CommonWord, ids[1])
+            beta.english_explanation = "Concurrent edit"
+            db.commit()
+        return [repair_entry(w["word"]) for w in words]
+
+    monkeypatch.setattr("app.services.common_word_repair.repair_bank_words", response)
+    assert repair_bank(engine, settings) == 2
+    assert find_word(engine, str(ids[0])).ipa == "/test/"
+    assert find_word(engine, str(ids[0])).part_of_speech == "noun"
+    beta = find_word(engine, str(ids[1]))
+    assert beta.meaning == "Concurrent edit" and beta.ipa is None

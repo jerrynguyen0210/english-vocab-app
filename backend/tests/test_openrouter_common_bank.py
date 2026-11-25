@@ -261,3 +261,55 @@ def test_exhausted_deadline_does_not_start_another_request():
         generate()
     request.assert_not_called()
     assert failure.value.diagnostic == "The provider fallback deadline was exhausted."
+
+
+def test_repair_requests_existing_words_and_requires_ipa():
+    from app.llm.openrouter_common_bank import repair_bank_words
+
+    with patch("app.llm.openrouter_common.urlopen", return_value=response()) as request:
+        assert (
+            repair_bank_words(
+                [{**ENTRY, "ipa": None}],
+                model="test/model",
+                api_key="placeholder-test-key",
+            )[0].ipa
+            == ENTRY["ipa"]
+        )
+    payload = json.loads(request.call_args.args[0].data)
+    assert json.loads(payload["messages"][1]["content"])["words"][0]["ipa"] is None
+    for changes in ({"ipa": None}, {"word": "different"}):
+        with (
+            patch(
+                "app.llm.openrouter_common.urlopen",
+                return_value=response([{**ENTRY, **changes}]),
+            ),
+            pytest.raises(ReviewError),
+        ):
+            repair_bank_words(
+                [ENTRY], model="test/model", api_key="placeholder-test-key"
+            )
+
+
+@pytest.mark.parametrize("field", list(ENTRY))
+@pytest.mark.parametrize("invalid", [None, "", "   "])
+def test_generation_rejects_null_or_blank_properties(field, invalid):
+    with (
+        patch(
+            "app.llm.openrouter_common.urlopen",
+            return_value=response([{**ENTRY, field: invalid}]),
+        ),
+        pytest.raises(ReviewError),
+    ):
+        generate()
+
+
+def test_generation_schema_requires_all_properties_without_null():
+    with patch("app.llm.openrouter_common.urlopen", return_value=response()) as request:
+        generate()
+    payload = json.loads(request.call_args.args[0].data)
+    schema = payload["response_format"]["json_schema"]["schema"]["$defs"][
+        "GeneratedBankWord"
+    ]
+    assert set(schema["required"]) == set(ENTRY)
+    assert schema["properties"]["ipa"]["type"] == "string"
+    assert "Never return null" in payload["messages"][0]["content"]

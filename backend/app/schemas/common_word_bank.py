@@ -24,7 +24,7 @@ class GeneratedBankWord(BaseModel):
     ]
     english_explanation: str = Field(min_length=1, max_length=1000)
     example_sentence: str = Field(min_length=1, max_length=1000)
-    ipa: str | None = Field(max_length=120)
+    ipa: str = Field(min_length=3, max_length=120)
 
     @field_validator("word")
     @classmethod
@@ -36,9 +36,9 @@ class GeneratedBankWord(BaseModel):
 
     @field_validator("ipa")
     @classmethod
-    def pronunciation(cls, value: str | None) -> str | None:
-        if value is not None and not re.fullmatch(r"/[^/\r\n]+/", value):
-            raise ValueError("IPA must use slash notation or null")
+    def pronunciation(cls, value: str) -> str:
+        if not re.fullmatch(r"/[^/\r\n]+/", value) or not value[1:-1].strip():
+            raise ValueError("IPA must contain a pronunciation in slash notation")
         return value
 
 

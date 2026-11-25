@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.text import normalise_word
 from app.models import CommonPracticeQuestion, CommonWord, UserCommonWordProgress
+from app.services.common_word_repair import content_issues
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,10 @@ def inspect_bank(engine: Engine, sample_limit: int = 10) -> BankInspection:
     if sample_limit < 1:
         raise ValueError("Sample limit must be positive")
     required = (
-        "word", "normalised_word", "part_of_speech", "english_explanation",
+        "word",
+        "normalised_word",
+        "part_of_speech",
+        "english_explanation",
         "created_at",
     )
     optional = ("example_sentence", "ipa")
@@ -47,17 +51,25 @@ def inspect_bank(engine: Engine, sample_limit: int = 10) -> BankInspection:
     }
     total = 0
     with engine.connect() as connection:
-        rows = connection.execution_options(yield_per=500).execute(
-            select(CommonWord.__table__).order_by(CommonWord.id)
-        ).mappings()
+        rows = (
+            connection.execution_options(yield_per=500)
+            .execute(select(CommonWord.__table__).order_by(CommonWord.id))
+            .mappings()
+        )
         for row in rows:
             total += 1
             label = f"ID {row['id']}, word {row['word']!r}"
             for field in (*required, *optional):
                 value = row[field]
                 if value is None or (isinstance(value, str) and not value.strip()):
-                    prefix = "Missing required" if field in required else "Missing optional"
+                    prefix = (
+                        "Missing required" if field in required else "Missing optional"
+                    )
                     record(f"{prefix}: {field}", label)
+            for field in sorted(content_issues(dict(row))):
+                value = row[field]
+                if value is not None and (not isinstance(value, str) or value.strip()):
+                    record(f"Invalid content: {field}", label)
             normalized = normalise_word(row["word"] or "")
             stored = row["normalised_word"]
             if normalized and stored != normalized:

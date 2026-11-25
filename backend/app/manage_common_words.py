@@ -7,9 +7,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_engine
+from app.llm.openrouter_review import ReviewError
 from app.services.common_word_bank import BankGenerationStopped, populate_bank
 from app.services.common_word_management import (
     BankEntry,
+    BankInspection,
     all_word_ids,
     bank_summary,
     browse_words,
@@ -18,6 +20,7 @@ from app.services.common_word_management import (
     inspect_bank,
     latest_words,
 )
+from app.services.common_word_repair import repair_bank
 
 MENU = """
 Common word database
@@ -69,6 +72,20 @@ def positive_integer(
     return value
 
 
+def show_inspection(report: BankInspection) -> None:
+    print(f"Inspected {report.words} Common words (read only).")
+    print("Duplicate counts are groups; other counts are affected rows.")
+    print("Example sentences and IPA are optional database fields.")
+    if not report.counts:
+        print("No duplicates, missing values, or normalization issues found.")
+    for category, count in report.counts.items():
+        print(f"\n{category}: {count}")
+        for sample in report.samples[category]:
+            print(f"  {sample}")
+        if count > len(report.samples[category]):
+            print("  Additional findings omitted; showing first 10.")
+
+
 def run_menu(engine: Engine, settings: Settings) -> None:
     while True:
         print(MENU)
@@ -116,17 +133,40 @@ def run_menu(engine: Engine, settings: Settings) -> None:
                 )
             elif choice == "8":
                 report = inspect_bank(engine)
-                print(f"Inspected {report.words} Common words (read only).")
-                print("Duplicate counts are groups; other counts are affected rows.")
-                print("Example sentences and IPA are optional database fields.")
-                if not report.counts:
-                    print("No duplicates, missing values, or normalization issues found.")
-                for category, count in report.counts.items():
-                    print(f"\n{category}: {count}")
-                    for sample in report.samples[category]:
-                        print(f"  {sample}")
-                    if count > len(report.samples[category]):
-                        print("  Additional findings omitted; showing first 10.")
+                show_inspection(report)
+                if report.counts:
+                    print(
+                        "LLM repair fills missing or invalid vocabulary fields, including IPA. "
+                        "Duplicates, word identity, normalization and timestamps need manual review."
+                    )
+                    if input(
+                        "Repair affected content with the LLM? [y/N]: "
+                    ).strip().casefold() in {"y", "yes"}:
+                        try:
+                            repaired = repair_bank(
+                                engine,
+                                settings,
+                                progress=lambda saved, total: print(
+                                    f"Repaired {saved}/{total} Common words.",
+                                    flush=True,
+                                ),
+                            )
+                            print(f"Saved repairs for {repaired} Common words.")
+                        except (ReviewError, ValueError):
+                            print(
+                                "LLM repair failed or returned invalid content. Check private "
+                                "OPENROUTER settings and retry option 8. Completed repair batches remain saved."
+                            )
+                        except SQLAlchemyError:
+                            print(
+                                "Repair database operation failed. Completed batches remain saved; retry option 8."
+                            )
+                        print(
+                            "Inspection after repair; any remaining findings need retry or manual review:"
+                        )
+                        show_inspection(inspect_bank(engine))
+                    else:
+                        print("Repair cancelled. No changes made.")
             elif choice in {"6", "7"}:
                 if choice == "6":
                     word = find_word(engine, input("Word or UUID to delete: "))
