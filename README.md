@@ -171,11 +171,21 @@ Then run from the repository root:
 ./devops/build_android_release.sh aab   # Google Play release bundle
 ```
 
-The script installs missing client dependencies, runs typecheck and lint, uploads
-the project, waits for the build, and prints the artifact download link. Download
-the APK to your phone and allow installation from that source when prompted.
+The script requires `curl` and `unzip` in addition to Node.js and npm. It installs
+missing client dependencies, runs typecheck and lint, uploads the project, waits
+for the build, and downloads the artifact to `build/android/`. It checks archive
+integrity and the Android manifest before saving the final file, then prints its
+local path and download link. Open the APK on your phone and allow installation
+from that source when prompted.
 The AAB is uploaded separately through Google Play Console; the script does not
 publish to the store.
+
+To download a completed build again without starting another build, use its ID
+from the Expo build page (add `aab` for a Google Play bundle):
+
+```bash
+./devops/build_android_release.sh --download-build <build-id>
+```
 
 On the first interactive build, follow Expo's prompts to create/link the project
 and generate or select its Android signing keystore. For an existing published
