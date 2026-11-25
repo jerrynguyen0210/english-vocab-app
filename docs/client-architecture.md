@@ -98,6 +98,21 @@ states and errors. There is no separate product API repository layer or global
 query cache. `SessionProvider` holds shared identity state; product drafts and
 review progress live in mounted screen state.
 
+The account teacher card uses `services/teachers.ts` through
+`TeacherSelectionProvider` inside the authenticated product navigator. It loads
+`GET /api/v1/teachers` with `{teachers: [{id, name}], selected_teacher_id}` and
+sends `PUT /api/v1/teachers/selection` with `{teacher_id}`. A successful write must
+return `{teacher_id}` before the displayed selection changes. Confirmed responses
+stay in memory across screen navigation and reset with the session's product
+navigator. Loading, empty-directory, failed-load retry, and failed-save states
+are handled in the card; there are no sample teachers or local-only assignments.
+
+The backend teacher routes are intentionally transport stubs: GET returns
+`{teachers: [], selected_teacher_id: null}`, and PUT returns HTTP 501 after
+request validation. Teacher listing, assignment rules, and persistence remain
+unimplemented, with no teacher database tables or migrations. The current UI
+therefore shows “No teachers available yet” with selection disabled.
+
 ## 3. Navigation and screen boundaries
 
 ```mermaid

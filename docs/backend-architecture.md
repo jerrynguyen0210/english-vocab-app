@@ -174,6 +174,8 @@ a guarantee about every internal framework execution step.
 | GET | `/api/v1/auth/me` | Return the active account profile |
 | PATCH | `/api/v1/account` | Update the current account's validated timezone |
 | DELETE | `/api/v1/account` | Atomically erase account and owned records |
+| GET | `/api/v1/teachers` | Authenticated stub: empty teacher directory and no selection |
+| PUT | `/api/v1/teachers/selection` | Authenticated stub: validate `{teacher_id}` and return 501 |
 | GET | `/api/v1/words/search` | Local lexical search with owner-specific saved markers |
 | POST | `/api/v1/words` | Save word, fallback prompt, review state and generation job |
 | GET | `/api/v1/reviews/next` | Return immediately due hints; limit 1–50 |

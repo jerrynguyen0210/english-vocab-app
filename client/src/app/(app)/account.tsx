@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { AppScreen } from '@/components/app-screen';
 import { ThemedText } from '@/components/themed-text';
+import { TeacherSelection } from '@/components/teacher-selection';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 import { useSession } from '@/context/session';
 import { AuthError } from '@/services/auth';
@@ -98,6 +99,7 @@ export default function AccountScreen() {
             <ThemedText style={styles.statusText}>ACTIVE</ThemedText>
           </View>
         </View>
+        <TeacherSelection />
         {error && !confirming ? (
           <ThemedText
             style={styles.error}
