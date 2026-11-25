@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import AddWordScreen from '@/app/(app)/add-word';
 import { CommonWordPractice } from '@/components/common-word-practice';
+import * as Speech from 'expo-speech';
 import { authenticatedFetch } from '@/services/auth';
 import {
   loadCommonWords,
@@ -12,6 +13,10 @@ import {
 jest.mock('@/services/common-words', () => ({
   ...jest.requireActual('@/services/common-words'),
   loadCommonWords: jest.fn(),
+}));
+jest.mock('expo-speech', () => ({
+  speak: jest.fn(),
+  stop: jest.fn(() => Promise.resolve()),
 }));
 const loadMock = jest.mocked(loadCommonWords);
 const fetchMock = jest.mocked(authenticatedFetch);
@@ -91,6 +96,8 @@ beforeEach(() => {
   fetchMock.mockReset().mockImplementation(grade);
   onSaved.mockClear();
   onBackToVocab.mockClear();
+  jest.mocked(Speech.speak).mockReset();
+  jest.mocked(Speech.stop).mockClear();
 });
 afterEach(() => jest.useRealTimers());
 
@@ -115,7 +122,55 @@ test('shows the word and IPA without revealing the explanation before answering'
     screen.getByLabelText('IPA pronunciation: /rɪˈlaɪəbl/'),
   ).toBeOnTheScreen();
   expect(screen.queryByText(questions[0].explanation)).toBeNull();
-  expect(screen.getAllByRole('button')).toHaveLength(4);
+  expect(screen.getAllByRole('button')).toHaveLength(5);
+});
+
+test('speaker reads the word, prevents queued taps, and stops when the tab is hidden', async () => {
+  const view = await render(practice());
+  const speaker = () =>
+    screen.getByRole('button', { name: 'Play pronunciation of reliable' });
+  await fireEvent.press(speaker());
+  expect(Speech.speak).toHaveBeenCalledWith(
+    'reliable',
+    expect.objectContaining({ language: 'en-GB' }),
+  );
+  expect(speaker()).toBeDisabled();
+  await fireEvent.press(speaker());
+  expect(Speech.speak).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    const options = jest.mocked(Speech.speak).mock.calls[0][1];
+    (options?.onDone as () => void)();
+  });
+  expect(speaker()).toBeEnabled();
+  await fireEvent.press(speaker());
+  const stops = jest.mocked(Speech.stop).mock.calls.length;
+  await view.rerender(practice(false));
+  expect(Speech.stop).toHaveBeenCalledTimes(stops + 1);
+  expect(speaker()).toBeDisabled();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test('pronunciation failure allows retry and words without IPA still have a speaker', async () => {
+  await render(practice());
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Play pronunciation of reliable' }),
+  );
+  await act(async () => {
+    const options = jest.mocked(Speech.speak).mock.calls[0][1];
+    (options?.onError as () => void)();
+  });
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Could not play pronunciation. Please try again.',
+  );
+  expect(
+    screen.getByRole('button', { name: 'Play pronunciation of reliable' }),
+  ).toBeEnabled();
+  await choose();
+  await advance();
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Play pronunciation of eager' }),
+  );
+  expect(Speech.speak).toHaveBeenLastCalledWith('eager', expect.any(Object));
 });
 
 test('correct answer is submitted to server once and advances only after persistence', async () => {

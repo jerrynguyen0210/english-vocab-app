@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
+import { PronunciationButton } from '@/components/pronunciation-button';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 import { authenticatedFetch } from '@/services/auth';
 import { connectionMessage } from '@/services/connectivity';
@@ -16,7 +17,13 @@ import {
 type Phase =
   'question' | 'learning' | 'correct' | 'reveal' | 'saved' | 'complete';
 
-function WordHeading({ question }: { question: CommonWordQuestion }) {
+function WordHeading({
+  question,
+  active,
+}: {
+  question: CommonWordQuestion;
+  active: boolean;
+}) {
   return (
     <View style={styles.wordRow}>
       <ThemedText accessibilityRole="header" style={styles.word}>
@@ -30,6 +37,7 @@ function WordHeading({ question }: { question: CommonWordQuestion }) {
           {question.ipa}
         </ThemedText>
       )}
+      <PronunciationButton word={question.word} active={active} />
     </View>
   );
 }
@@ -451,7 +459,7 @@ export function CommonWordPractice({
                 <ThemedText style={[styles.eyebrow, styles.successText]}>
                   CORRECT ANSWER
                 </ThemedText>
-                <WordHeading question={question} />
+                <WordHeading question={question} active={active} />
                 <ThemedText style={[styles.meaning, styles.successText]}>
                   {question.partOfSpeech} ·{' '}
                   {answer ? question.choices[answer.correctIndex] : ''}
@@ -517,7 +525,7 @@ export function CommonWordPractice({
           ) : (
             <>
               <View style={styles.card}>
-                <WordHeading question={question} />
+                <WordHeading question={question} active={active} />
                 <ThemedText style={styles.partOfSpeech}>
                   {question.partOfSpeech}
                 </ThemedText>
