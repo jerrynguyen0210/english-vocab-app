@@ -9,30 +9,18 @@ import { WordwellColors as colors } from '@/constants/wordwell-theme';
 export function PronunciationButton({
   word,
   active,
+  autoSpeak = false,
 }: {
   word: string;
   active: boolean;
+  autoSpeak?: boolean;
 }) {
   const [speaking, setSpeaking] = useState(false);
   const [error, setError] = useState('');
   const pending = useRef(false);
   const session = useRef(0);
 
-  useFocusEffect(
-    useCallback(() => {
-      setSpeaking(false);
-      setError('');
-      pending.current = false;
-      if (!active || !word) return;
-      return () => {
-        session.current += 1;
-        pending.current = false;
-        void Speech.stop().catch(() => {});
-      };
-    }, [word, active]),
-  );
-
-  async function pronounce() {
+  const pronounce = useCallback(async () => {
     if (!active || pending.current) return;
     const current = session.current;
     pending.current = true;
@@ -56,7 +44,22 @@ export function PronunciationButton({
     } catch {
       finish(true);
     }
-  }
+  }, [active, word]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setSpeaking(false);
+      setError('');
+      pending.current = false;
+      if (!active || !word) return;
+      if (autoSpeak) void pronounce();
+      return () => {
+        session.current += 1;
+        pending.current = false;
+        void Speech.stop().catch(() => {});
+      };
+    }, [word, active, autoSpeak, pronounce]),
+  );
 
   return (
     <View style={styles.container}>

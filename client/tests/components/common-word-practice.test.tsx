@@ -150,6 +150,61 @@ test('speaker reads the word, prevents queued taps, and stops when the tab is hi
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+test('Auto Speaking reads new words and turning it off keeps manual playback available', async () => {
+  await render(practice());
+  const checkbox = () =>
+    screen.getByRole('checkbox', { name: 'Auto Speaking' });
+  expect(checkbox()).not.toBeChecked();
+  expect(Speech.speak).not.toHaveBeenCalled();
+
+  await fireEvent.press(checkbox());
+  expect(checkbox()).toBeChecked();
+  expect(Speech.speak).toHaveBeenLastCalledWith('reliable', expect.any(Object));
+  await choose();
+  expect(Speech.speak).toHaveBeenCalledTimes(1);
+  await advance();
+  expect(Speech.speak).toHaveBeenLastCalledWith('eager', expect.any(Object));
+  expect(checkbox()).toBeChecked();
+
+  const stops = jest.mocked(Speech.stop).mock.calls.length;
+  await fireEvent.press(checkbox());
+  expect(Speech.stop).toHaveBeenCalledTimes(stops + 1);
+  expect(checkbox()).not.toBeChecked();
+  expect(Speech.speak).toHaveBeenCalledTimes(2);
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Play pronunciation of eager' }),
+  );
+  expect(Speech.speak).toHaveBeenCalledTimes(3);
+});
+
+test('unchecked Auto Speaking leaves new words silent', async () => {
+  await render(practice());
+  await choose();
+  await advance();
+  expect(screen.getByText('eager')).toBeOnTheScreen();
+  expect(Speech.speak).not.toHaveBeenCalled();
+});
+
+test('turning Auto Speaking off cancels a pronunciation still waiting to start', async () => {
+  let releaseStop!: () => void;
+  jest
+    .mocked(Speech.stop)
+    .mockResolvedValueOnce()
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseStop = resolve;
+        }),
+    );
+  await render(practice());
+  const checkbox = () =>
+    screen.getByRole('checkbox', { name: 'Auto Speaking' });
+  await fireEvent.press(checkbox());
+  await fireEvent.press(checkbox());
+  await act(async () => releaseStop());
+  expect(Speech.speak).not.toHaveBeenCalled();
+});
+
 test('pronunciation failure allows retry and words without IPA still have a speaker', async () => {
   await render(practice());
   await fireEvent.press(

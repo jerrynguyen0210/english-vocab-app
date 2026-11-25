@@ -20,7 +20,13 @@ type Phase =
 function WordHeading({
   question,
   active,
+  autoSpeaking,
+  onAutoSpeakingChange,
+  autoSpeak,
 }: {
+  autoSpeaking: boolean;
+  onAutoSpeakingChange: () => void;
+  autoSpeak: boolean;
   question: CommonWordQuestion;
   active: boolean;
 }) {
@@ -37,7 +43,25 @@ function WordHeading({
           {question.ipa}
         </ThemedText>
       )}
-      <PronunciationButton word={question.word} active={active} />
+      <PronunciationButton
+        word={question.word}
+        active={active}
+        autoSpeak={autoSpeak}
+      />
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityLabel="Auto Speaking"
+        accessibilityHint="Automatically reads each new word aloud"
+        accessibilityState={{ checked: autoSpeaking, disabled: !active }}
+        disabled={!active}
+        onPress={onAutoSpeakingChange}
+        style={({ pressed }) => [styles.autoSpeaking, pressed && styles.dimmed]}
+      >
+        <View style={[styles.checkbox, autoSpeaking && styles.checkboxChecked]}>
+          {autoSpeaking && <ThemedText style={styles.checkmark}>✓</ThemedText>}
+        </View>
+        <ThemedText style={styles.autoSpeakingLabel}>Auto Speaking</ThemedText>
+      </Pressable>
     </View>
   );
 }
@@ -134,6 +158,7 @@ export function CommonWordPractice({
   >(null);
   const [loadError, setLoadError] = useState('');
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [autoSpeaking, setAutoSpeaking] = useState(false);
   const [phase, setPhase] = useState<Phase>('question');
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -459,7 +484,15 @@ export function CommonWordPractice({
                 <ThemedText style={[styles.eyebrow, styles.successText]}>
                   CORRECT ANSWER
                 </ThemedText>
-                <WordHeading question={question} active={active} />
+                <WordHeading
+                  question={question}
+                  active={active}
+                  autoSpeaking={autoSpeaking}
+                  onAutoSpeakingChange={() =>
+                    setAutoSpeaking((value) => !value)
+                  }
+                  autoSpeak={false}
+                />
                 <ThemedText style={[styles.meaning, styles.successText]}>
                   {question.partOfSpeech} ·{' '}
                   {answer ? question.choices[answer.correctIndex] : ''}
@@ -525,7 +558,15 @@ export function CommonWordPractice({
           ) : (
             <>
               <View style={styles.card}>
-                <WordHeading question={question} active={active} />
+                <WordHeading
+                  question={question}
+                  active={active}
+                  autoSpeaking={autoSpeaking}
+                  onAutoSpeakingChange={() =>
+                    setAutoSpeaking((value) => !value)
+                  }
+                  autoSpeak={autoSpeaking}
+                />
                 <ThemedText style={styles.partOfSpeech}>
                   {question.partOfSpeech}
                 </ThemedText>
@@ -659,6 +700,28 @@ const styles = StyleSheet.create({
     columnGap: 10,
     rowGap: 4,
   },
+  autoSpeaking: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 8,
+    minHeight: 44,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 3,
+    borderWidth: 2,
+    borderColor: colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  checkmark: { color: '#fff', fontSize: 14, lineHeight: 16, fontWeight: '700' },
+  autoSpeakingLabel: { color: colors.text, fontSize: 14, lineHeight: 20 },
   ipa: { color: colors.secondary, fontSize: 18, lineHeight: 28, flexShrink: 1 },
   meaning: { fontSize: 14, lineHeight: 22, fontWeight: '600' },
   partOfSpeech: {
