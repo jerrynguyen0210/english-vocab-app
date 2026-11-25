@@ -36,6 +36,7 @@ def collect_user_data(db: Session, user_id: UUID) -> dict[str, object]:
                 User.email,
                 User.auth_provider_id,
                 User.timezone,
+                User.selected_teacher_id,
                 User.created_at,
                 User.disabled_at,
                 User.deleted_at,

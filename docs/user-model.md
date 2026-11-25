@@ -9,6 +9,7 @@ word ownership and review history; email can change without changing ownership.
 | `email` | string (320), required, unique | Account email. Future registration must trim and normalize it consistently before storage and lookup. |
 | `password_hash` | nullable string (1024) | Encoded password hash, including algorithm and salt; never a plaintext password. |
 | `auth_provider_id` | nullable string (512), unique | Trusted provider identity, namespaced by provider/issuer to avoid subject collisions. |
+| `selected_teacher_id` | nullable string (128) | Server-owned teacher catalog ID, saved independently for each user. Null uses the configured default generation model. |
 | `created_at` | timestamp with time zone, required | Database-generated account creation time. |
 | `disabled_at` | nullable timestamp with time zone | Set when access is disabled; clearing it permits reactivation if not deleted. |
 | `deleted_at` | nullable timestamp with time zone | Set for soft deletion. |
@@ -26,4 +27,10 @@ identity and email uniqueness; it is not data erasure. Authentication enforcemen
 password hashing, account APIs, and retention/erasure policy are separate work.
 Hashes and provider identifiers must never appear in public API responses.
 
-Implementation: `backend/app/models/user.py`; migration: `0002_users`.
+Teacher selection is managed by `backend/app/services/teachers.py` and the
+authenticated `/api/v1/teachers` endpoints. The selected model is used for new
+review/recall prompts and Common practice questions. Migration `0024` adds the
+preference without changing existing accounts' generation behavior until they
+choose a teacher.
+
+Implementation: `backend/app/models/user.py`; initial migration: `0002_users`.

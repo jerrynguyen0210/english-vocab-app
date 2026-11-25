@@ -1,6 +1,6 @@
 import { authenticatedFetch } from '@/services/auth';
 
-export type Teacher = { id: string; name: string };
+export type Teacher = { id: string; name: string; model: string };
 export type TeacherOptions = {
   teachers: Teacher[];
   selected_teacher_id: string | null;
@@ -27,7 +27,9 @@ export async function loadTeachers(
         typeof teacher.id === 'string' &&
         teacher.id.trim().length > 0 &&
         typeof teacher.name === 'string' &&
-        teacher.name.trim().length > 0,
+        teacher.name.trim().length > 0 &&
+        typeof teacher.model === 'string' &&
+        teacher.model.trim().length > 0,
     ) ||
     new Set(teachers.map(({ id }) => id)).size !== teachers.length ||
     (selected_teacher_id !== null &&
@@ -49,9 +51,7 @@ export async function saveTeacher(
   });
   if (!response.ok)
     throw new TeacherSelectionError(
-      response.status === 501
-        ? 'Teacher selection is not available yet.'
-        : 'Unable to save your teacher. Please try again.',
+      'Unable to save your teacher. Please try again.',
     );
   const data: unknown = await response.json();
   if (

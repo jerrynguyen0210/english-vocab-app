@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.llm.openrouter_review import ReviewError, generate_review
 from app.models import PromptJob, User, Word
+from app.services.teachers import generation_model
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class ClaimedJob:
     word: str
     meaning: str
     attempts: int
+    model: str
 
 
 def claim_job(engine: Engine) -> ClaimedJob | None:
@@ -78,8 +80,16 @@ def claim_job(engine: Engine) -> ClaimedJob | None:
             return None
         word = db.get(Word, job.word_id)
         assert word is not None
+        user = db.get(User, word.user_id)
+        assert user is not None
         return ClaimedJob(
-            word.id, word.user_id, token, word.word, word.english_explanation, claimed
+            word.id,
+            word.user_id,
+            token,
+            word.word,
+            word.english_explanation,
+            claimed,
+            generation_model(user),
         )
 
 
@@ -136,7 +146,7 @@ def process_one(engine: Engine) -> bool:
         result = generate_review(
             claimed.word,
             claimed.meaning,
-            model=settings.openrouter_model,
+            model=claimed.model,
             api_key=settings.openrouter_api_key.get_secret_value(),
             base_url=settings.openrouter_url,
             timeout=settings.openrouter_timeout_seconds,

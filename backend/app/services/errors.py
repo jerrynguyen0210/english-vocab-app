@@ -21,6 +21,10 @@ class InvalidSearch(ServiceError):
     pass
 
 
+class InvalidTeacherSelection(ServiceError):
+    pass
+
+
 class DictionaryUnavailable(ServiceError):
     pass
 

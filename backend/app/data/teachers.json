@@ -1,0 +1,12 @@
+[
+  {
+    "id": "teacher-01",
+    "name": "Emma Wilson",
+    "model": "openai/gpt-oss-20b"
+  },
+  {
+    "id": "teacher-02",
+    "name": "James Bennett",
+    "model": "openai/gpt-oss-120b"
+  }
+]

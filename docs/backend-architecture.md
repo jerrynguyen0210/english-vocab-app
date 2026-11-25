@@ -174,8 +174,8 @@ a guarantee about every internal framework execution step.
 | GET | `/api/v1/auth/me` | Return the active account profile |
 | PATCH | `/api/v1/account` | Update the current account's validated timezone |
 | DELETE | `/api/v1/account` | Atomically erase account and owned records |
-| GET | `/api/v1/teachers` | Authenticated stub: empty teacher directory and no selection |
-| PUT | `/api/v1/teachers/selection` | Authenticated stub: validate `{teacher_id}` and return 501 |
+| GET | `/api/v1/teachers` | Server-owned teacher catalog and current user's saved selection |
+| PUT | `/api/v1/teachers/selection` | Validate `{teacher_id}`, persist for the authenticated user, and queue prompt regeneration |
 | GET | `/api/v1/words/search` | Local lexical search with owner-specific saved markers |
 | POST | `/api/v1/words` | Save word, fallback prompt, review state and generation job |
 | GET | `/api/v1/reviews/next` | Return immediately due hints; limit 1–50 |
@@ -492,6 +492,28 @@ Completed prompt jobs are removed, while terminal failures remain until retry
 or account erasure. The identity field does not imply an implemented OAuth flow.
 
 ## 10. Account erasure and timezone changes
+
+Migration `0024` adds nullable `users.selected_teacher_id`. The catalog in
+`app/data/teachers.json` maps `teacher-01` (“Emma Wilson”) to
+`openai/gpt-oss-20b` and `teacher-02` (“James Bennett”) to
+`openai/gpt-oss-120b`. Unselected accounts retain `OPENROUTER_MODEL` behavior.
+The JSON catalog is bundled with the backend package and validated by
+`services/teachers.py` once at process startup. Restart the API and workers after
+catalog edits. Keep IDs stable when renaming teachers to preserve saved selections.
+Migration `0025` maps the original `suggested-name-01` and `suggested-name-02`
+preferences to `teacher-01` and `teacher-02`, preserving each user's chosen model.
+Teacher updates take the account lock and replace only that user's prompt jobs
+in the same transaction. Replacement jobs reset failures and lease tokens, so
+old in-flight workers cannot overwrite the new teacher's prompts. Selecting the
+same teacher again does not queue more work or reset review schedules.
+
+Prompt workers resolve the owner's model when claiming work and call providers
+outside database transactions. Both time-based review and SM-2 recall read the
+resulting stored prompts, keeping existing prompts usable during regeneration.
+Common practice also resolves the per-user model before provider I/O and retries
+within its bounded generation deadline if the preference changes before commit.
+Already prepared Common questions remain usable. Operator generation of the
+shared vocabulary bank continues to use its operator-configured model.
 
 ```mermaid
 flowchart TB

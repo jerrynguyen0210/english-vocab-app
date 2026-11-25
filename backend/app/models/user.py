@@ -35,6 +35,7 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(1024))
     auth_provider_id: Mapped[str | None] = mapped_column(String(512), unique=True)
     timezone: Mapped[str] = mapped_column(String(255), server_default=text("'UTC'"))
+    selected_teacher_id: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), server_default=func.now()
     )

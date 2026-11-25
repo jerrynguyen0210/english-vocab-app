@@ -429,3 +429,51 @@ def test_empty_operator_bank_is_unavailable_not_all_learned(api, generator):
     response = client.post(BATCH, headers=owner, json={})
     assert response.status_code == 503
     assert not generator
+
+
+def test_common_question_generation_uses_the_accounts_teacher(api, monkeypatch):
+    from unittest.mock import Mock
+
+    from app.services.teachers import TEACHERS
+
+    client, _, owner, other, _ = api
+    generator = Mock(side_effect=lambda words, **kwargs: generated(words))
+    monkeypatch.setattr(
+        "app.services.common_words.generate_common_questions", generator
+    )
+    for headers, teacher in zip((owner, other), TEACHERS):
+        response = client.put(
+            "/api/v1/teachers/selection",
+            headers=headers,
+            json={"teacher_id": teacher.id},
+        )
+        assert response.status_code == 200
+        assert client.post(BATCH, headers=headers, json={}).status_code == 200
+        assert generator.call_args.kwargs["model"] == teacher.model
+
+
+def test_teacher_change_during_common_generation_retries_with_new_model(
+    api, monkeypatch
+):
+    from app.models import User
+    from app.services.teachers import TEACHERS, select_teacher
+
+    client, db, owner, *_ = api
+    user_id = owner_id(client, owner)
+    with Session(db.get_bind()) as independent:
+        select_teacher(independent, independent.get(User, user_id), TEACHERS[0].id)
+    models = []
+
+    def generate(words, **kwargs):
+        models.append(kwargs["model"])
+        if len(models) == 1:
+            with Session(db.get_bind()) as independent:
+                select_teacher(
+                    independent, independent.get(User, user_id), TEACHERS[1].id
+                )
+        return generated(words)
+
+    monkeypatch.setattr("app.services.common_words.generate_common_questions", generate)
+    assert client.post(BATCH, headers=owner, json={}).status_code == 200
+    assert models == [teacher.model for teacher in TEACHERS]
+    assert count(db, CommonPracticeQuestion) == 10

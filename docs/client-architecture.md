@@ -100,18 +100,21 @@ review progress live in mounted screen state.
 
 The account teacher card uses `services/teachers.ts` through
 `TeacherSelectionProvider` inside the authenticated product navigator. It loads
-`GET /api/v1/teachers` with `{teachers: [{id, name}], selected_teacher_id}` and
+`GET /api/v1/teachers` with `{teachers: [{id, name, model}], selected_teacher_id}` and
 sends `PUT /api/v1/teachers/selection` with `{teacher_id}`. A successful write must
 return `{teacher_id}` before the displayed selection changes. Confirmed responses
 stay in memory across screen navigation and reset with the session's product
 navigator. Loading, empty-directory, failed-load retry, and failed-save states
 are handled in the card; there are no sample teachers or local-only assignments.
 
-The backend teacher routes are intentionally transport stubs: GET returns
-`{teachers: [], selected_teacher_id: null}`, and PUT returns HTTP 501 after
-request validation. Teacher listing, assignment rules, and persistence remain
-unimplemented, with no teacher database tables or migrations. The current UI
-therefore shows “No teachers available yet” with selection disabled.
+The backend owns the two available teachers: “Emma Wilson” maps to
+`openai/gpt-oss-20b`, and “James Bennett” maps to `openai/gpt-oss-120b`.
+PUT persists the current user's selection; the client cannot select for another
+user or supply an arbitrary model. The selected model drives new review/recall
+prompt generation and new Common practice question generation. Changing teachers
+queues the user's saved words for background regeneration; existing questions
+remain usable until replacements are ready. Until a teacher is chosen, the
+backend uses its configured `OPENROUTER_MODEL`.
 
 ## 3. Navigation and screen boundaries
 

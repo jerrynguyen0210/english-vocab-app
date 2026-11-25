@@ -457,3 +457,80 @@ def test_remove_bundled_content_keeps_operator_bank_and_saved_recall(
     finally:
         engine.dispose()
         get_settings.cache_clear()
+
+
+def test_teacher_preference_upgrade_preserves_accounts_words_and_jobs(
+    tmp_path, monkeypatch
+):
+    url = f"sqlite:///{tmp_path}/teacher-preference.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    config = Config("alembic.ini")
+    engine = create_engine(url)
+    try:
+        command.upgrade(config, "0023")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, password_hash) VALUES (:owner, 'teacher-migration@example.test', 'placeholder')"
+                ),
+                {"owner": "1" * 32},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO words (id, user_id, word, normalised_word, english_explanation, review_prompt) "
+                    "VALUES (:word, :owner, 'hello', 'hello', 'A greeting', 'Say _____.')"
+                ),
+                {"word": "2" * 32, "owner": "1" * 32},
+            )
+            connection.execute(
+                text("INSERT INTO prompt_jobs (word_id, attempts) VALUES (:word, 2)"),
+                {"word": "2" * 32},
+            )
+        command.upgrade(config, "head")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT selected_teacher_id FROM users")) is None
+            )
+            assert (
+                connection.scalar(text("SELECT review_prompt FROM words"))
+                == "Say _____."
+            )
+            assert connection.scalar(text("SELECT attempts FROM prompt_jobs")) == 2
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+def test_teacher_id_rename_preserves_existing_selections(tmp_path, monkeypatch):
+    url = f"sqlite:///{tmp_path}/rename-teachers.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    config = Config("alembic.ini")
+    engine = create_engine(url)
+    selections = ["suggested-name-01", "suggested-name-02", None, "teacher-01"]
+    try:
+        command.upgrade(config, "0024")
+        with engine.begin() as connection:
+            for index, selection in enumerate(selections, start=1):
+                connection.execute(
+                    text(
+                        "INSERT INTO users (id, email, password_hash, selected_teacher_id) "
+                        "VALUES (:id, :email, 'placeholder', :selection)"
+                    ),
+                    {
+                        "id": str(index) * 32,
+                        "email": f"teacher-rename-{index}@example.test",
+                        "selection": selection,
+                    },
+                )
+        command.upgrade(config, "head")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT selected_teacher_id FROM users ORDER BY email")
+            ).scalars().all() == ["teacher-01", "teacher-02", None, "teacher-01"]
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()

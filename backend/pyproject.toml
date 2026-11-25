@@ -28,6 +28,9 @@ dev = ["pytest>=8.3,<10", "httpx>=0.28,<1", "ruff>=0.9,<1", "mypy>=1.14,<3"]
 [tool.setuptools.packages.find]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+app = ["data/teachers.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"

@@ -30,6 +30,7 @@ from app.services.errors import (
     CommonQuestionNotFound,
     ReviewConflict,
 )
+from app.services.teachers import generation_model
 
 
 def select_unlearned(db: Session, user_id: UUID) -> list[BankWord]:
@@ -68,6 +69,9 @@ def get_batch(db: Session, user: User, *, batch_id: UUID | None = None) -> Commo
     deadline = time.monotonic() + settings.common_words_timeout_seconds
     # Another session can learn during generation. Rebuild within a bounded total deadline.
     for _ in range(3):
+        db.refresh(user)
+        selected_teacher_id = user.selected_teacher_id
+        model = generation_model(user)
         words = select_unlearned(db, user_id)
         bank_available = (
             bool(words) or db.scalar(select(CommonWord.id).limit(1)) is not None
@@ -87,7 +91,7 @@ def get_batch(db: Session, user: User, *, batch_id: UUID | None = None) -> Commo
         try:
             generated = generate_common_questions(
                 words,
-                model=settings.openrouter_model,
+                model=model,
                 api_key=settings.openrouter_api_key.get_secret_value(),
                 base_url=settings.openrouter_url,
                 timeout=deadline - time.monotonic(),
@@ -103,6 +107,10 @@ def get_batch(db: Session, user: User, *, batch_id: UUID | None = None) -> Commo
                 "Could not prepare Common questions. Please retry."
             ) from None
         lock_account_by_id(db, user_id)
+        db.refresh(user)
+        if user.selected_teacher_id != selected_teacher_id:
+            db.rollback()
+            continue
         if batch_id is not None:
             generation_batch(db, user_id, batch_id)
         learned = db.scalar(
