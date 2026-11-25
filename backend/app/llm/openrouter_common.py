@@ -171,11 +171,12 @@ def request_common_json(
     base_url: str,
     timeout: float,
     retry_provider: bool = True,
+    reasoning_budget: int = 16000,
 ) -> str:
     """Bounded Common-provider transport shared by quiz and operator generation."""
     if not api_key.strip() or not math.isfinite(timeout) or timeout <= 0:
         raise ReviewError("Common generation is not configured.", "invalid_input")
-    configure_known_reasoning_model(payload, 16000)
+    configure_known_reasoning_model(payload, reasoning_budget)
     deadline = time.monotonic() + timeout
     provider_retried = False
     for _ in range(4):
@@ -240,7 +241,7 @@ def request_common_json(
                 )
                 and payload.get("reasoning") == {"enabled": False}
             ):
-                use_low_reasoning(payload, 16000)
+                use_low_reasoning(payload, reasoning_budget)
                 continue
             if (
                 exc.code in (400, 404)

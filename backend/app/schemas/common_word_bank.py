@@ -44,4 +44,4 @@ class GeneratedBankWord(BaseModel):
 
 class GeneratedBankBatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    words: list[GeneratedBankWord] = Field(min_length=1, max_length=20)
+    words: list[GeneratedBankWord] = Field(min_length=1, max_length=50)

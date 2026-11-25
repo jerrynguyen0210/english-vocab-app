@@ -27,7 +27,7 @@ def main() -> None:
         help="Number of NEW words to add; prompts when omitted",
     )
     parser.add_argument(
-        "--batch-size", type=int, choices=range(1, 21), default=20, metavar="1-20"
+        "--batch-size", type=int, choices=range(1, 51), default=20, metavar="1-50"
     )
     args = parser.parse_args()
     if args.count is None:

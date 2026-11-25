@@ -10,7 +10,14 @@ from app.llm.openrouter_review import ReviewError
 
 
 def model_providers(
-    model: str, *, api_key: str, base_url: str, timeout: float
+    model: str,
+    *,
+    api_key: str,
+    base_url: str,
+    timeout: float,
+    minimum_context: int = 0,
+    minimum_output: int = 0,
+    minimum_prompt: int = 0,
 ) -> list[str]:
     # Routing suffixes select a policy rather than a different model catalog entry.
     name, separator, suffix = model.rpartition(":")
@@ -29,17 +36,47 @@ def model_providers(
         if not isinstance(endpoints, list):
             raise TypeError("Invalid provider list")
         providers: list[str] = []
+        seen: set[str] = set()
         for endpoint in endpoints:
             if not isinstance(endpoint, dict):
                 continue
+            if minimum_context or minimum_output or minimum_prompt:
+                context = endpoint.get("context_length")
+                output = endpoint.get("max_completion_tokens")
+                prompt = endpoint.get("max_prompt_tokens")
+                if (
+                    type(context) is not int
+                    or context < minimum_context
+                    or (
+                        output is not None
+                        and (type(output) is not int or output < minimum_output)
+                    )
+                    or (
+                        prompt is not None
+                        and (type(prompt) is not int or prompt < minimum_prompt)
+                    )
+                ):
+                    continue
             tag = endpoint.get("tag")
             if not isinstance(tag, str):
                 continue
             # Exclude regional/quantization variants of the same provider from retries.
             slug = tag.partition("/")[0].lower()
-            if re.fullmatch(r"[a-z0-9][a-z0-9-]*", slug) and slug not in providers:
-                providers.append(slug)
+            if re.fullmatch(r"[a-z0-9][a-z0-9-]*", slug) and slug not in seen:
+                seen.add(slug)
+                # Pin the checked endpoint variant when capacity was requested.
+                providers.append(tag if minimum_context or minimum_output else slug)
         if not providers:
+            if minimum_context or minimum_output:
+                raise ReviewError(
+                    "No provider has sufficient verified capacity.",
+                    "invalid_input",
+                    diagnostic=(
+                        f"No endpoint has verified context capacity for {minimum_context} tokens "
+                        f"and output capacity for {minimum_output} tokens. "
+                        "Reduce batch size or choose a model with larger limits."
+                    ),
+                )
             raise ValueError("No providers")
         return providers[:3]
     except HTTPError as exc:

@@ -200,17 +200,22 @@ def test_invalid_batch_does_not_insert_any_content(bank, monkeypatch):
     assert total(engine) == 0
 
 
-def test_provider_diagnostic_reaches_operator_and_keeps_completed_batches(bank, monkeypatch):
+def test_provider_diagnostic_reaches_operator_and_keeps_completed_batches(
+    bank, monkeypatch
+):
     from app.llm.openrouter_review import ReviewError
 
     engine, settings = bank
-    generate = Mock(side_effect=[
-        [word("hello")],
-        ReviewError(
-            "Private provider response", "provider_http",
-            diagnostic="Provider request failed with HTTP 429.",
-        ),
-    ])
+    generate = Mock(
+        side_effect=[
+            [word("hello")],
+            ReviewError(
+                "Private provider response",
+                "provider_http",
+                diagnostic="Provider request failed with HTTP 429.",
+            ),
+        ]
+    )
     monkeypatch.setattr("app.services.common_word_bank.generate_bank_words", generate)
     with pytest.raises(BankGenerationStopped) as failure:
         populate_bank(engine, 2, settings, batch_size=1)
@@ -276,3 +281,17 @@ def test_cli_rejects_invalid_operator_input_before_accessing_database(
         cli.main()
     assert failure.value.code == 2
     engine.assert_not_called()
+
+
+def test_fifty_word_batches_are_saved_and_fifty_one_is_rejected(bank, monkeypatch):
+    engine, settings = bank
+    generated = [
+        word("term " + chr(97 + i // 26) + chr(97 + i % 26)) for i in range(50)
+    ]
+    generate = Mock(return_value=generated)
+    monkeypatch.setattr("app.services.common_word_bank.generate_bank_words", generate)
+    assert populate_bank(engine, 50, settings, batch_size=50) == 50
+    assert generate.call_args.args[0] == 50
+    with pytest.raises(ValueError):
+        populate_bank(engine, 51, settings, batch_size=51)
+    assert total(engine) == 50

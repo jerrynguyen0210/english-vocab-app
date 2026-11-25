@@ -33,9 +33,9 @@ def populate_bank(
     batch_size: int = 20,
     progress: Callable[[int, int], None] | None = None,
 ) -> int:
-    if type(count) is not int or count < 1 or not 1 <= batch_size <= 20:
+    if type(count) is not int or count < 1 or not 1 <= batch_size <= 50:
         raise ValueError(
-            "Count must be positive and batch size must be between 1 and 20"
+            "Count must be positive and batch size must be between 1 and 50"
         )
     if (
         not settings.openrouter_api_key.get_secret_value().strip()

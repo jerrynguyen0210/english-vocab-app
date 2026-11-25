@@ -635,10 +635,18 @@ migrations automatically; use the normal migration command first if needed.
 
 The count means **new unique words to add**, not the desired bank total. Any
 positive integer is accepted. The command asks the configured OpenRouter LLM for
-up to 20 words per request (`--batch-size 1-20` can reduce this), including simple
-meanings, natural examples, parts of speech, and nullable British IPA. Existing
+up to 50 words per request (`--batch-size 1-50`, default 20), including simple
+meanings, natural examples, parts of speech, and required British IPA. Existing
 bank words are excluded and normalized duplicates are skipped, including inserts
 from concurrent operators. Generation never runs during migration or app startup.
+
+Generation reserves 320 output tokens per word (minimum 4,096; 16,000 for
+50 words). Before requesting content, it checks the model's endpoint catalog for
+context and output capacity, including the full exclusion list, schema, and a
+conservative input estimate with headroom. Unknown context limits are rejected;
+null output limits use the remaining context as the ceiling. Insufficient capacity
+asks the operator to reduce the batch size or select a larger model. Token estimates
+are conservative, not exact tokenizer counts; truncated output is still rejected.
 
 Validated batches commit immediately. Failure exits nonzero, reports the number
 saved and remaining, and keeps completed batches. Re-run with the remaining count;

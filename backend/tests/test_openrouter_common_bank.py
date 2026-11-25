@@ -2,7 +2,7 @@
 
 import io
 import json
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 import pytest
@@ -313,3 +313,28 @@ def test_generation_schema_requires_all_properties_without_null():
     assert set(schema["required"]) == set(ENTRY)
     assert schema["properties"]["ipa"]["type"] == "string"
     assert "Never return null" in payload["messages"][0]["content"]
+
+
+def test_fifty_words_get_larger_output_budget_and_capacity_check(monkeypatch):
+    discovery = Mock(return_value=["groq"])
+    monkeypatch.setattr("app.llm.openrouter_common_bank.model_providers", discovery)
+    with patch(
+        "app.llm.openrouter_common.urlopen", return_value=response([ENTRY] * 50)
+    ) as request:
+        assert len(generate(50)) == 50
+    payload = json.loads(request.call_args.args[0].data)
+    assert payload["max_tokens"] == 16000
+    assert discovery.call_args.kwargs["minimum_output"] == 16000
+    assert discovery.call_args.kwargs["minimum_context"] > 16000
+    assert discovery.call_args.kwargs["minimum_prompt"] > len(
+        json.dumps(payload["messages"])
+    )
+
+
+def test_batch_above_fifty_rejected_before_provider_request():
+    with (
+        patch("app.llm.openrouter_common.urlopen") as request,
+        pytest.raises(ReviewError),
+    ):
+        generate(51)
+    request.assert_not_called()

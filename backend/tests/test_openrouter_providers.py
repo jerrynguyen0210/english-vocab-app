@@ -85,3 +85,53 @@ def test_discovery_http_error_is_sanitized():
     ):
         discover()
     assert failure.value.diagnostic == "Provider discovery failed with HTTP 401."
+
+
+def capacity_discover(endpoints, **kwargs):
+    with patch(
+        "app.llm.openrouter_providers.urlopen",
+        return_value=io.BytesIO(
+            json.dumps({"data": {"endpoints": endpoints}}).encode()
+        ),
+    ):
+        return model_providers(
+            "test/model",
+            api_key="placeholder",
+            base_url="https://example.test",
+            timeout=5,
+            minimum_context=20000,
+            minimum_output=16000,
+            minimum_prompt=4000,
+            **kwargs,
+        )
+
+
+def test_capacity_filters_endpoints_before_deduplication_and_pins_variant():
+    endpoints = [
+        {"tag": "groq/small", "context_length": 8000, "max_completion_tokens": 16000},
+        {"tag": "other", "context_length": 32000, "max_completion_tokens": 4096},
+        {
+            "tag": "short-input",
+            "context_length": 32000,
+            "max_completion_tokens": 16000,
+            "max_prompt_tokens": 1000,
+        },
+        {"tag": "unknown", "max_completion_tokens": 16000},
+        {"tag": "groq/large", "context_length": 32000, "max_completion_tokens": 16000},
+        {
+            "tag": "groq/another",
+            "context_length": 32000,
+            "max_completion_tokens": 16000,
+        },
+        {"tag": "deepinfra", "context_length": 20000, "max_completion_tokens": None},
+    ]
+    assert capacity_discover(endpoints) == ["groq/large", "deepinfra"]
+
+
+def test_insufficient_capacity_explains_how_to_retry():
+    with pytest.raises(ReviewError) as failure:
+        capacity_discover(
+            [{"tag": "groq", "context_length": 8192, "max_completion_tokens": 4096}]
+        )
+    assert failure.value.category == "invalid_input"
+    assert "Reduce batch size" in failure.value.diagnostic

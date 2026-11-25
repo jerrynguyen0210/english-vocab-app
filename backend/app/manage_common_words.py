@@ -120,7 +120,7 @@ def run_menu(engine: Engine, settings: Settings) -> None:
             elif choice == "5":
                 count = positive_integer("Number of NEW words to generate: ")
                 batch_size = positive_integer(
-                    "Words per LLM batch [20]: ", default=20, maximum=20
+                    "Words per LLM batch [20]: ", default=20, maximum=50
                 )
                 populate_bank(
                     engine,
@@ -210,7 +210,7 @@ def run_menu(engine: Engine, settings: Settings) -> None:
             )
         except ValueError:
             print(
-                "Invalid input or generation configuration. Use positive whole numbers; batch size must be 1-20. Generation requires private OPENROUTER settings."
+                "Invalid input or generation configuration. Use positive whole numbers; batch size must be 1-50. Generation requires private OPENROUTER settings."
             )
 
 

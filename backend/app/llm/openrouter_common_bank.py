@@ -103,7 +103,7 @@ def _request_bank_words(
     timeout: float,
 ) -> list[GeneratedBankWord]:
     if (
-        not 1 <= count <= 20
+        not 1 <= count <= 50
         or not model.strip()
         or not api_key.strip()
         or not math.isfinite(timeout)
@@ -111,9 +111,6 @@ def _request_bank_words(
     ):
         raise ReviewError("Invalid vocabulary generation request.", "invalid_input")
     deadline = time.monotonic() + timeout
-    providers = model_providers(
-        model, api_key=api_key, base_url=base_url, timeout=min(10, timeout / 4)
-    )
     payload: dict[str, Any] = {
         "model": model,
         "stream": False,
@@ -133,10 +130,22 @@ def _request_bank_words(
             },
         },
         "reasoning": {"enabled": False},
-        "max_tokens": 4096,
+        "max_tokens": max(4096, count * 320),
         "provider": {"require_parameters": True, "sort": "latency"},
         "temperature": 0.5,
     }
+    # UTF-8 bytes deliberately overestimate ordinary English token counts. Include
+    # schema/framing and reserve headroom; the provider remains the final tokenizer.
+    input_budget = len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) + 1024
+    providers = model_providers(
+        model,
+        api_key=api_key,
+        base_url=base_url,
+        timeout=min(10, timeout / 4),
+        minimum_context=input_budget + payload["max_tokens"],
+        minimum_output=payload["max_tokens"],
+        minimum_prompt=input_budget,
+    )
     for index, provider in enumerate(providers):
         attempt = deepcopy(payload)
         attempt["provider"].update(only=[provider], allow_fallbacks=False)
@@ -155,6 +164,7 @@ def _request_bank_words(
                 base_url=base_url,
                 timeout=remaining / (len(providers) - index),
                 retry_provider=False,
+                reasoning_budget=payload["max_tokens"],
             )
             return validate_bank_words(content, count)
         except ReviewError as error:
