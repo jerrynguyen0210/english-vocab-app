@@ -29,6 +29,10 @@ def test_teacher_directory_and_per_user_persistence(api, selected_teacher):
         "teachers": [entry.model_dump() for entry in TEACHERS],
         "selected_teacher_id": None,
     }
+    assert {entry["gender"] for entry in response.json()["teachers"]} == {
+        "male",
+        "female",
+    }
     other_teacher = next(entry for entry in TEACHERS if entry.id != selected_teacher.id)
     selections = ((owner, selected_teacher), (other, other_teacher))
     for headers, teacher in selections:
@@ -156,3 +160,13 @@ def test_changing_teacher_requeues_only_owned_words_and_fences_old_worker(
     )
     assert choose(client, owner, teacher.id).status_code == 200
     assert db.get(PromptJob, word_id, populate_existing=True) is None
+
+
+@pytest.mark.parametrize("gender", [None, "unknown", "", 1])
+def test_teacher_catalog_requires_supported_gender(gender):
+    from pydantic import ValidationError
+
+    from app.schemas.teachers import Teacher
+
+    with pytest.raises(ValidationError):
+        Teacher(id="test", name="Test", model="model", gender=gender)

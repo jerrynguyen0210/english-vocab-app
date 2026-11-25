@@ -1,5 +1,7 @@
 """Teacher directory and account-owned selection transport contract."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -7,6 +9,7 @@ class Teacher(BaseModel):
     id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=255)
     model: str
+    gender: Literal["male", "female"]
 
 
 class TeacherSelectionOptions(BaseModel):

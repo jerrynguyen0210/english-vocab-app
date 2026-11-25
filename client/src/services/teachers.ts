@@ -1,6 +1,12 @@
 import { authenticatedFetch } from '@/services/auth';
 
-export type Teacher = { id: string; name: string; model: string };
+export type TeacherGender = 'male' | 'female';
+export type Teacher = {
+  id: string;
+  name: string;
+  model: string;
+  gender: TeacherGender;
+};
 export type TeacherOptions = {
   teachers: Teacher[];
   selected_teacher_id: string | null;
@@ -29,7 +35,8 @@ export async function loadTeachers(
         typeof teacher.name === 'string' &&
         teacher.name.trim().length > 0 &&
         typeof teacher.model === 'string' &&
-        teacher.model.trim().length > 0,
+        teacher.model.trim().length > 0 &&
+        (teacher.gender === 'male' || teacher.gender === 'female'),
     ) ||
     new Set(teachers.map(({ id }) => id)).size !== teachers.length ||
     (selected_teacher_id !== null &&

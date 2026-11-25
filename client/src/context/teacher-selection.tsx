@@ -126,3 +126,13 @@ export function useTeacherSelection() {
     throw new Error('useTeacherSelection requires TeacherSelectionProvider.');
   return selection;
 }
+
+// Pronunciation can also be used outside the signed-in navigator, where the
+// device default voice applies until a teacher is available.
+export function useSelectedTeacher() {
+  const selection = useContext(TeacherSelectionContext);
+  if (selection?.loading) return undefined;
+  return (
+    selection?.teachers.find(({ id }) => id === selection.teacherId) ?? null
+  );
+}

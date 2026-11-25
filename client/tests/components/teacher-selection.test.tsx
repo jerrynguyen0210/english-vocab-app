@@ -16,16 +16,19 @@ const options = {
     {
       id: 'teacher-01',
       name: 'Emma Wilson',
+      gender: 'female',
       model: 'openai/gpt-oss-20b',
     },
     {
       id: 'teacher-02',
       name: 'James Bennett',
+      gender: 'male',
       model: 'openai/gpt-oss-120b',
     },
     {
       id: 'teacher-03',
       name: 'Phuoc Ba',
+      gender: 'male',
       model: 'tencent/hy4-flash',
     },
   ],
@@ -177,3 +180,22 @@ test('caches across screen remounts and reloads for a new session', async () => 
   });
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
+
+test.each([undefined, null, '', 'unknown'])(
+  'rejects unsupported teacher gender %s',
+  async (gender) => {
+    fetchMock.mockImplementation(() =>
+      reply({
+        ...options,
+        teachers: [{ ...options.teachers[0], gender }],
+      }),
+    );
+    await render(tree());
+    await screen.findByRole('alert');
+    expect(
+      screen.getByRole('button', {
+        name: 'Teacher name: Teachers unavailable',
+      }),
+    ).toBeDisabled();
+  },
+);

@@ -3,6 +3,8 @@ import { useFocusEffect } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { SymbolView } from 'expo-symbols';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useSelectedTeacher } from '@/context/teacher-selection';
+import { selectPronunciationVoice } from '@/services/pronunciation-voice';
 import { ThemedText } from '@/components/themed-text';
 import { WordwellColors as colors } from '@/constants/wordwell-theme';
 
@@ -15,13 +17,16 @@ export function PronunciationButton({
   active: boolean;
   autoSpeak?: boolean;
 }) {
+  const teacher = useSelectedTeacher();
+  const gender = teacher?.gender;
+  const canSpeak = active && teacher !== undefined;
   const [speaking, setSpeaking] = useState(false);
   const [error, setError] = useState('');
   const pending = useRef(false);
   const session = useRef(0);
 
   const pronounce = useCallback(async () => {
-    if (!active || pending.current) return;
+    if (!canSpeak || pending.current) return;
     const current = session.current;
     pending.current = true;
     setSpeaking(true);
@@ -35,8 +40,16 @@ export function PronunciationButton({
     try {
       await Speech.stop();
       if (session.current !== current) return;
+      const voices = gender
+        ? await Speech.getAvailableVoicesAsync().catch(() => [])
+        : [];
+      if (session.current !== current) return;
+      const voice = gender
+        ? selectPronunciationVoice(voices, gender)
+        : undefined;
       Speech.speak(word, {
-        language: 'en-GB',
+        language: voice?.language ?? 'en-GB',
+        ...(voice ? { voice: voice.identifier } : {}),
         onDone: () => finish(),
         onStopped: () => finish(),
         onError: () => finish(true),
@@ -44,21 +57,21 @@ export function PronunciationButton({
     } catch {
       finish(true);
     }
-  }, [active, word]);
+  }, [canSpeak, word, gender]);
 
   useFocusEffect(
     useCallback(() => {
       setSpeaking(false);
       setError('');
       pending.current = false;
-      if (!active || !word) return;
+      if (!canSpeak || !word) return;
       if (autoSpeak) void pronounce();
       return () => {
         session.current += 1;
         pending.current = false;
         void Speech.stop().catch(() => {});
       };
-    }, [word, active, autoSpeak, pronounce]),
+    }, [word, canSpeak, autoSpeak, pronounce]),
   );
 
   return (
@@ -67,8 +80,8 @@ export function PronunciationButton({
         accessibilityRole="button"
         accessibilityLabel={`Play pronunciation of ${word}`}
         accessibilityHint="Reads the word aloud in English"
-        accessibilityState={{ disabled: !active || speaking, busy: speaking }}
-        disabled={!active || speaking}
+        accessibilityState={{ disabled: !canSpeak || speaking, busy: speaking }}
+        disabled={!canSpeak || speaking}
         onPress={() => void pronounce()}
         style={({ pressed }) => [
           styles.button,

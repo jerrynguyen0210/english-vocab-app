@@ -63,11 +63,12 @@ export function TeacherSelection() {
         </Pressable>
         {expanded && !loading && teachers.length > 0 ? (
           <View style={styles.options}>
-            {teachers.map(({ id, name }) => (
+            {teachers.map(({ id, name, gender }) => (
               <Pressable
                 key={id}
                 accessibilityRole="button"
                 accessibilityLabel={name}
+                accessibilityHint={`${gender === 'male' ? 'Male' : 'Female'} teacher voice`}
                 disabled={saving}
                 accessibilityState={{
                   selected: id === teacherId,
@@ -87,7 +88,12 @@ export function TeacherSelection() {
                   pressed && styles.pressed,
                 ]}
               >
-                <ThemedText style={styles.name}>{name}</ThemedText>
+                <View>
+                  <ThemedText style={styles.name}>{name}</ThemedText>
+                  <ThemedText style={styles.description}>
+                    {gender === 'male' ? 'Male' : 'Female'}
+                  </ThemedText>
+                </View>
                 {id === teacherId ? (
                   <ThemedText style={styles.check} accessible={false}>
                     ✓
@@ -96,6 +102,11 @@ export function TeacherSelection() {
               </Pressable>
             ))}
           </View>
+        ) : null}
+        {teacher ? (
+          <ThemedText style={styles.description}>
+            Gender: {teacher.gender === 'male' ? 'Male' : 'Female'}
+          </ThemedText>
         ) : null}
         {saving ? (
           <ThemedText
