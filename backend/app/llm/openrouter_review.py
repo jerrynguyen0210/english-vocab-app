@@ -29,9 +29,13 @@ class ReviewError(Exception):
             "provider_connection",
             "invalid_response",
         ] = "generation_error",
+        *,
+        diagnostic: str | None = None,
     ) -> None:
         super().__init__(message)
         self.category = category
+        # Only locally constructed diagnostics; never provider bodies or raw input.
+        self.diagnostic = diagnostic
 
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
@@ -81,7 +85,7 @@ def remove_schema_enforcement(payload: dict[str, Any]) -> None:
     payload.pop("response_format", None)
     provider = payload.pop("provider", {})
     # Schema fallback must not undo an earlier failed-provider exclusion.
-    if provider.get("allow_fallbacks") or provider.get("ignore"):
+    if provider.get("only") or provider.get("allow_fallbacks") or provider.get("ignore"):
         provider.pop("require_parameters", None)
         payload["provider"] = provider
 

@@ -121,6 +121,7 @@ def request_common_json(
     api_key: str,
     base_url: str,
     timeout: float,
+    retry_provider: bool = True,
 ) -> str:
     """Bounded Common-provider transport shared by quiz and operator generation."""
     if not api_key.strip() or not math.isfinite(timeout) or timeout <= 0:
@@ -147,7 +148,7 @@ def request_common_json(
             if len(raw) > 262144:
                 raise ValueError("Response too large")
             envelope = json.loads(raw)
-            if provider_failed(envelope) and not provider_retried:
+            if retry_provider and provider_failed(envelope) and not provider_retried:
                 prepare_provider_retry(payload, envelope)
                 provider_retried = True
                 continue
@@ -155,13 +156,21 @@ def request_common_json(
                 raise ValueError("Provider error")
             choice = envelope["choices"][0]
             if choice["finish_reason"] != "stop":
-                raise ValueError("Incomplete completion")
+                raise ReviewError(
+                    "Incomplete completion.",
+                    "invalid_response",
+                    diagnostic=(
+                        "The model hit its output token limit; try a smaller batch."
+                        if choice["finish_reason"] == "length"
+                        else "The provider did not finish the response normally."
+                    ),
+                )
             content = choice["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("Missing JSON content")
             return content
         except HTTPError as exc:
-            if exc.code in (502, 503, 504) and not provider_retried:
+            if retry_provider and exc.code in (502, 503, 504) and not provider_retried:
                 prepare_provider_retry(payload)
                 provider_retried = True
                 continue
@@ -202,14 +211,22 @@ def request_common_json(
                 remove_schema_enforcement(payload)
                 continue
             raise ReviewError(
-                "Common question provider request failed.", "provider_http"
+                "Common question provider request failed.", "provider_http",
+                diagnostic=f"Provider request failed with HTTP {exc.code}.",
+            ) from None
+        except TimeoutError:
+            raise ReviewError(
+                "Common generation timed out.", "provider_connection",
+                diagnostic="The provider request timed out.",
             ) from None
         except (URLError, OSError):
             raise ReviewError(
-                "Common question provider unavailable.", "provider_connection"
+                "Common question provider unavailable.", "provider_connection",
+                diagnostic="Could not connect to the provider or read its response.",
             ) from None
         except (ValueError, TypeError, KeyError, IndexError):
             raise ReviewError(
-                "Invalid Common question batch.", "invalid_response"
+                "Invalid Common question batch.", "invalid_response",
+                diagnostic="The provider returned an invalid response envelope or JSON.",
             ) from None
     raise ReviewError("Common question generation failed.")

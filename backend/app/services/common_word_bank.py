@@ -102,7 +102,17 @@ def populate_bank(
                     count,
                     "The model returned no new words in three consecutive batches.",
                 )
-    except (ReviewError, ValueError):
+    except ReviewError as error:
+        reason = {
+            "provider_http": "The LLM provider rejected the request.",
+            "provider_connection": "The LLM provider connection failed.",
+            "invalid_response": "The LLM response failed output validation.",
+            "invalid_input": "LLM generation settings or input are invalid.",
+        }.get(error.category, "LLM generation failed.")
+        if error.diagnostic:
+            reason += " " + error.diagnostic
+        raise BankGenerationStopped(inserted, count, reason) from None
+    except ValueError:
         raise BankGenerationStopped(
             inserted,
             count,

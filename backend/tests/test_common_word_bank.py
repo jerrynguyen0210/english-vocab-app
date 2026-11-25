@@ -96,6 +96,33 @@ def test_normalized_duplicates_are_skipped_and_remaining_count_is_filled(
         }
 
 
+def test_exclusions_include_existing_bank_and_every_completed_batch(bank, monkeypatch):
+    engine, settings = bank
+    with engine.begin() as connection:
+        connection.execute(
+            CommonWord.__table__.insert().values(
+                word="Hello",
+                normalised_word="hello",
+                part_of_speech="noun",
+                english_explanation="Existing meaning",
+            )
+        )
+    new_words = ["home", "work", "travel", "shop", "friend", "garden"]
+    calls = []
+
+    def generate(count, excluded, **kwargs):
+        index = len(calls)
+        assert count == 1
+        assert excluded == sorted(["hello", *new_words[:index]])
+        calls.append(excluded)
+        return [word(new_words[index])]
+
+    monkeypatch.setattr("app.services.common_word_bank.generate_bank_words", generate)
+    assert populate_bank(engine, 6, settings, batch_size=1) == 6
+    assert len(calls) == 6
+    assert total(engine) == 7
+
+
 def test_duplicates_inserted_by_another_operator_are_not_counted(bank, monkeypatch):
     engine, settings = bank
     calls = 0
@@ -171,6 +198,26 @@ def test_invalid_batch_does_not_insert_any_content(bank, monkeypatch):
     with pytest.raises(BankGenerationStopped):
         populate_bank(engine, 1, settings)
     assert total(engine) == 0
+
+
+def test_provider_diagnostic_reaches_operator_and_keeps_completed_batches(bank, monkeypatch):
+    from app.llm.openrouter_review import ReviewError
+
+    engine, settings = bank
+    generate = Mock(side_effect=[
+        [word("hello")],
+        ReviewError(
+            "Private provider response", "provider_http",
+            diagnostic="Provider request failed with HTTP 429.",
+        ),
+    ])
+    monkeypatch.setattr("app.services.common_word_bank.generate_bank_words", generate)
+    with pytest.raises(BankGenerationStopped) as failure:
+        populate_bank(engine, 2, settings, batch_size=1)
+    assert "HTTP 429" in str(failure.value)
+    assert "Private provider response" not in str(failure.value)
+    assert "Saved 1 of 2" in str(failure.value)
+    assert total(engine) == 1
 
 
 @pytest.mark.parametrize("count", [0, -1, True])
