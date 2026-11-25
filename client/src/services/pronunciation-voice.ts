@@ -7,19 +7,21 @@ import type { TeacherGender } from '@/services/teachers';
 const voiceNames: Record<TeacherGender, RegExp> = {
   female:
     /\b(female|samantha|victoria|karen|moira|tessa|fiona|zira|hazel|susan|sonia|jenny)\b/i,
-  male: /\b(male|daniel|alex|fred|david|george|james|ryan|guy)\b/i,
+  male: /\b(male|lee|daniel|alex|fred|david|george|james|ryan|guy)\b/i,
 };
 
 export function selectPronunciationVoice(
   voices: readonly Voice[],
-  gender: TeacherGender,
+  gender?: TeacherGender,
 ): Voice | undefined {
-  const matches = voices.filter(
-    (voice) =>
-      /^en(?:[-_]|$)/i.test(voice.language) &&
-      voiceNames[gender].test(`${voice.name} ${voice.identifier}`),
+  const australianVoices = voices.filter((voice) =>
+    /^en[-_]AU$/i.test(voice.language),
   );
   return (
-    matches.find((voice) => /^en[-_]GB$/i.test(voice.language)) ?? matches[0]
+    (gender
+      ? australianVoices.find((voice) =>
+          voiceNames[gender].test(`${voice.name} ${voice.identifier}`),
+        )
+      : undefined) ?? australianVoices[0]
   );
 }

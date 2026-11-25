@@ -21,15 +21,15 @@ const voices = [
     quality: Speech.VoiceQuality.Default,
   },
   {
-    identifier: 'device-daniel',
-    name: 'Daniel',
-    language: 'en-GB',
+    identifier: 'device-lee',
+    name: 'Lee',
+    language: 'en-AU',
     quality: Speech.VoiceQuality.Default,
   },
   {
-    identifier: 'device-fiona',
-    name: 'Fiona',
-    language: 'en-GB',
+    identifier: 'device-karen',
+    name: 'Karen',
+    language: 'en-AU',
     quality: Speech.VoiceQuality.Default,
   },
 ];
@@ -69,16 +69,21 @@ beforeEach(() => {
     );
 });
 
-test('matches gender and prefers British English without treating female as male', () => {
+test('prefers Australian English and matches teacher gender when available', () => {
   expect(selectPronunciationVoice(voices, 'female')?.identifier).toBe(
-    'device-fiona',
+    'device-karen',
   );
+  expect(
+    selectPronunciationVoice([voices[2], voices[1]], 'male')?.identifier,
+  ).toBe('device-lee');
   expect(selectPronunciationVoice(voices, 'male')?.identifier).toBe(
-    'device-daniel',
+    'device-lee',
   );
-  expect(selectPronunciationVoice([voices[0]], 'female')?.identifier).toBe(
-    'device-samantha',
+  expect(selectPronunciationVoice([voices[0]], 'female')).toBeUndefined();
+  expect(selectPronunciationVoice([voices[2]], 'male')?.identifier).toBe(
+    'device-karen',
   );
+  expect(selectPronunciationVoice(voices)?.identifier).toBe('device-lee');
   expect(
     selectPronunciationVoice(
       [{ ...voices[0], name: 'English female', identifier: 'opaque' }],
@@ -97,7 +102,7 @@ test('manual pronunciation follows the confirmed selected teacher and displays g
   expect(Speech.speak).toHaveBeenCalledTimes(1);
   expect(Speech.speak).toHaveBeenLastCalledWith(
     'journey',
-    expect.objectContaining({ voice: 'device-fiona', language: 'en-GB' }),
+    expect.objectContaining({ voice: 'device-karen', language: 'en-AU' }),
   );
   await act(async () => {
     (jest.mocked(Speech.speak).mock.calls[0][1]?.onDone as () => void)();
@@ -110,7 +115,7 @@ test('manual pronunciation follows the confirmed selected teacher and displays g
   await play();
   expect(Speech.speak).toHaveBeenLastCalledWith(
     'journey',
-    expect.objectContaining({ voice: 'device-daniel' }),
+    expect.objectContaining({ voice: 'device-lee' }),
   );
 });
 
@@ -127,7 +132,7 @@ test.each(['empty', 'failure'])(
     await play();
     expect(Speech.speak).toHaveBeenCalledWith(
       'journey',
-      expect.objectContaining({ language: 'en-GB' }),
+      expect.objectContaining({ language: 'en-AU' }),
     );
     expect(jest.mocked(Speech.speak).mock.calls[0][1]).not.toHaveProperty(
       'voice',
@@ -139,7 +144,7 @@ test('automatic pronunciation uses the selected gender and ignores stale voice l
   const view = await render(tree(true));
   expect(Speech.speak).toHaveBeenLastCalledWith(
     'journey',
-    expect.objectContaining({ voice: 'device-fiona' }),
+    expect.objectContaining({ voice: 'device-karen' }),
   );
   await view.rerender(tree(true, false));
   let finish!: (result: Speech.Voice[]) => void;

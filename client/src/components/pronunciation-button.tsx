@@ -40,15 +40,11 @@ export function PronunciationButton({
     try {
       await Speech.stop();
       if (session.current !== current) return;
-      const voices = gender
-        ? await Speech.getAvailableVoicesAsync().catch(() => [])
-        : [];
+      const voices = await Speech.getAvailableVoicesAsync().catch(() => []);
       if (session.current !== current) return;
-      const voice = gender
-        ? selectPronunciationVoice(voices, gender)
-        : undefined;
+      const voice = selectPronunciationVoice(voices, gender);
       Speech.speak(word, {
-        language: voice?.language ?? 'en-GB',
+        language: 'en-AU',
         ...(voice ? { voice: voice.identifier } : {}),
         onDone: () => finish(),
         onStopped: () => finish(),
@@ -79,7 +75,7 @@ export function PronunciationButton({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Play pronunciation of ${word}`}
-        accessibilityHint="Reads the word aloud in English"
+        accessibilityHint="Reads the word aloud in Australian English"
         accessibilityState={{ disabled: !canSpeak || speaking, busy: speaking }}
         disabled={!canSpeak || speaking}
         onPress={() => void pronounce()}

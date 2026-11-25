@@ -16,6 +16,7 @@ jest.mock('@/services/common-words', () => ({
 }));
 jest.mock('expo-speech', () => ({
   speak: jest.fn(),
+  getAvailableVoicesAsync: jest.fn(() => Promise.resolve([])),
   stop: jest.fn(() => Promise.resolve()),
 }));
 const loadMock = jest.mocked(loadCommonWords);
@@ -132,7 +133,7 @@ test('speaker reads the word, prevents queued taps, and stops when the tab is hi
   await fireEvent.press(speaker());
   expect(Speech.speak).toHaveBeenCalledWith(
     'reliable',
-    expect.objectContaining({ language: 'en-GB' }),
+    expect.objectContaining({ language: 'en-AU' }),
   );
   expect(speaker()).toBeDisabled();
   await fireEvent.press(speaker());
