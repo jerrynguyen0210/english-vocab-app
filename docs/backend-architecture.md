@@ -495,8 +495,9 @@ or account erasure. The identity field does not imply an implemented OAuth flow.
 
 Migration `0024` adds nullable `users.selected_teacher_id`. The catalog in
 `app/data/teachers.json` maps `teacher-01` (“Emma Wilson”) to
-`openai/gpt-oss-20b` and `teacher-02` (“James Bennett”) to
-`openai/gpt-oss-120b`. Unselected accounts retain `OPENROUTER_MODEL` behavior.
+`openai/gpt-oss-20b`, `teacher-02` (“James Bennett”) to
+`openai/gpt-oss-120b`, and `teacher-03` (“Phuoc Ba”) to `tencent/hy4-flash`.
+Unselected accounts retain `OPENROUTER_MODEL` behavior.
 The JSON catalog is bundled with the backend package and validated by
 `services/teachers.py` once at process startup. Restart the API and workers after
 catalog edits. Keep IDs stable when renaming teachers to preserve saved selections.

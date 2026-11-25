@@ -107,8 +107,10 @@ stay in memory across screen navigation and reset with the session's product
 navigator. Loading, empty-directory, failed-load retry, and failed-save states
 are handled in the card; there are no sample teachers or local-only assignments.
 
-The backend owns the two available teachers: “Emma Wilson” maps to
-`openai/gpt-oss-20b`, and “James Bennett” maps to `openai/gpt-oss-120b`.
+The backend JSON catalog defines the available teachers: “Emma Wilson” maps to
+`openai/gpt-oss-20b`, “James Bennett” maps to `openai/gpt-oss-120b`, and
+“Phuoc Ba” maps to `tencent/hy4-flash`. The selector renders all entries returned
+by the API without a fixed teacher count.
 PUT persists the current user's selection; the client cannot select for another
 user or supply an arbitrary model. The selected model drives new review/recall
 prompt generation and new Common practice question generation. Changing teachers

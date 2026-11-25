@@ -18,6 +18,7 @@ from app.models import (
     Word,
 )
 from app.schemas.common_words import GeneratedCommonQuestion
+from app.services.teachers import TEACHERS
 
 BATCH = "/api/v1/common-words/batch"
 BANK_SIZE = 40
@@ -431,17 +432,19 @@ def test_empty_operator_bank_is_unavailable_not_all_learned(api, generator):
     assert not generator
 
 
-def test_common_question_generation_uses_the_accounts_teacher(api, monkeypatch):
+@pytest.mark.parametrize("selected_teacher", TEACHERS, ids=lambda teacher: teacher.id)
+def test_common_question_generation_uses_the_accounts_teacher(
+    api, monkeypatch, selected_teacher
+):
     from unittest.mock import Mock
-
-    from app.services.teachers import TEACHERS
 
     client, _, owner, other, _ = api
     generator = Mock(side_effect=lambda words, **kwargs: generated(words))
     monkeypatch.setattr(
         "app.services.common_words.generate_common_questions", generator
     )
-    for headers, teacher in zip((owner, other), TEACHERS):
+    other_teacher = next(entry for entry in TEACHERS if entry.id != selected_teacher.id)
+    for headers, teacher in ((owner, selected_teacher), (other, other_teacher)):
         response = client.put(
             "/api/v1/teachers/selection",
             headers=headers,
@@ -452,11 +455,12 @@ def test_common_question_generation_uses_the_accounts_teacher(api, monkeypatch):
         assert generator.call_args.kwargs["model"] == teacher.model
 
 
+@pytest.mark.parametrize("teacher", TEACHERS[1:], ids=lambda teacher: teacher.id)
 def test_teacher_change_during_common_generation_retries_with_new_model(
-    api, monkeypatch
+    api, monkeypatch, teacher
 ):
     from app.models import User
-    from app.services.teachers import TEACHERS, select_teacher
+    from app.services.teachers import select_teacher
 
     client, db, owner, *_ = api
     user_id = owner_id(client, owner)
@@ -468,12 +472,10 @@ def test_teacher_change_during_common_generation_retries_with_new_model(
         models.append(kwargs["model"])
         if len(models) == 1:
             with Session(db.get_bind()) as independent:
-                select_teacher(
-                    independent, independent.get(User, user_id), TEACHERS[1].id
-                )
+                select_teacher(independent, independent.get(User, user_id), teacher.id)
         return generated(words)
 
     monkeypatch.setattr("app.services.common_words.generate_common_questions", generate)
     assert client.post(BATCH, headers=owner, json={}).status_code == 200
-    assert models == [teacher.model for teacher in TEACHERS]
+    assert models == [TEACHERS[0].model, teacher.model]
     assert count(db, CommonPracticeQuestion) == 10

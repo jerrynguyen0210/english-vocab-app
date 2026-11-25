@@ -8,5 +8,10 @@
     "id": "teacher-02",
     "name": "James Bennett",
     "model": "openai/gpt-oss-120b"
+  },
+  {
+    "id": "teacher-03",
+    "name": "Phuoc Ba",
+    "model": "tencent/hy4-flash"
   }
 ]

@@ -3,6 +3,7 @@
 import uuid
 from unittest.mock import Mock
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import PromptJob, ReviewState, User, Word
@@ -18,27 +19,19 @@ def choose(client, headers, teacher_id):
     )
 
 
-def test_teacher_directory_and_per_user_persistence(api):
+@pytest.mark.parametrize("selected_teacher", TEACHERS, ids=lambda teacher: teacher.id)
+def test_teacher_directory_and_per_user_persistence(api, selected_teacher):
     client, db, owner, other, _ = api
     response = client.get("/api/v1/teachers", headers=owner)
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     assert response.json() == {
-        "teachers": [
-            {
-                "id": "teacher-01",
-                "name": "Emma Wilson",
-                "model": "openai/gpt-oss-20b",
-            },
-            {
-                "id": "teacher-02",
-                "name": "James Bennett",
-                "model": "openai/gpt-oss-120b",
-            },
-        ],
+        "teachers": [entry.model_dump() for entry in TEACHERS],
         "selected_teacher_id": None,
     }
-    for headers, teacher in ((owner, TEACHERS[0]), (other, TEACHERS[1])):
+    other_teacher = next(entry for entry in TEACHERS if entry.id != selected_teacher.id)
+    selections = ((owner, selected_teacher), (other, other_teacher))
+    for headers, teacher in selections:
         saved = choose(client, headers, teacher.id)
         assert saved.status_code == 200
         assert saved.json() == {"teacher_id": teacher.id}
@@ -82,10 +75,15 @@ def test_teacher_selection_rejects_unknown_models_and_other_user_fields(api):
     )
 
 
-def test_prompt_worker_uses_each_owners_selected_model(api, monkeypatch):
+@pytest.mark.parametrize("selected_teacher", TEACHERS, ids=lambda teacher: teacher.id)
+def test_prompt_worker_uses_each_owners_selected_model(
+    api, monkeypatch, selected_teacher
+):
     client, db, owner, other, _ = api
     words = []
-    for headers, teacher in ((owner, TEACHERS[0]), (other, TEACHERS[1])):
+    other_teacher = next(entry for entry in TEACHERS if entry.id != selected_teacher.id)
+    selections = ((owner, selected_teacher), (other, other_teacher))
+    for headers, teacher in selections:
         assert choose(client, headers, teacher.id).status_code == 200
         words.append(uuid.UUID(create(client, headers).json()["id"]))
     generator = Mock(
@@ -98,10 +96,10 @@ def test_prompt_worker_uses_each_owners_selected_model(api, monkeypatch):
     assert process_one(db.get_bind())
     assert process_one(db.get_bind())
     assert {call.kwargs["model"] for call in generator.call_args_list} == {
-        teacher.model for teacher in TEACHERS
+        teacher.model for _, teacher in selections
     }
     db.expire_all()
-    for word_id, teacher, headers in zip(words, TEACHERS, (owner, other)):
+    for word_id, (headers, teacher) in zip(words, selections):
         assert (
             db.get(Word, word_id).review_prompt == f"Model {teacher.model} says _____."
         )
@@ -118,8 +116,9 @@ def test_prompt_worker_uses_each_owners_selected_model(api, monkeypatch):
     assert generator.call_count == 2  # Session reads never invoke a model.
 
 
+@pytest.mark.parametrize("teacher", TEACHERS[1:], ids=lambda teacher: teacher.id)
 def test_changing_teacher_requeues_only_owned_words_and_fences_old_worker(
-    api, monkeypatch
+    api, monkeypatch, teacher
 ):
     client, db, owner, other, _ = api
     choose(client, owner, TEACHERS[0].id)
@@ -133,7 +132,7 @@ def test_changing_teacher_requeues_only_owned_words_and_fences_old_worker(
     db.commit()
     state_before = db.get(ReviewState, word_id).due_at
     prompt_before = db.get(Word, word_id).review_prompt
-    assert choose(client, owner, TEACHERS[1].id).status_code == 200
+    assert choose(client, owner, teacher.id).status_code == 200
     db.expire_all()
     replacement = db.get(PromptJob, word_id)
     assert replacement.attempts == 0 and replacement.lease_token is None
@@ -146,14 +145,14 @@ def test_changing_teacher_requeues_only_owned_words_and_fences_old_worker(
     assert db.get(PromptJob, word_id) is not None
     generator = Mock(return_value={"prompt_sentence": "New teacher says _____."})
     monkeypatch.setattr("app.services.prompt_jobs.worker.generate_review", generator)
-    # Process all pending work; only the selected account uses the second model.
+    # Process all pending work; only the selected account uses the replacement model.
     db.rollback()
     while process_one(db.get_bind()):
         pass
     db.expire_all()
     assert db.get(Word, word_id).review_prompt == "New teacher says _____."
     assert any(
-        call.kwargs["model"] == TEACHERS[1].model for call in generator.call_args_list
+        call.kwargs["model"] == teacher.model for call in generator.call_args_list
     )
-    assert choose(client, owner, TEACHERS[1].id).status_code == 200
+    assert choose(client, owner, teacher.id).status_code == 200
     assert db.get(PromptJob, word_id, populate_existing=True) is None

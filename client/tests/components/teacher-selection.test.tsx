@@ -23,6 +23,11 @@ const options = {
       name: 'James Bennett',
       model: 'openai/gpt-oss-120b',
     },
+    {
+      id: 'teacher-03',
+      name: 'Phuoc Ba',
+      model: 'tencent/hy4-flash',
+    },
   ],
   selected_teacher_id: 'teacher-01',
 };
@@ -62,39 +67,42 @@ test('shows the backend empty directory and disables selection', async () => {
   );
 });
 
-test('loads the backend selection and only changes it after a confirmed save', async () => {
-  let finishSave!: (response: Response) => void;
-  fetchMock
-    .mockImplementationOnce(() => reply(options))
-    .mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishSave = resolve;
-        }),
+test.each(options.teachers.slice(1))(
+  'only selects $name after a confirmed save',
+  async (teacher) => {
+    let finishSave!: (response: Response) => void;
+    fetchMock
+      .mockImplementationOnce(() => reply(options))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishSave = resolve;
+          }),
+      );
+    await render(tree());
+    await open();
+    await fireEvent.press(screen.getByRole('button', { name: teacher.name }));
+    expect(
+      screen.getByRole('button', { name: 'Teacher name: Emma Wilson' }),
+    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: teacher.name })).toBeDisabled();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/teachers/selection',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ teacher_id: teacher.id }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
     );
-  await render(tree());
-  await open();
-  await fireEvent.press(screen.getByRole('button', { name: 'James Bennett' }));
-  expect(
-    screen.getByRole('button', { name: 'Teacher name: Emma Wilson' }),
-  ).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'James Bennett' })).toBeDisabled();
-  expect(fetchMock).toHaveBeenLastCalledWith(
-    '/teachers/selection',
-    expect.objectContaining({
-      method: 'PUT',
-      body: JSON.stringify({ teacher_id: 'teacher-02' }),
-      headers: { 'Content-Type': 'application/json' },
-    }),
-  );
-  await act(async () => finishSave(await reply({ teacher_id: 'teacher-02' })));
-  expect(
-    await screen.findByRole('button', {
-      name: 'Teacher name: James Bennett',
-    }),
-  ).toBeEnabled();
-  expect(screen.queryByRole('button', { name: 'James Bennett' })).toBeNull();
-});
+    await act(async () => finishSave(await reply({ teacher_id: teacher.id })));
+    expect(
+      await screen.findByRole('button', {
+        name: `Teacher name: ${teacher.name}`,
+      }),
+    ).toBeEnabled();
+    expect(screen.queryByRole('button', { name: teacher.name })).toBeNull();
+  },
+);
 
 test.each([422, 500])(
   'a %s save response preserves the confirmed selection and allows retry',
@@ -152,7 +160,7 @@ test('caches across screen remounts and reloads for a new session', async () => 
   fetchMock
     .mockImplementationOnce(() => reply(options))
     .mockImplementationOnce(() =>
-      reply({ teachers: [], selected_teacher_id: null }),
+      reply({ ...options, selected_teacher_id: 'teacher-03' }),
     );
   const view = await render(tree());
   await screen.findByRole('button', {
@@ -165,7 +173,7 @@ test('caches across screen remounts and reloads for a new session', async () => 
   expect(fetchMock).toHaveBeenCalledTimes(1);
   await view.rerender(tree(1, 0));
   await screen.findByRole('button', {
-    name: 'Teacher name: No teachers available yet',
+    name: 'Teacher name: Phuoc Ba',
   });
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
