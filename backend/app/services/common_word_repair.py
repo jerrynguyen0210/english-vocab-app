@@ -69,6 +69,7 @@ def repair_bank(
             api_key=settings.openrouter_api_key.get_secret_value(),
             base_url=settings.openrouter_url,
             timeout=settings.openrouter_timeout_seconds,
+            providers=settings.openrouter_providers,
         )
         # Validate again at the persistence boundary, including count and word identity.
         validated = [GeneratedBankWord.model_validate(entry) for entry in generated]

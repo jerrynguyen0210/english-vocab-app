@@ -18,6 +18,7 @@ def model_providers(
     minimum_context: int = 0,
     minimum_output: int = 0,
     minimum_prompt: int = 0,
+    selected_providers: list[str] | None = None,
 ) -> list[str]:
     # Routing suffixes select a policy rather than a different model catalog entry.
     name, separator, suffix = model.rpartition(":")
@@ -35,6 +36,20 @@ def model_providers(
         endpoints = json.loads(raw)["data"]["endpoints"]
         if not isinstance(endpoints, list):
             raise TypeError("Invalid provider list")
+        if selected_providers:
+            # Filter before capacity checks and the three-provider retry limit.
+            endpoints = [
+                endpoint
+                for selected in selected_providers
+                for endpoint in endpoints
+                if isinstance(endpoint, dict)
+                and isinstance(endpoint.get("tag"), str)
+                and (
+                    endpoint["tag"].casefold() == selected.casefold()
+                    or endpoint["tag"].partition("/")[0].casefold()
+                    == selected.casefold()
+                )
+            ]
         providers: list[str] = []
         seen: set[str] = set()
         for endpoint in endpoints:
@@ -67,6 +82,15 @@ def model_providers(
                 # Pin the checked endpoint variant when capacity was requested.
                 providers.append(tag if minimum_context or minimum_output else slug)
         if not providers:
+            if selected_providers:
+                raise ReviewError(
+                    "Selected providers are unavailable.",
+                    "invalid_input",
+                    diagnostic=(
+                        "No selected provider has a compatible endpoint for this model and batch. "
+                        "Check provider slugs, choose another model or reduce batch size."
+                    ),
+                )
             if minimum_context or minimum_output:
                 raise ReviewError(
                     "No provider has sufficient verified capacity.",

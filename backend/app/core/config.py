@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     openrouter_url: str = "https://openrouter.ai/api/v1"
     openrouter_api_key: SecretStr = SecretStr("")
     openrouter_model: str = Field(default="default_models", min_length=1)
+    openrouter_providers: list[str] = []
     openrouter_timeout_seconds: float = Field(default=600, gt=0, allow_inf_nan=False)
     common_words_timeout_seconds: float = Field(default=240, gt=0, allow_inf_nan=False)
     prompt_job_max_attempts: int = Field(default=5, ge=1, le=100)

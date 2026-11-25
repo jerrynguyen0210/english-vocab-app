@@ -135,3 +135,27 @@ def test_insufficient_capacity_explains_how_to_retry():
         )
     assert failure.value.category == "invalid_input"
     assert "Reduce batch size" in failure.value.diagnostic
+
+
+def test_selected_providers_filter_before_limit_and_preserve_order():
+    endpoints = [
+        {"tag": tag, "context_length": 32000, "max_completion_tokens": 16000}
+        for tag in ["first", "second", "third", "fourth/small", "fifth", "fourth/large"]
+    ]
+    assert capacity_discover(
+        endpoints, selected_providers=["fifth", "fourth/large"]
+    ) == ["fifth", "fourth/large"]
+
+
+@pytest.mark.parametrize("selected", [["missing"], ["small"]])
+def test_selected_providers_never_fall_back_to_unselected_endpoints(selected):
+    with pytest.raises(ReviewError) as failure:
+        capacity_discover(
+            [
+                {"tag": "small", "context_length": 8192},
+                {"tag": "large", "context_length": 32000},
+            ],
+            selected_providers=selected,
+        )
+    assert failure.value.category == "invalid_input"
+    assert "No selected provider" in failure.value.diagnostic

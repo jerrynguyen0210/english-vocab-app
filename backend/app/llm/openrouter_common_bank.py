@@ -45,6 +45,7 @@ def generate_bank_words(
     api_key: str,
     base_url: str = "https://openrouter.ai/api/v1",
     timeout: float = 120,
+    providers: list[str] | None = None,
 ) -> list[GeneratedBankWord]:
     return _request_bank_words(
         count,
@@ -54,6 +55,7 @@ def generate_bank_words(
         api_key=api_key,
         base_url=base_url,
         timeout=timeout,
+        providers=providers,
     )
 
 
@@ -64,6 +66,7 @@ def repair_bank_words(
     api_key: str,
     base_url: str = "https://openrouter.ai/api/v1",
     timeout: float = 120,
+    providers: list[str] | None = None,
 ) -> list[GeneratedBankWord]:
     """Request complete content for existing words, validating identity and IPA."""
     repaired = _request_bank_words(
@@ -80,6 +83,7 @@ def repair_bank_words(
         api_key=api_key,
         base_url=base_url,
         timeout=timeout,
+        providers=providers,
     )
     if [entry.word for entry in repaired] != [entry["word"] for entry in words] or any(
         entry.ipa is None for entry in repaired
@@ -101,6 +105,7 @@ def _request_bank_words(
     api_key: str,
     base_url: str,
     timeout: float,
+    providers: list[str] | None = None,
 ) -> list[GeneratedBankWord]:
     if (
         not 1 <= count <= 50
@@ -145,6 +150,7 @@ def _request_bank_words(
         minimum_context=input_budget + payload["max_tokens"],
         minimum_output=payload["max_tokens"],
         minimum_prompt=input_budget,
+        selected_providers=providers,
     )
     for index, provider in enumerate(providers):
         attempt = deepcopy(payload)

@@ -272,6 +272,47 @@ def test_main_handles_closed_input_and_disposes_engine(bank, monkeypatch, capsys
     assert "Menu closed" in capsys.readouterr().out
 
 
+def test_menu_configures_generation_without_changing_cached_settings(bank, monkeypatch):
+    engine, settings, _ = bank
+    generate = Mock()
+    monkeypatch.setattr(menu, "populate_bank", generate)
+    inputs(monkeypatch, ["9", "other/model", "groq,deepinfra", "5", "1", "", "0"])
+    menu.run_menu(engine, settings)
+    selected = generate.call_args.args[2]
+    assert selected.openrouter_model == "other/model"
+    assert selected.openrouter_providers == ["groq", "deepinfra"]
+    assert settings.openrouter_model == "test/model"
+    assert settings.openrouter_providers == []
+
+
+def test_menu_can_reset_provider_selection(bank, monkeypatch):
+    engine, settings, _ = bank
+    settings.openrouter_providers = ["groq"]
+    generate = Mock()
+    monkeypatch.setattr(menu, "populate_bank", generate)
+    inputs(monkeypatch, ["9", "", "auto", "5", "1", "", "0"])
+    menu.run_menu(engine, settings)
+    assert generate.call_args.args[2].openrouter_providers == []
+
+
+def test_main_cli_overrides_environment_selection(bank, monkeypatch):
+    engine, settings, _ = bank
+    settings.openrouter_providers = ["groq"]
+    run = Mock()
+    monkeypatch.setattr(menu, "get_engine", lambda: engine)
+    monkeypatch.setattr(menu, "get_settings", lambda: settings)
+    monkeypatch.setattr(menu, "run_menu", run)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["manage_common_words", "--model", "other/model", "--providers", "auto"],
+    )
+    menu.main()
+    assert run.call_args.args[1].openrouter_model == "other/model"
+    assert run.call_args.args[1].openrouter_providers == []
+    assert settings.openrouter_model == "test/model"
+    assert settings.openrouter_providers == ["groq"]
+
+
 def repair_entry(word):
     return GeneratedBankWord(
         word=word,

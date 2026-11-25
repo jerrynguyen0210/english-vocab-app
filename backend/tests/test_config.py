@@ -14,11 +14,13 @@ def test_settings_read_environment(monkeypatch):
     router_key = secrets.token_urlsafe(32)
     monkeypatch.setenv("OPENROUTER_API_KEY", router_key)
     monkeypatch.setenv("OPENROUTER_MODEL", "test/model")
+    monkeypatch.setenv("OPENROUTER_PROVIDERS", '["groq", "deepinfra"]')
     monkeypatch.setenv("OPENROUTER_TIMEOUT_SECONDS", "45")
     settings = Settings(_env_file=None)
     assert settings.openrouter_api_key.get_secret_value() == router_key
     assert router_key not in repr(settings)
     assert settings.openrouter_model == "test/model"
+    assert settings.openrouter_providers == ["groq", "deepinfra"]
     assert settings.openrouter_timeout_seconds == 45
     assert settings.secret_key.get_secret_value() == key
     assert key not in repr(settings)

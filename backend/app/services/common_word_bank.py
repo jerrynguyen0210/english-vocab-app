@@ -62,6 +62,7 @@ def populate_bank(
                 api_key=settings.openrouter_api_key.get_secret_value(),
                 base_url=settings.openrouter_url,
                 timeout=settings.openrouter_timeout_seconds,
+                providers=settings.openrouter_providers,
             )
             candidates = GeneratedBankBatch(words=generated).words
             if len(candidates) > requested:

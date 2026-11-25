@@ -32,8 +32,33 @@ Common word database
   6. Delete one word
   7. Clear the Common word bank
   8. Inspect words for duplicates and missing values
+  9. Configure OpenRouter model and providers for this session
   0. Exit
 """
+
+
+def provider_list(value: str) -> list[str]:
+    """Parse ordered routing slugs; auto clears the provider restriction."""
+    if value.strip().casefold() == "auto":
+        return []
+    providers = [item.strip() for item in value.split(",")]
+    if any(not item or any(char.isspace() for char in item) for item in providers):
+        raise argparse.ArgumentTypeError("Use comma-separated provider slugs or auto")
+    return list(dict.fromkeys(providers))
+
+
+def model_id(value: str) -> str:
+    value = value.strip()
+    if not value or any(char.isspace() for char in value):
+        raise argparse.ArgumentTypeError("Enter an OpenRouter model ID without spaces")
+    return value
+
+
+def show_openrouter(settings: Settings) -> None:
+    print(f"OpenRouter model: {settings.openrouter_model}")
+    print(
+        f"Providers: {', '.join(settings.openrouter_providers) or 'auto (discovered)'}"
+    )
 
 
 def show_words(words: list[BankEntry]) -> None:
@@ -87,6 +112,8 @@ def show_inspection(report: BankInspection) -> None:
 
 
 def run_menu(engine: Engine, settings: Settings) -> None:
+    settings = settings.model_copy(deep=True)
+    show_openrouter(settings)
     while True:
         print(MENU)
         choice = input("Choose an option: ").strip()
@@ -131,6 +158,24 @@ def run_menu(engine: Engine, settings: Settings) -> None:
                         f"Saved {saved}/{total} new Common words.", flush=True
                     ),
                 )
+            elif choice == "9":
+                show_openrouter(settings)
+                try:
+                    model = input("OpenRouter model ID (Enter to keep): ").strip()
+                    model = model_id(model) if model else settings.openrouter_model
+                    raw = input(
+                        "Provider slugs in order, comma-separated (Enter to keep, auto to reset): "
+                    ).strip()
+                    providers = (
+                        provider_list(raw) if raw else settings.openrouter_providers
+                    )
+                except argparse.ArgumentTypeError as error:
+                    print(f"Invalid OpenRouter configuration: {error}")
+                    continue
+                settings.openrouter_model = model
+                settings.openrouter_providers = providers
+                print("OpenRouter configuration updated for this session.")
+                show_openrouter(settings)
             elif choice == "8":
                 report = inspect_bank(engine)
                 show_inspection(report)
@@ -199,7 +244,7 @@ def run_menu(engine: Engine, settings: Settings) -> None:
                     f"Deleted {result.words} Common words, {result.questions} questions and {result.progress} progress records."
                 )
             else:
-                print("Unknown option. Choose 0-8.")
+                print("Unknown option. Choose 0-9.")
         except BankGenerationStopped as error:
             print(
                 f"{error}\nCompleted batches remain saved. Choose Generate and enter the remaining count to retry."
@@ -215,10 +260,25 @@ def run_menu(engine: Engine, settings: Settings) -> None:
 
 
 def main() -> None:
-    argparse.ArgumentParser(description=__doc__).parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--model",
+        type=model_id,
+        help="OpenRouter model ID (overrides OPENROUTER_MODEL)",
+    )
+    parser.add_argument(
+        "--providers",
+        type=provider_list,
+        help="Comma-separated provider slugs in priority order, or auto; overrides OPENROUTER_PROVIDERS",
+    )
+    args = parser.parse_args()
     engine = None
     try:
-        settings = get_settings()
+        settings = get_settings().model_copy(deep=True)
+        if args.model is not None:
+            settings.openrouter_model = args.model
+        if args.providers is not None:
+            settings.openrouter_providers = args.providers
         engine = get_engine()
         run_menu(engine, settings)
     except ValueError:

@@ -583,6 +583,23 @@ Manage or inspect the Common bank with the interactive backend menu:
 ./devops/manage_common_words.sh
 ```
 
+Select an OpenRouter model and restrict Common bank generation/repair to specific
+providers, in priority order:
+
+```bash
+./devops/manage_common_words.sh --model openai/gpt-4o-mini --providers openai
+```
+
+Use model IDs and provider slugs from OpenRouter's model page. Option **9** changes
+these selections for the current menu session. Defaults come from `OPENROUTER_MODEL`
+and `OPENROUTER_PROVIDERS` (a JSON array, for example `["openai"]`) in the private
+backend environment. CLI flags override these defaults; `--providers auto` clears
+the restriction. Selections apply to generation (option **5**) and repair (option
+**8**). Only selected providers with sufficient capacity are used, with up to three
+distinct providers tried per batch in the configured order. An unavailable selection
+fails without falling back to other providers. Session changes do not rewrite `.env`.
+See [OpenRouter provider routing](https://openrouter.ai/docs/guides/routing/provider-selection).
+
 The launcher runs Python on the host and uses `backend/.venv/bin/python` when
 available. Invoke `./devops/manage_common_words.sh` from the repository root, or
 use its absolute path from another working directory. From `backend/`, you can

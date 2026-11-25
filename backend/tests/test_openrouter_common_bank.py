@@ -338,3 +338,25 @@ def test_batch_above_fifty_rejected_before_provider_request():
     ):
         generate(51)
     request.assert_not_called()
+
+
+@pytest.mark.parametrize("operation", ["generate", "repair"])
+def test_provider_selection_reaches_discovery_and_pins_requests(monkeypatch, operation):
+    from app.llm.openrouter_common_bank import repair_bank_words
+
+    discovery = Mock(return_value=["deepinfra/fp4"])
+    monkeypatch.setattr("app.llm.openrouter_common_bank.model_providers", discovery)
+    kwargs = {
+        "model": "test/model",
+        "api_key": "placeholder-test-key",
+        "providers": ["deepinfra"],
+    }
+    with patch("app.llm.openrouter_common.urlopen", return_value=response()) as request:
+        if operation == "generate":
+            generate_bank_words(1, [], **kwargs)
+        else:
+            repair_bank_words([ENTRY], **kwargs)
+    assert discovery.call_args.kwargs["selected_providers"] == ["deepinfra"]
+    payload = json.loads(request.call_args.args[0].data)
+    assert payload["provider"]["only"] == ["deepinfra/fp4"]
+    assert payload["provider"]["allow_fallbacks"] is False
