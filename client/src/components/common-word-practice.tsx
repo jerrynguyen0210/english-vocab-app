@@ -532,6 +532,8 @@ export function CommonWordPractice({
                 accessibilityLabel={`Answer choices for ${question.word}`}
               >
                 {question.choices.map((choice, choiceIndex) => {
+                  const pending =
+                    phase === 'learning' && selected === choiceIndex;
                   const correct =
                     phase === 'correct' && selected === choiceIndex;
                   return (
@@ -547,6 +549,7 @@ export function CommonWordPractice({
                       onPress={() => choose(choiceIndex)}
                       style={({ pressed }) => [
                         styles.choice,
+                        pending && styles.selectedChoice,
                         correct && styles.correctChoice,
                         pressed && styles.dimmed,
                       ]}
@@ -554,13 +557,14 @@ export function CommonWordPractice({
                       <View
                         style={[
                           styles.choiceLetter,
+                          pending && styles.selectedLetter,
                           correct && styles.correctLetter,
                         ]}
                       >
                         <ThemedText
                           style={[
                             styles.letterText,
-                            correct && styles.whiteText,
+                            (pending || correct) && styles.whiteText,
                           ]}
                         >
                           {correct ? '✓' : 'ABCD'[choiceIndex]}
@@ -569,6 +573,7 @@ export function CommonWordPractice({
                       <ThemedText
                         style={[
                           styles.choiceText,
+                          pending && styles.primaryText,
                           correct && styles.successText,
                         ]}
                       >
@@ -758,6 +763,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '600',
   },
+  selectedChoice: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  selectedLetter: { backgroundColor: colors.primary },
   correctChoice: {
     backgroundColor: colors.successBackground,
     borderColor: colors.success,
