@@ -15,6 +15,7 @@ from app.services.common_word_management import (
     browse_words,
     delete_bank_words,
     find_word,
+    inspect_bank,
     latest_words,
 )
 
@@ -27,6 +28,7 @@ Common word database
   5. Generate new words with LLM
   6. Delete one word
   7. Clear the Common word bank
+  8. Inspect words for duplicates and missing values
   0. Exit
 """
 
@@ -112,6 +114,19 @@ def run_menu(engine: Engine, settings: Settings) -> None:
                         f"Saved {saved}/{total} new Common words.", flush=True
                     ),
                 )
+            elif choice == "8":
+                report = inspect_bank(engine)
+                print(f"Inspected {report.words} Common words (read only).")
+                print("Duplicate counts are groups; other counts are affected rows.")
+                print("Example sentences and IPA are optional database fields.")
+                if not report.counts:
+                    print("No duplicates, missing values, or normalization issues found.")
+                for category, count in report.counts.items():
+                    print(f"\n{category}: {count}")
+                    for sample in report.samples[category]:
+                        print(f"  {sample}")
+                    if count > len(report.samples[category]):
+                        print("  Additional findings omitted; showing first 10.")
             elif choice in {"6", "7"}:
                 if choice == "6":
                     word = find_word(engine, input("Word or UUID to delete: "))
@@ -144,7 +159,7 @@ def run_menu(engine: Engine, settings: Settings) -> None:
                     f"Deleted {result.words} Common words, {result.questions} questions and {result.progress} progress records."
                 )
             else:
-                print("Unknown option. Choose 0-7.")
+                print("Unknown option. Choose 0-8.")
         except BankGenerationStopped as error:
             print(
                 f"{error}\nCompleted batches remain saved. Choose Generate and enter the remaining count to retry."

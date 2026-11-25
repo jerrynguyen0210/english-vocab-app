@@ -1,6 +1,7 @@
 """Common generation stays bounded and validates the supplied bank IDs exactly."""
 
 import io
+import itertools
 import json
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -82,6 +83,26 @@ def test_supplied_words_and_schema_are_sent_and_output_is_validated():
     assert json.loads(payload["messages"][1]["content"])[0]["word"] == "reliable"
     assert payload["response_format"]["json_schema"]["strict"] is True
     assert request.call_args.kwargs["timeout"] <= 15
+
+
+@pytest.mark.parametrize("correct_index", range(4))
+@pytest.mark.parametrize("order", list(itertools.permutations(range(4))))
+def test_shuffled_choices_preserve_answer_key(correct_index, order):
+    def shuffle(indices):
+        indices[:] = order
+
+    with (
+        patch(
+            "app.llm.openrouter_common.urlopen",
+            return_value=completion([{**QUESTION, "correct_index": correct_index}]),
+        ),
+        patch("app.llm.openrouter_common.random.shuffle", side_effect=shuffle) as shuffler,
+    ):
+        question = generate()[0]
+    shuffler.assert_called_once()
+    assert question.choices == [QUESTION["choices"][index] for index in order]
+    assert question.correct_index == order.index(correct_index)
+    assert question.choices[question.correct_index] == QUESTION["choices"][correct_index]
 
 
 @pytest.mark.parametrize(

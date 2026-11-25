@@ -609,6 +609,13 @@ the host alone does not update its application code.
 
 The menu provides bank counts, the latest ten words, paginated browsing/search,
 full word details, LLM generation, single-word deletion, and clearing the bank.
+Option **8** inspects every bank word for duplicates after Unicode, case, and
+whitespace normalization, duplicate stored normalization keys, inconsistent
+normalization, and null or blank fields. It reports required fields separately
+from optional example sentences and IPA, with counts and up to ten sample IDs
+per finding category. Inspection only reads the database and does not repair or
+delete entries. The bank has no generation-source marker, so inspection covers
+all Common words, including generated words.
 Generation reuses the existing operator generator and asks for the new-word count
 and batch size. Viewing the bank does not require an OpenRouter API key.
 
